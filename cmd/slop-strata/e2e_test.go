@@ -18,7 +18,7 @@ func fixtureRepo(t *testing.T) string {
 	dir := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
-		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
@@ -77,6 +77,7 @@ func runCLI(t *testing.T, repo string, argv ...string) (string, error) {
 }
 
 func TestSnapshotJSON(t *testing.T) {
+	t.Parallel()
 	repo := fixtureRepo(t)
 	out, err := runCLI(t, repo, "snapshot", "--json")
 	if err != nil {
@@ -85,13 +86,13 @@ func TestSnapshotJSON(t *testing.T) {
 	var env struct {
 		Command string `json:"command"`
 		Result  struct {
+			Findings map[string][]struct {
+				Rule string `json:"rule"`
+			} `json:"findings"`
 			Total struct {
 				Erosion   float64 `json:"erosion"`
 				FuncCount int     `json:"func_count"`
 			} `json:"total"`
-			Findings map[string][]struct {
-				Rule string `json:"rule"`
-			} `json:"findings"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
@@ -120,6 +121,7 @@ func TestSnapshotJSON(t *testing.T) {
 }
 
 func TestChangeWorktree(t *testing.T) {
+	t.Parallel()
 	repo := fixtureRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "extra.go"),
 		[]byte("package main\n\nfunc sneaky() { _ = g() }\n\nfunc g() error { return nil }\n"), 0o600); err != nil {
@@ -135,6 +137,7 @@ func TestChangeWorktree(t *testing.T) {
 }
 
 func TestHistoryWalk(t *testing.T) {
+	t.Parallel()
 	repo := fixtureRepo(t)
 	out, err := runCLI(t, repo, "history", "--json")
 	if err != nil {
@@ -142,13 +145,13 @@ func TestHistoryWalk(t *testing.T) {
 	}
 	var env struct {
 		Result struct {
-			Changes int `json:"changes"`
 			Lineage struct {
 				Survival []struct {
 					Cohort string `json:"cohort"`
 					Added  int    `json:"added"`
 				} `json:"survival"`
 			} `json:"lineage"`
+			Changes int `json:"changes"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
@@ -160,6 +163,7 @@ func TestHistoryWalk(t *testing.T) {
 }
 
 func TestExplain(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	if err := run(context.Background(), []string{"--explain", "erosion"}, &out); err != nil {
 		t.Fatalf("explain: %v", err)

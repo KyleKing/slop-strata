@@ -21,15 +21,23 @@ func main() {
 		switch os.Args[1] {
 		case "-v", "--version":
 			fmt.Printf("slop-strata %s (commit: %s, built: %s)\n", version, commit, date)
-			os.Exit(0)
+
+			return
 		}
 	}
 
+	os.Exit(runMain())
+}
+
+func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "slop-strata:", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	return 0
 }

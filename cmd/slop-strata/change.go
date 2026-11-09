@@ -25,23 +25,22 @@ const defaultRev = "HEAD"
 
 // side is one version of a changed file.
 type side struct {
-	report  *engine.FileReport
-	content []byte
 	err     error
+	content []byte
 }
 
 // changeResult is the change subcommand's JSON shape.
 type changeResult struct {
+	Dirs     map[string]dirDelta `json:"dirs"`
+	Context  *contextPayload     `json:"context,omitempty"`
+	Intent   intent.Intent       `json:"intent"`
 	Base     string              `json:"base"`
 	End      string              `json:"end"`
 	Reading  string              `json:"reading"`
-	Intent   intent.Intent       `json:"intent"`
-	Delta    deltaSummary        `json:"delta"`
-	Dirs     map[string]dirDelta `json:"dirs"`
 	Findings []findingRow        `json:"findings"`
 	Files    []fileDelta         `json:"files"`
 	Skipped  []skippedRow        `json:"skipped,omitempty"`
-	Context  *contextPayload     `json:"context,omitempty"`
+	Delta    deltaSummary        `json:"delta"`
 }
 
 type deltaSummary struct {
@@ -64,8 +63,8 @@ type dirDelta struct {
 type findingRow struct {
 	Path  string `json:"path"`
 	Rule  string `json:"rule"`
-	Line  int    `json:"line"`
 	Match string `json:"match,omitempty"`
+	Line  int    `json:"line"`
 	New   bool   `json:"new"`
 }
 
@@ -86,8 +85,8 @@ type skippedRow struct {
 
 type contextPayload struct {
 	Hunks    map[string][]vcs.DiffHunk `json:"hunks"`
-	Messages []string                  `json:"messages"`
 	Snippets map[string]map[int]string `json:"snippets"` // path -> line -> text
+	Messages []string                  `json:"messages"`
 }
 
 func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
@@ -111,19 +110,20 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	if a.rev != "" {
 		d, err := s.ops.DiffRefs(ctx, s.root, base, a.rev)
 		if err != nil {
-			return err
+			return fmt.Errorf("diff %s..%s: %w", base, a.rev, err)
 		}
 		files = d
 	} else {
 		d, err := s.ops.DiffWorktree(ctx, s.root, base)
 		if err != nil {
-			return err
+			return fmt.Errorf("diff %s..worktree: %w", base, err)
 		}
 		untracked, err := s.ops.UntrackedFiles(ctx, s.root)
 		if err != nil {
-			return err
+			return fmt.Errorf("listing untracked files: %w", err)
 		}
-		files = append(d, untrackedAsAdds(untracked)...)
+		files = append(files, d...)
+		files = append(files, untrackedAsAdds(untracked)...)
 	}
 
 	res, err := s.scoreChange(ctx, base, end, files, a.rev != "")
@@ -135,10 +135,14 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		if a.ctx {
 			res.Context = s.buildContext(ctx, base, files, res)
 		}
-		return report.WriteJSON(w, "change", s.root, res, s.warnings(res))
+		if err := report.WriteJSON(w, "change", s.root, res, warnings(res)); err != nil {
+			return fmt.Errorf("writing result: %w", err)
+		}
+
+		return nil
 	}
 
-	s.printChange(w, res, a.all)
+	printChange(w, res, a.all)
 
 	return nil
 }
@@ -148,8 +152,12 @@ func (s *session) defaultBranch(ctx context.Context) (string, error) {
 	if s.cfg.DefaultBranch != "" {
 		return s.cfg.DefaultBranch, nil
 	}
+	name, err := s.ops.DefaultBranchName(ctx, s.root)
+	if err != nil {
+		return "", fmt.Errorf("resolving default branch: %w", err)
+	}
 
-	return s.ops.DefaultBranchName(ctx, s.root)
+	return name, nil
 }
 
 // untrackedAsAdds turns untracked paths into added-file records; their blobs
@@ -163,70 +171,40 @@ func untrackedAsAdds(paths []string) []vcs.CommitFile {
 	return out
 }
 
+// scoredFile is one changed file's delta plus the metrics each side yielded.
+type scoredFile struct {
+	before *structure.FileMetrics
+	after  *structure.FileMetrics
+	delta  fileDelta
+}
+
 // scoreChange analyzes both sides of every changed file.
-func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs.CommitFile, committed bool) (*changeResult, error) {
-	// Batch-read old blobs.
-	var oldSHAs []string
-	for _, f := range files {
-		if f.OldSHA != "" {
-			oldSHAs = append(oldSHAs, f.OldSHA)
-		}
-	}
-	oldBlobs, err := s.ops.BlobContents(ctx, s.root, oldSHAs)
+func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs.CommitFile,
+	committed bool,
+) (*changeResult, error) {
+	oldBlobs, err := s.oldBlobs(ctx, files)
 	if err != nil {
 		return nil, err
+	}
+	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
+	if err != nil {
+		return nil, fmt.Errorf("reading baseline: %w", err)
 	}
 
 	res := &changeResult{Base: base, End: end, Dirs: map[string]dirDelta{}}
 	var before, after []structure.FileMetrics
-	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
-	if err != nil {
-		return nil, err
-	}
-
 	for _, f := range files {
-		fd := fileDelta{Path: f.Path, Status: f.Status.String(), Added: f.LinesAdded(), Deleted: f.LinesDeleted()}
-		res.Delta.LinesAdded += f.LinesAdded()
-		res.Delta.LinesDeleted += f.LinesDeleted()
-
-		if f.OldSHA != "" && !f.Binary {
-			if content, ok := oldBlobs[f.OldSHA]; ok {
-				oldPath := f.Path
-				if f.OldPath != "" {
-					oldPath = f.OldPath
-				}
-				rep := s.eng.Analyze(oldPath, f.OldSHA, content)
-				if rep.Skipped == "" {
-					before = append(before, rep.Metrics)
-					fd.MassBefore = fileMass(rep.Metrics)
-					res.Delta.MassRemoved += fd.MassBefore
-				}
-			}
+		sf, err := s.scoreFile(ctx, f, oldBlobs, committed, baseline, res)
+		if err != nil {
+			return nil, err
 		}
-
-		newSide := s.newContent(ctx, f, committed)
-		if newSide.err != nil {
-			return nil, newSide.err
+		if sf.before != nil {
+			before = append(before, *sf.before)
 		}
-		if newSide.content != nil {
-			sha := f.NewSHA
-			if sha == "" || strings.Trim(sha, "0") == "" {
-				sha = vcs.BlobSHA(newSide.content)
-			}
-			rep := s.eng.Analyze(f.Path, sha, newSide.content)
-			if rep.Skipped != "" {
-				res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
-			} else {
-				after = append(after, rep.Metrics)
-				fd.MassAfter = fileMass(rep.Metrics)
-				fd.Lang = rep.Lang
-				res.Delta.MassAdded += fd.MassAfter
-				for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
-					res.Findings = append(res.Findings, findingRow{Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true})
-				}
-			}
+		if sf.after != nil {
+			after = append(after, *sf.after)
 		}
-		res.Files = append(res.Files, fd)
+		res.Files = append(res.Files, sf.delta)
 	}
 
 	aggBefore := structure.Aggregate(before)
@@ -236,11 +214,91 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	res.Delta.ErosionAfter = aggAfter.Erosion
 
 	res.Intent = s.changeIntent(ctx, base)
-	res.Reading = s.readingFor(res, aggBefore, aggAfter, before, after)
-	s.markFindingsOld(ctx, base, files, res)
-	s.dirDeltas(ctx, res, files)
+	res.Reading = readingFor(res, aggBefore, aggAfter, before, after)
+	s.markFindingsOld(ctx, files, res)
+	s.dirDeltas(ctx, res)
 
 	return res, nil
+}
+
+// oldBlobs batch-reads every old-side blob in the diff.
+func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[string][]byte, error) {
+	var shas []string
+	for _, f := range files {
+		if f.OldSHA != "" {
+			shas = append(shas, f.OldSHA)
+		}
+	}
+	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
+	if err != nil {
+		return nil, fmt.Errorf("reading blobs: %w", err)
+	}
+
+	return blobs, nil
+}
+
+// scoreFile analyzes one changed file on both sides and folds it into res.
+func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[string][]byte,
+	committed bool, baseline rules.Baseline, res *changeResult,
+) (scoredFile, error) {
+	sf := scoredFile{delta: fileDelta{
+		Path: f.Path, Status: f.Status.String(),
+		Added: f.LinesAdded(), Deleted: f.LinesDeleted(),
+	}}
+	res.Delta.LinesAdded += f.LinesAdded()
+	res.Delta.LinesDeleted += f.LinesDeleted()
+
+	if rep := s.oldReport(ctx, f, oldBlobs); rep != nil && rep.Skipped == "" {
+		sf.before = &rep.Metrics
+		sf.delta.MassBefore = fileMass(rep.Metrics)
+		res.Delta.MassRemoved += sf.delta.MassBefore
+	}
+
+	newSide := s.newContent(ctx, f, committed)
+	if newSide.err != nil {
+		return sf, newSide.err
+	}
+	if newSide.content == nil {
+		return sf, nil
+	}
+	sha := f.NewSHA
+	if sha == "" || strings.Trim(sha, "0") == "" {
+		sha = vcs.BlobSHA(newSide.content)
+	}
+	rep := s.eng.Analyze(ctx, f.Path, sha, newSide.content)
+	if rep.Skipped != "" {
+		res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
+
+		return sf, nil
+	}
+	sf.after = &rep.Metrics
+	sf.delta.MassAfter = fileMass(rep.Metrics)
+	sf.delta.Lang = rep.Lang
+	res.Delta.MassAdded += sf.delta.MassAfter
+	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
+		res.Findings = append(res.Findings, findingRow{
+			Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
+		})
+	}
+
+	return sf, nil
+}
+
+// oldReport analyzes a file's before-side blob, when it has one.
+func (s *session) oldReport(ctx context.Context, f vcs.CommitFile, oldBlobs map[string][]byte) *engine.FileReport {
+	if f.OldSHA == "" || f.Binary {
+		return nil
+	}
+	content, ok := oldBlobs[f.OldSHA]
+	if !ok {
+		return nil
+	}
+	oldPath := f.Path
+	if f.OldPath != "" {
+		oldPath = f.OldPath
+	}
+
+	return s.eng.Analyze(ctx, oldPath, f.OldSHA, content)
 }
 
 // fileMass is one file's total complexity mass.
@@ -284,7 +342,7 @@ func (s *session) changeIntent(ctx context.Context, base string) intent.Intent {
 }
 
 // readingFor composes the one-line reading.
-func (s *session) readingFor(res *changeResult, before, after structure.Aggregates,
+func readingFor(res *changeResult, before, after structure.Aggregates,
 	beforeFiles, afterFiles []structure.FileMetrics,
 ) string {
 	f := reading.Fields{
@@ -323,16 +381,10 @@ func (s *session) readingFor(res *changeResult, before, after structure.Aggregat
 }
 
 // markFindingsOld clears New on hits already present on the old side.
-func (s *session) markFindingsOld(ctx context.Context, base string, files []vcs.CommitFile, res *changeResult) {
+func (s *session) markFindingsOld(ctx context.Context, files []vcs.CommitFile, res *changeResult) {
 	// Findings whose (rule,match) pair exists on the old blob are carried, not new.
 	old := map[string]bool{}
-	var oldSHAs []string
-	for _, f := range files {
-		if f.OldSHA != "" {
-			oldSHAs = append(oldSHAs, f.OldSHA)
-		}
-	}
-	blobs, err := s.ops.BlobContents(ctx, s.root, oldSHAs)
+	blobs, err := s.oldBlobs(ctx, files)
 	if err != nil {
 		return
 	}
@@ -345,7 +397,7 @@ func (s *session) markFindingsOld(ctx context.Context, base string, files []vcs.
 		if f.OldPath != "" {
 			p = f.OldPath
 		}
-		rep := s.eng.Analyze(p, f.OldSHA, content)
+		rep := s.eng.Analyze(ctx, p, f.OldSHA, content)
 		for _, fn := range rep.Findings {
 			old[fn.Rule+"\x00"+fn.Match] = true
 		}
@@ -359,7 +411,7 @@ func (s *session) markFindingsOld(ctx context.Context, base string, files []vcs.
 }
 
 // dirDeltas rolls the change up per directory and flags hotspots.
-func (s *session) dirDeltas(ctx context.Context, res *changeResult, files []vcs.CommitFile) {
+func (s *session) dirDeltas(ctx context.Context, res *changeResult) {
 	// Roll per-dir mass deltas from the file deltas.
 	massNet := map[string]float64{}
 	for _, fd := range res.Files {
@@ -406,8 +458,8 @@ func mapKeys[V any](m map[string]V) []string {
 }
 
 // warnings lists skip reasons worth surfacing.
-func (s *session) warnings(res *changeResult) []string {
-	var out []string
+func warnings(res *changeResult) []string {
+	out := make([]string, 0, len(res.Skipped))
 	for _, sk := range res.Skipped {
 		out = append(out, "skipped "+sk.Path+": "+sk.Reason)
 	}
@@ -416,7 +468,9 @@ func (s *session) warnings(res *changeResult) []string {
 }
 
 // buildContext assembles what a model would open next.
-func (s *session) buildContext(ctx context.Context, base string, files []vcs.CommitFile, res *changeResult) *contextPayload {
+func (s *session) buildContext(ctx context.Context, base string, files []vcs.CommitFile,
+	res *changeResult,
+) *contextPayload {
 	cp := &contextPayload{
 		Hunks:    map[string][]vcs.DiffHunk{},
 		Snippets: map[string]map[int]string{},
@@ -450,7 +504,7 @@ func (s *session) buildContext(ctx context.Context, base string, files []vcs.Com
 }
 
 // printChange renders the human form: reading, delta table, findings.
-func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
+func printChange(w io.Writer, res *changeResult, all bool) {
 	report.Fprintln(w, res.Reading)
 	report.Fprintln(w)
 
@@ -465,7 +519,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 
 	if len(res.Dirs) > 0 {
 		report.Fprintln(w)
-		var rows [][]string
+		rows := make([][]string, 0, len(res.Dirs))
 		for _, d := range report.SortedKeys(res.Dirs) {
 			dd := res.Dirs[d]
 			hot := ""
@@ -474,7 +528,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 			}
 			rows = append(rows, []string{d, fmt.Sprintf("%+.1f", dd.MassNet), hot})
 		}
-		report.Table(w, []string{"dir", "mass net", ""}, rows)
+		report.Table(w, []string{colDir, "mass net", ""}, rows)
 	}
 
 	newOnly := res.Findings
@@ -489,7 +543,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 	}
 	if len(newOnly) > 0 {
 		report.Fprintln(w)
-		var rows [][]string
+		rows := make([][]string, 0, len(newOnly))
 		for _, f := range newOnly {
 			mark := ""
 			if !f.New {

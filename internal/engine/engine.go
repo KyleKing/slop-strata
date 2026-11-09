@@ -5,7 +5,9 @@ package engine
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -18,20 +20,20 @@ import (
 
 // FileReport is one blob's analysis, or why it was skipped.
 type FileReport struct {
+	Print    *rules.Fingerprint    `json:"-"`
 	Path     string                `json:"path"`
 	SHA      string                `json:"sha"`
 	Lang     string                `json:"lang,omitempty"`
 	Skipped  string                `json:"skipped,omitempty"`
-	Metrics  structure.FileMetrics `json:"metrics,omitempty"`
 	Findings []rules.Finding       `json:"findings,omitempty"`
-	Print    *rules.Fingerprint    `json:"-"`
+	Metrics  structure.FileMetrics `json:"metrics,omitempty"`
 }
 
 // cached is the stored payload per blob.
 type cached struct {
-	Metrics  structure.FileMetrics `json:"metrics"`
-	Findings []rules.Finding       `json:"findings"`
 	Print    *rules.Fingerprint    `json:"print"`
+	Findings []rules.Finding       `json:"findings"`
+	Metrics  structure.FileMetrics `json:"metrics"`
 }
 
 // Analyzer scores blobs through the cache.
@@ -41,7 +43,7 @@ type Analyzer struct {
 	cfg   *config.Config
 }
 
-// New builds an Analyzer. store may be a no-op store.
+// New builds an Analyzer. Store may be a no-op store.
 func New(cfg *config.Config, store *cache.Store) *Analyzer {
 	return &Analyzer{pool: lang.NewPool(), store: store, cfg: cfg}
 }
@@ -69,16 +71,24 @@ func matchGlob(glob, path string) (bool, error) {
 			return true, nil
 		}
 	}
-	if ok, err := filepath.Match(glob, path); err != nil || ok {
-		return ok, err
+	ok, err := filepath.Match(glob, path)
+	if err != nil {
+		return false, fmt.Errorf("matching %q: %w", glob, err)
+	}
+	if ok {
+		return true, nil
+	}
+	ok, err = filepath.Match(glob, filepath.Base(path))
+	if err != nil {
+		return false, fmt.Errorf("matching %q: %w", glob, err)
 	}
 
-	return filepath.Match(glob, filepath.Base(path))
+	return ok, nil
 }
 
 // Analyze scores one blob. Unsupported paths and config skips return a
 // skipped report; oversize and minified blobs likewise, each with its reason.
-func (a *Analyzer) Analyze(path, sha string, content []byte) *FileReport {
+func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte) *FileReport {
 	rep := &FileReport{Path: path, SHA: sha}
 	if reason := a.skip(path); reason != "" {
 		rep.Skipped = reason
@@ -102,7 +112,7 @@ func (a *Analyzer) Analyze(path, sha string, content []byte) *FileReport {
 		return rep
 	}
 
-	if payload, ok := a.store.Get(sha, lang.GrammarVersion, rules.Version); ok {
+	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, rules.Version); ok {
 		var c cached
 		if err := json.Unmarshal(payload, &c); err == nil {
 			rep.Metrics = c.Metrics
@@ -119,12 +129,13 @@ func (a *Analyzer) Analyze(path, sha string, content []byte) *FileReport {
 	defer tree.Close()
 
 	rep.Metrics = structure.Analyze(l, tree, content)
-	ctx := &rules.Ctx{Lang: l, Root: tree.RootNode(), Src: content, Path: path, Test: l.IsTestFile(path)}
-	rep.Findings = rules.Run(ctx)
-	rep.Print = rules.Collect(ctx)
+	rctx := &rules.Ctx{Lang: l, Root: tree.RootNode(), Src: content, Path: path, Test: l.IsTestFile(path)}
+	rep.Findings = rules.Run(rctx)
+	rep.Print = rules.Collect(rctx)
 
-	if payload, err := json.Marshal(cached{Metrics: rep.Metrics, Findings: rep.Findings, Print: rep.Print}); err == nil {
-		a.store.Put(sha, lang.GrammarVersion, rules.Version, payload)
+	payload, err := json.Marshal(cached{Metrics: rep.Metrics, Findings: rep.Findings, Print: rep.Print})
+	if err == nil {
+		a.store.Put(ctx, sha, lang.GrammarVersion, rules.Version, payload)
 	}
 
 	return rep
