@@ -32,21 +32,21 @@ type CloneUnit struct {
 // IfaceDecl is one interface declaration and the method names it requires.
 type IfaceDecl struct {
 	Name    string   `json:"name"`
-	Line    int      `json:"line"`
 	Methods []string `json:"methods"`
+	Line    int      `json:"line"`
 }
 
 // Fingerprint is the per-blob record cross-file passes join on. It travels
 // inside the blob cache entry, so passes never re-parse.
 type Fingerprint struct {
-	Literals    map[string]int      `json:"literals,omitempty"` // literal text -> first line
-	Clones      []CloneUnit         `json:"clones,omitempty"`
-	Ifaces      []IfaceDecl         `json:"ifaces,omitempty"`
+	Literals    map[string]int      `json:"literals,omitempty"`     // literal text -> first line
 	MethodImpls map[string][]string `json:"method_impls,omitempty"` // receiver type -> method names
 	Implements  map[string][]int    `json:"implements,omitempty"`   // interface name -> lines (ts)
 	Declared    map[string]int      `json:"declared,omitempty"`     // top-level names -> line
 	Options     map[string]int      `json:"options,omitempty"`      // WithX funcs returning an Option -> line
 	Referenced  map[string]bool     `json:"referenced,omitempty"`   // referenced identifiers
+	Clones      []CloneUnit         `json:"clones,omitempty"`
+	Ifaces      []IfaceDecl         `json:"ifaces,omitempty"`
 }
 
 // Collect builds a blob's fingerprint from its parsed tree.
@@ -60,7 +60,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 			collectLiteral(ctx, n, fp)
 		case ctx.Lang.FunctionKinds[kind]:
 			collectClone(ctx, n, fp)
-		case kind == "identifier":
+		case kind == kindIdentifier:
 			if fp.Referenced == nil {
 				fp.Referenced = map[string]bool{}
 			}
@@ -106,7 +106,7 @@ func collectClone(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 		switch {
 		case ctx.Lang.LiteralKinds[kind]:
 			b.WriteString("<lit>")
-		case kind == "identifier" || kind == "type_identifier" || kind == "field_identifier" ||
+		case kind == kindIdentifier || kind == kindTypeIdentifier || kind == "field_identifier" ||
 			kind == "property_identifier" || kind == "shorthand_property_identifier_pattern":
 			b.WriteString("<id>")
 		default:
@@ -156,7 +156,7 @@ func collectDecls(ctx *Ctx, fp *Fingerprint) {
 			return
 		}
 		fp.Declared[text] = lineOf(n)
-		if ctx.Lang.ID == "go" && isOptionFunc(ctx, n) {
+		if ctx.Lang == lang.Go && isOptionFunc(ctx, n) {
 			if fp.Options == nil {
 				fp.Options = map[string]int{}
 			}
@@ -183,12 +183,12 @@ func isTopLevel(n *ts.Node) bool {
 // identifierShape reports whether text is a plain identifier.
 func identifierShape(text string) bool {
 	for _, r := range text {
-		if !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+		if r != '_' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
 			return false
 		}
 	}
 
-	return len(text) > 0
+	return text != ""
 }
 
 // isOptionFunc reports whether a function declaration looks like a functional
@@ -210,8 +210,8 @@ func isOptionFunc(ctx *Ctx, n *ts.Node) bool {
 // (Go method specs, TS members), plus Go method implementations per receiver
 // and TS implements clauses.
 func collectIfaces(ctx *Ctx, fp *Fingerprint) {
-	switch ctx.Lang.ID {
-	case "go":
+	switch ctx.Lang {
+	case lang.Go:
 		lang.EachNamed(ctx.Root, func(n *ts.Node) {
 			switch n.Kind() {
 			case "type_declaration":
@@ -220,7 +220,7 @@ func collectIfaces(ctx *Ctx, fp *Fingerprint) {
 				collectGoMethod(ctx, n, fp)
 			}
 		})
-	case "typescript", "tsx":
+	case lang.TypeScript, lang.TSX:
 		lang.EachNamed(ctx.Root, func(n *ts.Node) {
 			switch n.Kind() {
 			case "interface_declaration":
@@ -302,7 +302,7 @@ func collectTSImplements(ctx *Ctx, decl *ts.Node, fp *Fingerprint) {
 		}
 		for i := range n.NamedChildCount() {
 			c := n.NamedChild(i)
-			if c.Kind() == "type_identifier" || c.Kind() == "identifier" || c.Kind() == "generic_type" {
+			if c.Kind() == kindTypeIdentifier || c.Kind() == kindIdentifier || c.Kind() == kindGenericType {
 				if fp.Implements == nil {
 					fp.Implements = map[string][]int{}
 				}

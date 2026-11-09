@@ -10,7 +10,7 @@ import (
 )
 
 func isTS(ctx *Ctx) bool {
-	return ctx.Lang.ID == "typescript" || ctx.Lang.ID == "tsx"
+	return ctx.Lang == lang.TypeScript || ctx.Lang == lang.TSX
 }
 
 // tsSilentCatch flags an empty catch block.
@@ -45,9 +45,9 @@ func tsAsUnknownAs(ctx *Ctx, findings *[]Finding) {
 		}
 		switch {
 		case typeArg != nil && ctx.Text(typeArg) == "unknown":
-			*findings = append(*findings, Finding{Rule: "ts/as-unknown-as", Line: lineOf(n), Match: ctx.Text(n)})
+			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})
 		case inner != nil && inner.Kind() == "as_expression":
-			*findings = append(*findings, Finding{Rule: "ts/as-unknown-as", Line: lineOf(n), Match: ctx.Text(n)})
+			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})
 		}
 	})
 }
@@ -59,7 +59,7 @@ func tsRecordUnknown(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "generic_type" {
+		if n.Kind() != kindGenericType {
 			return
 		}
 		name := n.NamedChild(0)
@@ -67,7 +67,7 @@ func tsRecordUnknown(ctx *Ctx, findings *[]Finding) {
 			return
 		}
 		lang.EachNamed(n, func(c *ts.Node) {
-			if c.Kind() == "predefined_type" && (ctx.Text(c) == "unknown" || ctx.Text(c) == "any") {
+			if c.Kind() == "predefined_type" && (ctx.Text(c) == "unknown" || ctx.Text(c) == textAny) {
 				*findings = append(*findings, Finding{Rule: "ts/record-unknown", Line: lineOf(n), Match: ctx.Text(n)})
 			}
 		})
@@ -80,8 +80,8 @@ func tsTypeAny(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() == "predefined_type" && ctx.Text(n) == "any" {
-			*findings = append(*findings, Finding{Rule: "ts/type-any", Line: lineOf(n), Match: "any"})
+		if n.Kind() == "predefined_type" && ctx.Text(n) == textAny {
+			*findings = append(*findings, Finding{Rule: "ts/type-any", Line: lineOf(n), Match: textAny})
 		}
 	})
 }
@@ -132,9 +132,9 @@ var mockMatchers = map[string]bool{ //nolint:gochecknoglobals // a matcher list 
 
 // expectChain decomposes `expect(subject).matcher(arg)` into subject, matcher
 // name, and the matcher's last argument. It reports nil for any other call.
-func expectChain(ctx *Ctx, n *ts.Node) (subject *ts.Node, matcher string, arg *ts.Node) {
+func expectChain(ctx *Ctx, n *ts.Node) (*ts.Node, string, *ts.Node) {
 	fn := n.ChildByFieldName("function")
-	if fn == nil || fn.Kind() != "member_expression" || fn.NamedChildCount() < 2 { //nolint:mnd // object + property
+	if fn == nil || fn.Kind() != "member_expression" || fn.NamedChildCount() < 2 {
 		return nil, "", nil
 	}
 	obj := fn.NamedChild(0)
@@ -146,6 +146,7 @@ func expectChain(ctx *Ctx, n *ts.Node) (subject *ts.Node, matcher string, arg *t
 	if args == nil || args.NamedChildCount() == 0 {
 		return nil, "", nil
 	}
+	var arg *ts.Node
 	outer := n.ChildByFieldName("arguments")
 	if outer != nil && outer.NamedChildCount() > 0 {
 		arg = outer.NamedChild(outer.NamedChildCount() - 1)
@@ -203,7 +204,7 @@ func tsConstantEcho(ctx *Ctx, findings *[]Finding) {
 		if subject == nil || (matcher != "toBe" && matcher != "toEqual" && matcher != "toStrictEqual") {
 			return
 		}
-		if subject.Kind() == "identifier" && constName.MatchString(ctx.Text(subject)) &&
+		if subject.Kind() == kindIdentifier && constName.MatchString(ctx.Text(subject)) &&
 			arg != nil && ctx.Lang.LiteralKinds[arg.Kind()] {
 			*findings = append(*findings, Finding{Rule: "ts/constant-echo", Line: lineOf(n), Match: ctx.Text(n)})
 		}

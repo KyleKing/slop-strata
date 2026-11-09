@@ -32,9 +32,11 @@ func narratingComment(ctx *Ctx, findings *[]Finding) {
 		text := ctx.Text(n)
 		switch {
 		case narrationWords.MatchString(text):
-			*findings = append(*findings, Finding{Rule: "x/narrating-comment", Line: lineOf(n), Match: "narration"})
+			*findings = append(*findings, Finding{Rule: ruleXNarratingComment, Line: lineOf(n), Match: "narration"})
 		case ticketRef.MatchString(text) && !forwardWords.MatchString(text):
-			*findings = append(*findings, Finding{Rule: "x/narrating-comment", Line: lineOf(n), Match: "ticket-as-history"})
+			*findings = append(*findings, Finding{
+				Rule: ruleXNarratingComment, Line: lineOf(n), Match: "ticket-as-history",
+			})
 		}
 	})
 }
@@ -82,23 +84,26 @@ func singleEntryRegistry(ctx *Ctx, findings *[]Finding) {
 // registryEntries counts the entries in a map literal bound to a name, per
 // language: (0, name) when the node is not such a binding.
 func registryEntries(ctx *Ctx, n *ts.Node) (int, string) {
-	switch ctx.Lang.ID {
-	case "go":
+	switch ctx.Lang {
+	case lang.Go:
 		// var/const/short declarations: left is the name, right the literal.
 		if n.Kind() != "var_declaration" && n.Kind() != "const_declaration" &&
 			n.Kind() != "short_var_declaration" && n.Kind() != "var_spec" && n.Kind() != "const_spec" {
 			return 0, ""
 		}
+
 		return namedLiteralEntries(ctx, n, "literal_value", "keyed_element")
-	case "python":
+	case lang.Python:
 		if n.Kind() != "assignment" {
 			return 0, ""
 		}
+
 		return namedLiteralEntries(ctx, n, "dictionary", "pair")
-	case "typescript", "tsx":
+	case lang.TypeScript, lang.TSX:
 		if n.Kind() != "variable_declarator" {
 			return 0, ""
 		}
+
 		return namedLiteralEntries(ctx, n, "object", "pair")
 	}
 
@@ -112,7 +117,7 @@ func namedLiteralEntries(ctx *Ctx, decl *ts.Node, containerKind, entryKind strin
 	var container *ts.Node
 	lang.EachNamed(decl, func(n *ts.Node) {
 		switch {
-		case n.Kind() == "identifier" && name == "":
+		case n.Kind() == kindIdentifier && name == "":
 			name = ctx.Text(n)
 		case n.Kind() == containerKind && container == nil:
 			container = n
