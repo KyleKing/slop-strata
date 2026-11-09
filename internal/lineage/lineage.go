@@ -244,6 +244,17 @@ func (w *Walker) applyHunks(path string, hunks []vcs.DiffHunk, cohort, birth int
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].OldStart > sorted[j].OldStart })
 	for _, h := range sorted {
 		idx := max(h.OldStart-1, 0)
+		if need := idx + h.OldLines; need > len(lines) {
+			// The file predates the walked range, so its line provenance is
+			// unknown: grow the state with pre-range tags. Their deaths count
+			// as removed lines, but a negative birth keeps them out of the
+			// young-churn windows, and a negative cohort out of survival.
+			pad := make(fileLines, need-len(lines))
+			for i := range pad {
+				pad[i] = tag{birthDays: -1, cohort: -1, class: "pre-range"}
+			}
+			lines = append(lines, pad...)
+		}
 		end := min(idx+h.OldLines, len(lines))
 		for _, t := range lines[idx:end] {
 			w.recordDeath(t, ds, birth, fix)
