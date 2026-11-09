@@ -15,7 +15,7 @@ import (
 
 // GrammarVersion bumps when a grammar or the queries over it change, so a blob
 // cached under a stale grammar is recomputed.
-const GrammarVersion = 1
+const GrammarVersion = 2
 
 // kindSet builds a node-kind set.
 func kindSet(kinds ...string) map[string]bool {
@@ -277,4 +277,18 @@ func (l *Language) IsTestFile(path string) bool {
 	default:
 		return false
 	}
+}
+
+// IsTestPath reports whether a path looks like a test file in any supported
+// language, falling back to generic naming for paths with no grammar.
+func IsTestPath(path string) bool {
+	if l := ByPath(path); l != nil {
+		return l.IsTestFile(path)
+	}
+	base := filepath.Base(path)
+
+	return strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") ||
+		strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.go") ||
+		strings.HasSuffix(base, "_test.py") || strings.Contains(path, "__tests__/") ||
+		strings.Contains(path, "/tests/") || strings.Contains(path, "/test/")
 }

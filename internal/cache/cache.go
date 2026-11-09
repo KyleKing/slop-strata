@@ -51,16 +51,20 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// Path answers where the cache file lives: one database under the user cache
-// directory, shared across repositories because the key is the blob's content
-// address, not anything about where the blob came from.
-func Path() (string, error) {
+// Path answers where the cache file lives: one database per tool version
+// under the user cache directory, shared across repositories because the key
+// is the blob's content address, not anything about where the blob came
+// from. The version in the filename is what a CI cache restores on.
+func Path(toolVersion string) (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving user cache directory: %w", err)
 	}
+	if toolVersion == "" {
+		toolVersion = "dev"
+	}
 
-	return filepath.Join(base, "slop-strata", "blobs.db"), nil
+	return filepath.Join(base, "slop-strata", "blobs-"+toolVersion+".db"), nil
 }
 
 // Get returns the payload stored for a blob under the given versions.

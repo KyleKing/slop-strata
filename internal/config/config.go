@@ -70,6 +70,9 @@ type Config struct {
 	DefaultBranch string `toml:"default_branch"`
 	// AuthorClasses classifies commits in order; first match wins.
 	AuthorClasses []AuthorClass `toml:"author_class"`
+	// AstGrep lists ast-grep YAML rule files or directories, relative to the
+	// repository root, loaded through `sg` as an optional external rule source.
+	AstGrep []string `toml:"ast_grep"`
 }
 
 // Default returns the configuration a repository gets with no file.

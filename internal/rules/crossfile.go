@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kyleking/slop-strata/internal/lang"
 )
 
 // BlobPrint pairs one blob's fingerprint with where it came from.
@@ -68,6 +70,20 @@ func clones(blobs []BlobPrint, out map[string][]Finding) {
 			files[o.path] = true
 		}
 		if len(files) < 2 {
+			// Same-file duplicates in a test file are duplicate cases: bodies
+			// that differ only in fixture data.
+			if len(owners) > 1 {
+				for _, o := range owners {
+					if lang.IsTestPath(o.path) {
+						out[o.path] = append(out[o.path], Finding{
+							Rule: "x/dup-test-case", Line: o.unit.Line,
+							Match: o.unit.Name,
+							Note:  fmt.Sprintf("same normalized body as %d tests in this file (%s)", len(owners), hash[:8]),
+						})
+					}
+				}
+			}
+
 			continue
 		}
 		for _, o := range owners {

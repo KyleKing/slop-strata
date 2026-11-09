@@ -139,7 +139,7 @@ func newSession(ctx context.Context, repoPath string) (*session, error) {
 	if err != nil {
 		return nil, err
 	}
-	cachePath, err := cache.Path()
+	cachePath, err := cache.Path(version)
 	if err != nil {
 		cachePath = ""
 	}

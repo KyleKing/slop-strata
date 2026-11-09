@@ -63,6 +63,24 @@ func commentDensity(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
+// spentName matches test filenames whose subject was one-shot code: a
+// migration, a data repair, a backfill. The test outlives the thing it tested.
+var spentName = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`(?i)(migrat|repair|backfill|one[-_.]?shot|fixup|backport|replay)`)
+
+// spentTest flags a test file whose name says its subject was one-shot code.
+// The second half of the idea — a subject untouched for months — needs
+// history and is reported by the history walk, not this rule.
+func spentTest(ctx *Ctx, findings *[]Finding) {
+	if spentName.MatchString(ctx.Path) {
+		*findings = append(*findings, Finding{
+			Rule: "x/spent-test", Line: 1,
+			Match: ctx.Path,
+			Note:  "test file name suggests a one-shot subject",
+		})
+	}
+}
+
 // registryName matches the names single-lookup maps tend to carry.
 var registryName = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
 	`(?i)(register(?:ry|ies)|handler|provider|plugin|backend|driver|adapter)s?$`)

@@ -41,7 +41,12 @@ type changeResult struct {
 	Findings []findingRow        `json:"findings"`
 	Files    []fileDelta         `json:"files"`
 	Skipped  []skippedRow        `json:"skipped,omitempty"`
+	Errors   []skippedRow        `json:"errors,omitempty"`
 	Context  *contextPayload     `json:"context,omitempty"`
+
+	beforeByPath map[string]structure.FileMetrics
+	afterByPath  map[string]structure.FileMetrics
+	dirTouches   map[string]int
 }
 
 type deltaSummary struct {
@@ -85,9 +90,22 @@ type skippedRow struct {
 }
 
 type contextPayload struct {
-	Hunks    map[string][]vcs.DiffHunk `json:"hunks"`
-	Messages []string                  `json:"messages"`
-	Snippets map[string]map[int]string `json:"snippets"` // path -> line -> text
+	Hunks      map[string][]vcs.DiffHunk `json:"hunks"`
+	Messages   []string                  `json:"messages"`
+	Snippets   map[string]map[int]string `json:"snippets"`        // path -> line -> text
+	Crossed    []crossedFunc             `json:"crossed"`         // functions over CC 10 on either side
+	DirTouches map[string]int            `json:"dir_touches_90d"` // commits touching each dir in 90 days
+}
+
+// crossedFunc is a function that sits over the complexity line on one side of
+// the change — the functions a reader asks about first.
+type crossedFunc struct {
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	CC     int    `json:"cc"`
+	Lines  int    `json:"lines"`
+	Before bool   `json:"before,omitempty"`
+	After  bool   `json:"after,omitempty"`
 }
 
 func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
@@ -133,9 +151,12 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 
 	if a.json {
 		if a.ctx {
-			res.Context = s.buildContext(ctx, base, files, res)
+			res.Context = s.buildContext(ctx, base, end, files, res)
 		}
 		return report.WriteJSON(w, "change", s.root, res, s.warnings(res))
+	}
+	if a.ctx && !a.json {
+		report.Fprintln(w, "--context only applies to --json output")
 	}
 
 	s.printChange(w, res, a.all)
@@ -177,8 +198,12 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		return nil, err
 	}
 
-	res := &changeResult{Base: base, End: end, Dirs: map[string]dirDelta{}}
+	res := &changeResult{
+		Base: base, End: end, Dirs: map[string]dirDelta{},
+		beforeByPath: map[string]structure.FileMetrics{}, afterByPath: map[string]structure.FileMetrics{},
+	}
 	var before, after []structure.FileMetrics
+	old := map[string]bool{}
 	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
 	if err != nil {
 		return nil, err
@@ -198,8 +223,12 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 				rep := s.eng.Analyze(oldPath, f.OldSHA, content)
 				if rep.Skipped == "" {
 					before = append(before, rep.Metrics)
+					res.beforeByPath[oldPath] = rep.Metrics
 					fd.MassBefore = fileMass(rep.Metrics)
 					res.Delta.MassRemoved += fd.MassBefore
+					for _, fn := range rep.Findings {
+						old[fn.Rule+"\x00"+fn.Match] = true
+					}
 				}
 			}
 		}
@@ -217,7 +246,14 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 			if rep.Skipped != "" {
 				res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
 			} else {
+				if rep.Metrics.ParseError {
+					res.Errors = append(res.Errors, skippedRow{
+						f.Path,
+						fmt.Sprintf("tree-sitter parse error (%.1f%% of bytes)", rep.Metrics.ErrorCoverage*100),
+					})
+				}
 				after = append(after, rep.Metrics)
+				res.afterByPath[f.Path] = rep.Metrics
 				fd.MassAfter = fileMass(rep.Metrics)
 				fd.Lang = rep.Lang
 				res.Delta.MassAdded += fd.MassAfter
@@ -235,10 +271,11 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	res.Delta.ErosionBefore = aggBefore.Erosion
 	res.Delta.ErosionAfter = aggAfter.Erosion
 
-	res.Intent = s.changeIntent(ctx, base)
-	res.Reading = s.readingFor(res, aggBefore, aggAfter, before, after)
-	s.markFindingsOld(ctx, base, files, res)
+	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // a detached HEAD just leaves intent to the subjects
+	res.Intent = s.changeIntent(ctx, base, end, branch)
+	markFindingsOld(old, res)
 	s.dirDeltas(ctx, res, files)
+	res.Reading = s.readingFor(res, aggBefore, aggAfter, before, after)
 
 	return res, nil
 }
@@ -271,13 +308,13 @@ func (s *session) newContent(ctx context.Context, f vcs.CommitFile, committed bo
 }
 
 // changeIntent folds the commits on the range into one intent.
-func (s *session) changeIntent(ctx context.Context, base string) intent.Intent {
+func (s *session) changeIntent(ctx context.Context, base, end, branch string) intent.Intent {
 	var intents []intent.Intent
-	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{Range: base + "..HEAD", FirstParent: true}) {
+	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{Range: base + ".." + end, FirstParent: true}) {
 		if err != nil {
 			break
 		}
-		intents = append(intents, intent.Of(rec.Subject, "", rec.Body))
+		intents = append(intents, intent.Of(rec.Subject, branch, rec.Body))
 	}
 
 	return intent.ForChange(intents)
@@ -293,7 +330,11 @@ func (s *session) readingFor(res *changeResult, before, after structure.Aggregat
 		MassRemoved:   res.Delta.MassRemoved,
 		ErosionBefore: before.Erosion,
 		ErosionAfter:  after.Erosion,
-		FindingsNew:   len(res.Findings),
+	}
+	for _, fn := range res.Findings {
+		if fn.New {
+			f.FindingsNew++
+		}
 	}
 	for _, m := range beforeFiles {
 		for _, fn := range m.Funcs {
@@ -322,34 +363,9 @@ func (s *session) readingFor(res *changeResult, before, after structure.Aggregat
 	return f.Sentence()
 }
 
-// markFindingsOld clears New on hits already present on the old side.
-func (s *session) markFindingsOld(ctx context.Context, base string, files []vcs.CommitFile, res *changeResult) {
-	// Findings whose (rule,match) pair exists on the old blob are carried, not new.
-	old := map[string]bool{}
-	var oldSHAs []string
-	for _, f := range files {
-		if f.OldSHA != "" {
-			oldSHAs = append(oldSHAs, f.OldSHA)
-		}
-	}
-	blobs, err := s.ops.BlobContents(ctx, s.root, oldSHAs)
-	if err != nil {
-		return
-	}
-	for _, f := range files {
-		content, ok := blobs[f.OldSHA]
-		if !ok {
-			continue
-		}
-		p := f.Path
-		if f.OldPath != "" {
-			p = f.OldPath
-		}
-		rep := s.eng.Analyze(p, f.OldSHA, content)
-		for _, fn := range rep.Findings {
-			old[fn.Rule+"\x00"+fn.Match] = true
-		}
-	}
+// markFindingsOld clears New on hits whose (rule,match) pair exists on the
+// old side; the old reports were already scored in scoreChange.
+func markFindingsOld(old map[string]bool, res *changeResult) {
 	for i := range res.Findings {
 		key := res.Findings[i].Rule + "\x00" + res.Findings[i].Match
 		if old[key] && res.Findings[i].Match != "" {
@@ -366,15 +382,16 @@ func (s *session) dirDeltas(ctx context.Context, res *changeResult, files []vcs.
 		d := lineage.DirOf(fd.Path)
 		massNet[d] += fd.MassAfter - fd.MassBefore
 	}
-	hotspots := s.hotspotDirs(ctx, mapKeys(massNet))
+	hotspots, touches := s.hotspotDirs(ctx, mapKeys(massNet))
+	res.dirTouches = touches
 	for d, net := range massNet {
 		res.Dirs[d] = dirDelta{MassNet: net, Hotspot: hotspots[d]}
 	}
 }
 
 // hotspotDirs names the most-touched directories over the last 90 days among
-// the dirs the change touched.
-func (s *session) hotspotDirs(ctx context.Context, touched []string) map[string]bool {
+// the dirs the change touched, and returns the touch counts behind them.
+func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string]bool, map[string]int) {
 	touches := map[string]int{}
 	for rec, err := range s.ops.LogHistory(ctx, s.root,
 		vcs.LogOptions{FirstParent: true, Since: "90 days ago"}) {
@@ -392,7 +409,7 @@ func (s *session) hotspotDirs(ctx context.Context, touched []string) map[string]
 		}
 	}
 
-	return hot
+	return hot, touches
 }
 
 func mapKeys[V any](m map[string]V) []string {
@@ -405,18 +422,21 @@ func mapKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// warnings lists skip reasons worth surfacing.
+// warnings lists skip and parse-error reasons worth surfacing.
 func (s *session) warnings(res *changeResult) []string {
 	var out []string
 	for _, sk := range res.Skipped {
 		out = append(out, "skipped "+sk.Path+": "+sk.Reason)
+	}
+	for _, er := range res.Errors {
+		out = append(out, "error "+er.Path+": "+er.Reason)
 	}
 
 	return out
 }
 
 // buildContext assembles what a model would open next.
-func (s *session) buildContext(ctx context.Context, base string, files []vcs.CommitFile, res *changeResult) *contextPayload {
+func (s *session) buildContext(ctx context.Context, base, end string, files []vcs.CommitFile, res *changeResult) *contextPayload {
 	cp := &contextPayload{
 		Hunks:    map[string][]vcs.DiffHunk{},
 		Snippets: map[string]map[int]string{},
@@ -426,27 +446,57 @@ func (s *session) buildContext(ctx context.Context, base string, files []vcs.Com
 			cp.Hunks[f.Path] = f.Hunks
 		}
 	}
-	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{Range: base + "..HEAD", FirstParent: true}) {
+	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{Range: base + ".." + end, FirstParent: true}) {
 		if err != nil {
 			break
 		}
 		cp.Messages = append(cp.Messages, rec.Subject)
 	}
 	for _, fr := range res.Findings {
-		content, err := os.ReadFile(filepath.Join(s.root, fr.Path))
-		if err != nil {
-			continue
-		}
-		lines := strings.Split(string(content), "\n")
-		if fr.Line <= len(lines) {
+		if line := snippetLine(s.root, fr.Path, fr.Line); line != "" {
 			if cp.Snippets[fr.Path] == nil {
 				cp.Snippets[fr.Path] = map[int]string{}
 			}
-			cp.Snippets[fr.Path][fr.Line] = lines[fr.Line-1]
+			cp.Snippets[fr.Path][fr.Line] = line
 		}
 	}
+	for path, m := range res.beforeByPath {
+		for _, fn := range m.Funcs {
+			if fn.CC > structure.CCLimit {
+				cp.Crossed = append(cp.Crossed, crossedFunc{Path: path, Name: fn.Name, CC: fn.CC, Lines: fn.SLOC, Before: true})
+			}
+		}
+	}
+	for path, m := range res.afterByPath {
+		for _, fn := range m.Funcs {
+			if fn.CC > structure.CCLimit {
+				cp.Crossed = append(cp.Crossed, crossedFunc{Path: path, Name: fn.Name, CC: fn.CC, Lines: fn.SLOC, After: true})
+			}
+		}
+	}
+	sort.Slice(cp.Crossed, func(i, j int) bool {
+		if cp.Crossed[i].Path != cp.Crossed[j].Path {
+			return cp.Crossed[i].Path < cp.Crossed[j].Path
+		}
+		return cp.Crossed[i].Name < cp.Crossed[j].Name
+	})
+	cp.DirTouches = res.dirTouches
 
 	return cp
+}
+
+// snippetLine reads one source line for a finding's context.
+func snippetLine(root, path string, line int) string {
+	content, err := os.ReadFile(filepath.Join(root, path))
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(content), "\n")
+	if line <= 0 || line > len(lines) {
+		return ""
+	}
+
+	return lines[line-1]
 }
 
 // printChange renders the human form: reading, delta table, findings.
@@ -501,5 +551,8 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 	}
 	for _, sk := range res.Skipped {
 		report.Fprintf(w, "skipped %s: %s\n", sk.Path, sk.Reason)
+	}
+	for _, er := range res.Errors {
+		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
 	}
 }

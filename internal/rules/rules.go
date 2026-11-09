@@ -10,7 +10,7 @@ import (
 )
 
 // Version bumps when a rule's logic changes so cached findings are recomputed.
-const Version = 2
+const Version = 3
 
 // Finding is one rule hit: the rule, where, and an optional note.
 type Finding struct {
@@ -62,6 +62,7 @@ var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile 
 	{ID: "x/single-entry-registry", Apply: singleEntryRegistry},
 	{ID: "x/narrating-comment", Apply: narratingComment},
 	{ID: "x/comment-density", Apply: commentDensity},
+	{ID: "x/spent-test", TestOnly: true, Apply: spentTest},
 }
 
 // Run applies every rule appropriate for the blob.

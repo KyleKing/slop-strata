@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/kyleking/aragonite/vcs"
+
+	"github.com/kyleking/slop-strata/internal/lang"
 )
 
 // tag is one live line's provenance.
@@ -64,9 +66,22 @@ type DirStats struct {
 	Touches int `json:"touches"`
 }
 
+// TestSurvival is one author class's share of test files deleted within 30
+// and 90 days of being added. Only adds observed inside the walked range
+// count; a test file older than the range has no measurable birth.
+type TestSurvival struct {
+	Class  string  `json:"class"`
+	Added  int     `json:"added"`
+	Dead30 int     `json:"dead_30d"`
+	Dead90 int     `json:"dead_90d"`
+	S30    float64 `json:"s_30d"`
+	S90    float64 `json:"s_90d"`
+}
+
 // Result is the lineage walk's output.
 type Result struct {
 	Survival      []Survival           `json:"survival"`
+	TestSurvival  []TestSurvival       `json:"test_survival"`
 	Dirs          map[string]*DirStats `json:"dirs"`
 	Reverts       int                  `json:"reverts"`
 	Commits       int                  `json:"commits"`
@@ -76,24 +91,39 @@ type Result struct {
 	Churned30     int                  `json:"churned_30d"`
 }
 
+// testBirth is an observed test-file addition.
+type testBirth struct {
+	day   int
+	klass string
+}
+
+// testDeath records a tracked test file's deletion age.
+type testDeath struct {
+	age   int
+	klass string
+}
+
 // Walker carries the mutable state of one pass.
 type Walker struct {
-	files   map[string]fileLines
-	deaths  []death
-	births  map[int]int
-	class   func(author, committer, body string) string
-	couples map[[2]string]int
-	res     *Result
+	files      map[string]fileLines
+	deaths     []death
+	births     map[int]int
+	class      func(author, committer, body string) string
+	couples    map[[2]string]int
+	testBirths map[string]testBirth
+	testDeaths []testDeath
+	res        *Result
 }
 
 // NewWalker builds a Walker; class classifies a commit's author class.
 func NewWalker(class func(author, committer, body string) string) *Walker {
 	return &Walker{
-		files:   map[string]fileLines{},
-		births:  map[int]int{},
-		class:   class,
-		couples: map[[2]string]int{},
-		res:     &Result{Dirs: map[string]*DirStats{}},
+		files:      map[string]fileLines{},
+		births:     map[int]int{},
+		class:      class,
+		couples:    map[[2]string]int{},
+		testBirths: map[string]testBirth{},
+		res:        &Result{Dirs: map[string]*DirStats{}},
 	}
 }
 
@@ -136,12 +166,23 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 			w.files[f.Path] = lines
 			w.births[cohort] += n
 			ds.Added += n
+			if lang.IsTestPath(f.Path) {
+				w.testBirths[f.Path] = testBirth{day: birth, klass: klass}
+			}
 		case vcs.StatusDeleted:
+			if tb, ok := w.testBirths[f.Path]; ok {
+				w.testDeaths = append(w.testDeaths, testDeath{age: birth - tb.day, klass: tb.klass})
+				delete(w.testBirths, f.Path)
+			}
 			w.killAll(f.Path, ds, rec, birth, fixIntent)
 		default:
 			if f.Status == vcs.StatusRenamed && f.OldPath != "" {
 				w.files[f.Path] = w.files[f.OldPath]
 				delete(w.files, f.OldPath)
+				if tb, ok := w.testBirths[f.OldPath]; ok {
+					w.testBirths[f.Path] = tb
+					delete(w.testBirths, f.OldPath)
+				}
 			}
 			w.applyHunks(f.Path, f.Hunks, cohort, birth, klass, rec, ds, fixIntent)
 		}
@@ -254,6 +295,40 @@ func (w *Walker) Finish() *Result {
 		s.S90 = km(ages, s.Added, 90) //nolint:mnd // 90-day mark
 		res.Survival = append(res.Survival, s)
 	}
+
+	// Test survival by adder class: the share of test files deleted within 30
+	// and 90 days of their observed addition.
+	byClass := map[string]*TestSurvival{}
+	for _, tb := range w.testBirths {
+		if byClass[tb.klass] == nil {
+			byClass[tb.klass] = &TestSurvival{Class: tb.klass}
+		}
+		byClass[tb.klass].Added++
+	}
+	for _, td := range w.testDeaths {
+		if byClass[td.klass] == nil {
+			byClass[td.klass] = &TestSurvival{Class: td.klass}
+		}
+		ts := byClass[td.klass]
+		if td.age <= 30 {
+			ts.Dead30++
+		}
+		if td.age <= 90 {
+			ts.Dead90++
+		}
+	}
+	// Deaths also count toward the denominator of what was added.
+	for _, td := range w.testDeaths {
+		byClass[td.klass].Added++
+	}
+	for _, c := range byClass {
+		if c.Added > 0 {
+			c.S30 = float64(c.Dead30) / float64(c.Added)
+			c.S90 = float64(c.Dead90) / float64(c.Added)
+		}
+		res.TestSurvival = append(res.TestSurvival, *c)
+	}
+	sort.Slice(res.TestSurvival, func(i, j int) bool { return res.TestSurvival[i].Class < res.TestSurvival[j].Class })
 
 	res.Concentration = map[string]float64{}
 	byDir := map[string]map[string]int{}

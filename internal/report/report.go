@@ -83,6 +83,11 @@ var Docs = map[string]string{
 	"rule_hits":     "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted.",
 	"findings":      "New rule hits attributable to this change, after the baseline and pre-existing hits are excluded.",
 	"virality":      "For each rule: the first commit that hit it, then how hits spread afterward per author class. Answers whether a pattern gets copied once it lands.",
+	"test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count.",
+	"pairing":       "Author classes compared on the same week and directory: net mass moved and commits each. A cell is provisional under 5 commits.",
+	"errors":        "Files the parser could not fully read, with the byte share under error nodes. Metrics still count what parsed; the row is a warning, not an abort.",
+	"skipped":       "Files excluded by config, size, binary content, or minified shape, each named with its reason.",
+	"intent":        "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection.",
 }
 
 // Explain prints a metric's doc for --explain.

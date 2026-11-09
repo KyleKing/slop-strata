@@ -17,21 +17,23 @@ import (
 
 // historyResult is the history subcommand's JSON shape.
 type historyResult struct {
-	Range   string          `json:"range"`
-	Lineage *lineage.Result `json:"lineage"`
-	Weeks   []weekRow       `json:"weeks"`
-	Viral   []viralRow      `json:"virality"`
-	Pairs   []pairRow       `json:"pairing"`
-	Changes int             `json:"changes"`
+	Range    string             `json:"range"`
+	Lineage  *lineage.Result    `json:"lineage"`
+	Weeks    []weekRow          `json:"weeks"`
+	Viral    []viralRow         `json:"virality"`
+	Pairs    []pairRow          `json:"pairing"`
+	Hotspots map[string]float64 `json:"hotspots"`
+	Changes  int                `json:"changes"`
 }
 
 // weekRow is one week of first-parent activity.
 type weekRow struct {
-	Week    string  `json:"week"`
-	Commits int     `json:"commits"`
-	Added   int     `json:"added"`
-	Removed int     `json:"removed"`
-	MassNet float64 `json:"mass_net"`
+	Week    string         `json:"week"`
+	Commits int            `json:"commits"`
+	Added   int            `json:"added"`
+	Removed int            `json:"removed"`
+	MassNet float64        `json:"mass_net"`
+	Kinds   map[string]int `json:"kinds"`
 }
 
 // viralRow tracks one rule's spread after its first hit.
@@ -42,11 +44,14 @@ type viralRow struct {
 }
 
 // pairRow compares author classes on the same week and directories.
+// Provisional marks cells too thin to compare (under 5 commits).
 type pairRow struct {
-	Week       string             `json:"week"`
-	Dir        string             `json:"dir"`
-	ClassMass  map[string]float64 `json:"class_mass_net"`
-	ClassChurn map[string]int     `json:"class_churn"`
+	Week         string             `json:"week"`
+	Dir          string             `json:"dir"`
+	ClassMass    map[string]float64 `json:"class_mass_net"`
+	ClassChurn   map[string]int     `json:"class_churn"`
+	ClassCommits map[string]int     `json:"class_commits"`
+	Provisional  bool               `json:"provisional"`
 }
 
 func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
@@ -64,6 +69,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	pairs := map[string]*pairRow{}
 	viral := map[string]*viralRow{}
 	ruleFirst := map[string]string{}
+	liveMass := map[string]float64{} // path -> mass of its latest after-blob
 	changes := 0
 
 	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
@@ -82,17 +88,18 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 		walker.Commit(rec, in.Kind == intent.Fix, in.Revert)
 
 		if weeks[week] == nil {
-			weeks[week] = &weekRow{Week: week}
+			weeks[week] = &weekRow{Week: week, Kinds: map[string]int{}}
 		}
 		wk := weeks[week]
 		wk.Commits++
+		wk.Kinds[string(in.Kind)]++
 		for _, f := range rec.Files {
 			wk.Added += f.LinesAdded()
 			wk.Removed += f.LinesDeleted()
 		}
 
 		// Score this commit's new blobs for mass delta and rule hits.
-		s.scoreCommit(ctx, rec, wk, pairs, viral, ruleFirst, klass, week)
+		s.scoreCommit(ctx, rec, wk, pairs, viral, ruleFirst, liveMass, klass, week)
 	}
 
 	res := &historyResult{Range: rangeSpec, Lineage: walker.Finish(), Changes: changes}
@@ -101,6 +108,11 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 	sort.Slice(res.Weeks, func(i, j int) bool { return res.Weeks[i].Week < res.Weeks[j].Week })
 	for _, p := range pairs {
+		total := 0
+		for _, n := range p.ClassCommits {
+			total += n
+		}
+		p.Provisional = total < 5 //nolint:mnd // the documented minimum comparison cell
 		res.Pairs = append(res.Pairs, *p)
 	}
 	sort.Slice(res.Pairs, func(i, j int) bool {
@@ -114,6 +126,20 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 	sort.Slice(res.Viral, func(i, j int) bool { return res.Viral[i].Rule < res.Viral[j].Rule })
 
+	// Hotspots are churn × live complexity mass: directories where young code
+	// dies fast and what's there is heavy. Live mass covers files touched in
+	// the range, the same files churn is counted on.
+	res.Hotspots = map[string]float64{}
+	dirMass := map[string]float64{}
+	for path, m := range liveMass {
+		dirMass[lineage.DirOf(path)] += m
+	}
+	for d, ds := range res.Lineage.Dirs {
+		if ds.Churn30 > 0 && dirMass[d] > 0 {
+			res.Hotspots[d] = float64(ds.Churn30) * dirMass[d]
+		}
+	}
+
 	if a.json {
 		return report.WriteJSON(w, "history", s.root, res, nil)
 	}
@@ -123,15 +149,19 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	return nil
 }
 
-// scoreCommit analyzes a commit's after-blobs for mass delta, findings, and
-// the per-class pairing.
+// scoreCommit analyzes both sides of a commit's changed blobs for mass
+// delta, findings, and the per-class pairing.
 func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, wk *weekRow,
-	pairs map[string]*pairRow, viral map[string]*viralRow, ruleFirst map[string]string, klass, week string,
+	pairs map[string]*pairRow, viral map[string]*viralRow, ruleFirst map[string]string,
+	liveMass map[string]float64, klass, week string,
 ) {
 	var shas []string
 	for _, f := range rec.Files {
 		if f.NewSHA != "" {
 			shas = append(shas, f.NewSHA)
+		}
+		if f.OldSHA != "" {
+			shas = append(shas, f.OldSHA)
 		}
 	}
 	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
@@ -139,8 +169,39 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, wk *wee
 		return
 	}
 	for _, f := range rec.Files {
+		d := lineage.DirOf(f.Path)
+		if f.Status == vcs.StatusRenamed && f.OldPath != "" {
+			liveMass[f.Path] = liveMass[f.OldPath]
+			delete(liveMass, f.OldPath)
+		}
+		key := week + "\x00" + d
+		if pairs[key] == nil {
+			pairs[key] = &pairRow{
+				Week: week, Dir: d, ClassMass: map[string]float64{},
+				ClassChurn: map[string]int{}, ClassCommits: map[string]int{},
+			}
+		}
+		pairs[key].ClassCommits[klass]++
+
+		// The before-side mass, when a before blob exists.
+		massBefore := 0.0
+		if old, ok := blobs[f.OldSHA]; ok && f.OldSHA != "" {
+			oldPath := f.Path
+			if f.OldPath != "" {
+				oldPath = f.OldPath
+			}
+			oldRep := s.eng.Analyze(oldPath, f.OldSHA, old)
+			if oldRep.Skipped == "" {
+				for _, fn := range oldRep.Metrics.Funcs {
+					massBefore += structure.Mass(fn)
+				}
+			}
+		}
+
 		content, ok := blobs[f.NewSHA]
 		if !ok {
+			delete(liveMass, f.Path)
+
 			continue
 		}
 		rep := s.eng.Analyze(f.Path, f.NewSHA, content)
@@ -151,13 +212,10 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, wk *wee
 		for _, fn := range rep.Metrics.Funcs {
 			mass += structure.Mass(fn)
 		}
-		wk.MassNet += mass
-		d := lineage.DirOf(f.Path)
-		key := week + "\x00" + d
-		if pairs[key] == nil {
-			pairs[key] = &pairRow{Week: week, Dir: d, ClassMass: map[string]float64{}, ClassChurn: map[string]int{}}
-		}
-		pairs[key].ClassMass[klass] += mass
+		liveMass[f.Path] = mass
+		delta := mass - massBefore
+		wk.MassNet += delta
+		pairs[key].ClassMass[klass] += delta
 		for _, fn := range rep.Findings {
 			if viral[fn.Rule] == nil {
 				viral[fn.Rule] = &viralRow{Rule: fn.Rule, FirstWeek: week, HitsByClass: map[string]int{}}
@@ -195,6 +253,28 @@ func printHistory(w io.Writer, res *historyResult) {
 			})
 		}
 		report.Table(w, []string{"cohort", "added", "alive", "s30", "s90"}, rows)
+	}
+
+	if len(res.Lineage.TestSurvival) > 0 {
+		report.Fprintln(w)
+		var rows [][]string
+		for _, ts := range res.Lineage.TestSurvival {
+			rows = append(rows, []string{
+				ts.Class, fmt.Sprint(ts.Added), fmt.Sprint(ts.Dead30), fmt.Sprint(ts.Dead90),
+				fmt.Sprintf("%.2f", ts.S30), fmt.Sprintf("%.2f", ts.S90),
+			})
+		}
+		report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s30", "s90"}, rows)
+	}
+
+	if len(res.Hotspots) > 0 {
+		report.Fprintln(w)
+		var rows [][]string
+		for _, d := range report.SortedKeys(res.Hotspots) {
+			rows = append(rows, []string{d, fmt.Sprintf("%.0f", res.Hotspots[d])})
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i][1] > rows[j][1] })
+		report.Table(w, []string{"hotspot (churn30 × mass)", "score"}, rows)
 	}
 
 	if len(res.Lineage.Dirs) > 0 {
