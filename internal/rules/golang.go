@@ -11,7 +11,7 @@ import (
 // goSilentError flags `_ = f(...)` and friends: an assignment that discards a
 // call's result, which in Go usually means the error.
 func goSilentError(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "go" {
+	if ctx.Lang != lang.Go {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
@@ -25,7 +25,7 @@ func goSilentError(ctx *Ctx, findings *[]Finding) {
 		}
 		blank := false
 		lang.EachNamed(left, func(c *ts.Node) {
-			if c.Kind() == "blank_identifier" || (c.Kind() == "identifier" && ctx.Text(c) == "_") {
+			if c.Kind() == "blank_identifier" || (c.Kind() == kindIdentifier && ctx.Text(c) == "_") {
 				blank = true
 			}
 		})
@@ -47,22 +47,22 @@ func goSilentError(ctx *Ctx, findings *[]Finding) {
 // goTypeAny flags `any` and the empty `interface{}` in signatures: the type
 // system has stopped describing what flows through.
 func goTypeAny(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "go" {
+	if ctx.Lang != lang.Go {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		switch {
-		case n.Kind() == "type_identifier" && ctx.Text(n) == "any":
-			*findings = append(*findings, Finding{Rule: "go/type-any", Line: lineOf(n), Match: "any"})
+		case n.Kind() == kindTypeIdentifier && ctx.Text(n) == textAny:
+			*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: textAny})
 		case n.Kind() == "interface_type" && n.NamedChildCount() == 0:
-			*findings = append(*findings, Finding{Rule: "go/type-any", Line: lineOf(n), Match: "interface{}"})
+			*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: "interface{}"})
 		}
 	})
 }
 
 // goTestReadsSource flags tests that read files.
 func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "go" {
+	if ctx.Lang != lang.Go {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
@@ -78,7 +78,7 @@ func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
 
 // goTimingHack flags sleeps in tests.
 func goTimingHack(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "go" {
+	if ctx.Lang != lang.Go {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {

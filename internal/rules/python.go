@@ -11,7 +11,7 @@ import (
 // pySilentExcept flags an except clause whose body is only `pass` or `...`:
 // the failure is swallowed with no record it happened.
 func pySilentExcept(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
@@ -39,7 +39,7 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 // pyOrDefault flags `x or <literal>` fallbacks: a default that also swallows
 // legitimate falsy values (0, "", [], None) is a silent fallback.
 func pyOrDefault(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	literals := map[string]bool{
@@ -71,13 +71,13 @@ func pyOrDefault(ctx *Ctx, findings *[]Finding) {
 // pyTypeAny flags `Any` in type positions: annotations, generic parameters,
 // and subscripted types.
 func pyTypeAny(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
-	typeKinds := map[string]bool{"type": true, "generic_type": true, "subscript": true}
+	typeKinds := map[string]bool{"type": true, kindGenericType: true, "subscript": true}
 	seen := map[int]bool{}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "identifier" && n.Kind() != "attribute" {
+		if n.Kind() != kindIdentifier && n.Kind() != "attribute" {
 			return
 		}
 		text := ctx.Text(n)
@@ -104,7 +104,7 @@ func pyTypeAny(ctx *Ctx, findings *[]Finding) {
 // pyMockPatch flags unittest.mock patching inside tests: the test stops
 // exercising the code it names.
 func pyMockPatch(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
@@ -117,71 +117,86 @@ func pyMockPatch(ctx *Ctx, findings *[]Finding) {
 // pyTestReadsSource flags tests that open or parse files: a test coupled to
 // source, config, or docs text breaks on every unrelated edit.
 func pyTestReadsSource(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
 		switch {
 		case callee == "ast.parse":
-			*findings = append(*findings, Finding{Rule: "py/test-reads-source", Line: lineOf(n), Match: callee})
+			*findings = append(*findings, Finding{Rule: rulePyTestReadsSource, Line: lineOf(n), Match: callee})
 		case callee == "open" || strings.HasSuffix(callee, ".open"),
 			strings.HasSuffix(callee, ".read_text"), strings.HasSuffix(callee, ".read_bytes"),
 			strings.HasSuffix(callee, ".readlines"):
-			*findings = append(*findings, Finding{Rule: "py/test-reads-source", Line: lineOf(n), Match: callee})
+			*findings = append(*findings, Finding{Rule: rulePyTestReadsSource, Line: lineOf(n), Match: callee})
 		}
 	})
+}
+
+// pyMockAsserts are the unittest.mock assertion names a spy-only test calls.
+var pyMockAsserts = []string{ //nolint:gochecknoglobals // a constant vocabulary
+	"assert_called", "assert_called_once", "assert_called_with", "assert_called_once_with",
+	"assert_any_call", "assert_has_calls", "assert_not_called", "assert_awaited",
 }
 
 // pyMockOnlyAssert flags a test function whose every assertion is a mock
 // call assertion: it pins calls, not behavior.
 func pyMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
-	}
-	mockAsserts := []string{
-		"assert_called", "assert_called_once", "assert_called_with", "assert_called_once_with",
-		"assert_any_call", "assert_has_calls", "assert_not_called", "assert_awaited",
 	}
 	ctx.eachFunc(func(fn *ts.Node) {
 		name := lang.FunctionName(ctx.Lang, fn, ctx.Src)
 		if !strings.HasPrefix(name, "test_") {
 			return
 		}
-		asserts := 0
-		mockOnly := true
-		lang.EachNamed(fn, func(n *ts.Node) {
-			switch {
-			case n.Kind() == "assert_statement":
-				asserts++
-				mockOnly = false
-			case ctx.Lang.CallKinds[n.Kind()]:
-				callee := ctx.calleeText(n)
-				last := callee[strings.LastIndex(callee, ".")+1:]
-				if !strings.HasPrefix(last, "assert") {
-					return
-				}
-				asserts++
-				isMock := false
-				for _, m := range mockAsserts {
-					if strings.HasPrefix(last, m) {
-						isMock = true
-					}
-				}
-				if !isMock {
-					mockOnly = false
-				}
-			}
-		})
+		asserts, mockOnly := mockAssertCounts(ctx, fn)
 		if asserts > 0 && mockOnly {
 			*findings = append(*findings, Finding{Rule: "py/mock-only-assert", Line: lineOf(fn), Match: name})
 		}
 	})
 }
 
+// mockAssertCounts counts a test body's assertions and reports whether every
+// one is a mock call assertion.
+func mockAssertCounts(ctx *Ctx, fn *ts.Node) (int, bool) {
+	asserts := 0
+	mockOnly := true
+	lang.EachNamed(fn, func(n *ts.Node) {
+		switch {
+		case n.Kind() == "assert_statement":
+			asserts++
+			mockOnly = false
+		case ctx.Lang.CallKinds[n.Kind()]:
+			callee := ctx.calleeText(n)
+			last := callee[strings.LastIndex(callee, ".")+1:]
+			if !strings.HasPrefix(last, "assert") {
+				return
+			}
+			asserts++
+			if !isMockAssert(last) {
+				mockOnly = false
+			}
+		}
+	})
+
+	return asserts, mockOnly
+}
+
+// isMockAssert reports whether a callee name is a unittest.mock assertion.
+func isMockAssert(name string) bool {
+	for _, m := range pyMockAsserts {
+		if strings.HasPrefix(name, m) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // pyConstantEcho flags a test function whose every assert compares a name or
 // attribute to a literal and which calls nothing with behavior.
 func pyConstantEcho(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachFunc(func(fn *ts.Node) {
@@ -222,7 +237,7 @@ func isEchoComparison(ctx *Ctx, assert *ts.Node) bool {
 	left, right := comp.NamedChild(0), comp.NamedChild(1)
 	literal := func(n *ts.Node) bool { return ctx.Lang.LiteralKinds[n.Kind()] }
 	nameLike := func(n *ts.Node) bool {
-		return n.Kind() == "identifier" || n.Kind() == "attribute"
+		return n.Kind() == kindIdentifier || n.Kind() == "attribute"
 	}
 
 	return literal(left) && nameLike(right) || literal(right) && nameLike(left)
@@ -231,7 +246,7 @@ func isEchoComparison(ctx *Ctx, assert *ts.Node) bool {
 // pyTimingHack flags sleeps and frozen clocks in tests: a test synchronized by
 // time is a flake in waiting.
 func pyTimingHack(ctx *Ctx, findings *[]Finding) {
-	if ctx.Lang.ID != "python" {
+	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
@@ -239,10 +254,10 @@ func pyTimingHack(ctx *Ctx, findings *[]Finding) {
 		case callee == "time.sleep" || callee == "asyncio.sleep" || callee == "sleep",
 			strings.HasSuffix(callee, ".sleep"),
 			strings.Contains(callee, "freeze_time"):
-			*findings = append(*findings, Finding{Rule: "py/timing-hack", Line: lineOf(n), Match: callee})
+			*findings = append(*findings, Finding{Rule: rulePyTimingHack, Line: lineOf(n), Match: callee})
 		case strings.HasSuffix(callee, ".patch") && n.NamedChildCount() > 1:
 			if strings.Contains(ctx.Text(n), "sleep") {
-				*findings = append(*findings, Finding{Rule: "py/timing-hack", Line: lineOf(n), Match: callee})
+				*findings = append(*findings, Finding{Rule: rulePyTimingHack, Line: lineOf(n), Match: callee})
 			}
 		}
 	})

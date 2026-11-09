@@ -24,15 +24,15 @@ type FuncMetrics struct {
 
 // FileMetrics is one parsed blob.
 type FileMetrics struct {
-	Lang       string `json:"lang"`
-	Lines      int    `json:"lines"`
-	SLOC       int    `json:"sloc"`
-	Comments   int    `json:"comments"`
-	ParseError bool   `json:"parse_error,omitempty"`
+	Lang  string        `json:"lang"`
+	Funcs []FuncMetrics `json:"funcs"`
 	// ErrorCoverage is the byte share under ERROR/MISSING nodes; nonzero even
 	// below the failure threshold so small grammar gaps are still visible.
-	ErrorCoverage float64       `json:"error_coverage,omitempty"`
-	Funcs         []FuncMetrics `json:"funcs"`
+	ErrorCoverage float64 `json:"error_coverage,omitempty"`
+	Lines         int     `json:"lines"`
+	SLOC          int     `json:"sloc"`
+	Comments      int     `json:"comments"`
+	ParseError    bool    `json:"parse_error,omitempty"`
 }
 
 // lineClass names what a line's content is.
@@ -225,7 +225,7 @@ func errorCoverage(root *ts.Node, src []byte) float64 {
 	if !root.HasError() || len(src) == 0 {
 		return 0
 	}
-	var bad int64
+	var bad uint
 	lang.EachNamed(root, func(n *ts.Node) {
 		if !n.IsError() && !n.IsMissing() {
 			return
@@ -233,7 +233,7 @@ func errorCoverage(root *ts.Node, src []byte) float64 {
 		if p := n.Parent(); p != nil && (p.IsError() || p.IsMissing()) {
 			return // nested inside an error already counted
 		}
-		bad += int64(n.EndByte() - n.StartByte())
+		bad += n.EndByte() - n.StartByte()
 	})
 
 	return float64(bad) / float64(len(src))

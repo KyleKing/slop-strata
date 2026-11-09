@@ -28,6 +28,12 @@ var errNotRepo = errors.New("not a repository")
 // errUnknownCmd marks a name that is not a subcommand.
 var errUnknownCmd = errors.New("unknown subcommand")
 
+// Table column headers shared across subcommand output.
+const (
+	colDir   = "dir"
+	colAdded = "added"
+)
+
 // args is one invocation's parsed flags.
 type args struct {
 	cmd           string
@@ -35,83 +41,71 @@ type args struct {
 	rev           string
 	base          string
 	since         string
+	explain       string
 	json          bool
 	ctx           bool
 	all           bool
 	writeBaseline bool
-	explain       string
 	help          bool
 }
 
+// flagValue answers a flag's value: inline (--flag=v) or the next arg, which
+// is consumed off rest.
+func flagValue(rest *[]string, inline, flag string) (string, error) {
+	if inline != "" {
+		return inline, nil
+	}
+	if len(*rest) == 0 {
+		return "", fmt.Errorf("%s: flag needs a value: %w", flag, errUsage)
+	}
+	v := (*rest)[0]
+	*rest = (*rest)[1:]
+
+	return v, nil
+}
+
 // parseArgs scans flags positionally; every flag takes --name or --name=value,
-// and --rev/--base/--since take a following value too.
+// and the value flags take a following arg too.
 func parseArgs(argv []string) (*args, error) {
 	a := &args{cmd: "", repo: "."}
-	rest := argv
-	value := func(i *int, inline string) (string, error) {
-		if inline != "" {
-			return inline, nil
-		}
-		if *i+1 >= len(rest) {
-			return "", fmt.Errorf("flag needs a value: %w", errUsage)
-		}
-		*i++
-
-		return rest[*i], nil
+	boolFlags := map[string]*bool{
+		"--json": &a.json, "--context": &a.ctx, "--all": &a.all,
+		"--write-baseline": &a.writeBaseline,
 	}
-	for i := 0; i < len(rest); i++ {
-		arg := rest[i]
+	strFlags := map[string]*string{
+		"--rev": &a.rev, "--base": &a.base, "--since": &a.since,
+		"--repo": &a.repo, "--explain": &a.explain,
+	}
+	rest := argv
+	for len(rest) > 0 {
+		arg := rest[0]
+		rest = rest[1:]
 		name, inline, _ := strings.Cut(arg, "=")
+		if dst, ok := boolFlags[name]; ok {
+			*dst = true
+
+			continue
+		}
+		if dst, ok := strFlags[name]; ok {
+			v, err := flagValue(&rest, inline, name)
+			if err != nil {
+				return nil, err
+			}
+			*dst = v
+
+			continue
+		}
 		switch name {
-		case "--json":
-			a.json = true
-		case "--context":
-			a.ctx = true
-		case "--all":
-			a.all = true
-		case "--write-baseline":
-			a.writeBaseline = true
 		case "-h", "--help", "help":
 			a.help = true
-		case "--rev":
-			v, err := value(&i, inline)
-			if err != nil {
-				return nil, fmt.Errorf("--rev: %w", err)
-			}
-			a.rev = v
-		case "--base":
-			v, err := value(&i, inline)
-			if err != nil {
-				return nil, fmt.Errorf("--base: %w", err)
-			}
-			a.base = v
-		case "--since":
-			v, err := value(&i, inline)
-			if err != nil {
-				return nil, fmt.Errorf("--since: %w", err)
-			}
-			a.since = v
-		case "--repo":
-			v, err := value(&i, inline)
-			if err != nil {
-				return nil, fmt.Errorf("--repo: %w", err)
-			}
-			a.repo = v
-		case "--explain":
-			v, err := value(&i, inline)
-			if err != nil {
-				return nil, fmt.Errorf("--explain: %w", err)
-			}
-			a.explain = v
 		default:
 			if strings.HasPrefix(arg, "--") {
 				return nil, fmt.Errorf("unknown flag %s: %w", arg, errUsage)
 			}
-			if a.cmd == "" {
-				a.cmd = arg
-			} else {
+			if a.cmd != "" {
 				return nil, fmt.Errorf("unexpected argument %s: %w", arg, errUsage)
 			}
+			a.cmd = arg
 		}
 	}
 
@@ -130,22 +124,22 @@ type session struct {
 func newSession(ctx context.Context, repoPath string) (*session, error) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolving repo path: %w", err)
 	}
 	if !vcs.IsRepo(abs) {
 		return nil, fmt.Errorf("%s: %w", abs, errNotRepo)
 	}
 	cfg, err := config.Load(abs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
 	cachePath, err := cache.Path(version)
 	if err != nil {
 		cachePath = ""
 	}
-	store, err := cache.Open(cachePath)
+	store, err := cache.Open(ctx, cachePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening cache: %w", err)
 	}
 
 	return &session{
@@ -155,8 +149,12 @@ func newSession(ctx context.Context, repoPath string) (*session, error) {
 }
 
 func (s *session) close() {
-	if s.store != nil {
-		s.store.Close() //nolint:errcheck // close failure loses nothing
+	if s.store == nil {
+		return
+	}
+	// A failed close loses nothing; the cache only ever held memos.
+	if err := s.store.Close(); err != nil {
+		return
 	}
 }
 

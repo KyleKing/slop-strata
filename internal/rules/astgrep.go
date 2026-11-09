@@ -11,7 +11,7 @@ import (
 
 // sgMatch is one ast-grep JSON match with --include-metadata.
 type sgMatch struct {
-	RuleID  string `json:"ruleId"`
+	RuleID  string `json:"ruleId"` //nolint:tagliatelle // sg's --json output keys are camelCase
 	File    string `json:"file"`
 	Text    string `json:"text"`
 	Message string `json:"message"`
@@ -31,7 +31,7 @@ var ErrNoSg = errors.New("ast_grep configured but sg is not on PATH")
 // this only when the scored revision is the checked-out one.
 func RunAstGrep(ctx context.Context, root string, packs []string) (map[string][]Finding, error) {
 	if len(packs) == 0 {
-		return nil, nil
+		return map[string][]Finding{}, nil
 	}
 	if _, err := exec.LookPath("sg"); err != nil {
 		return nil, ErrNoSg

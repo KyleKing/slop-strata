@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -10,8 +11,8 @@ import (
 
 // BlobPrint pairs one blob's fingerprint with where it came from.
 type BlobPrint struct {
-	Path  string
 	Print *Fingerprint
+	Path  string
 }
 
 // CrossFile runs the passes that join fingerprints across the tree, returning
@@ -52,16 +53,22 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 	}
 }
 
+// minCloneFiles is how many files must share a function body hash before the
+// clone is reported.
+const minCloneFiles = 2
+
+// cloneOwner ties a clone unit to the file it was found in.
+type cloneOwner struct {
+	path string
+	unit CloneUnit
+}
+
 // clones flags normalized-identical function bodies living in different files.
 func clones(blobs []BlobPrint, out map[string][]Finding) {
-	type owner struct {
-		path string
-		unit CloneUnit
-	}
-	byHash := map[string][]owner{}
+	byHash := map[string][]cloneOwner{}
 	for _, b := range blobs {
 		for _, u := range b.Print.Clones {
-			byHash[u.Hash] = append(byHash[u.Hash], owner{b.Path, u})
+			byHash[u.Hash] = append(byHash[u.Hash], cloneOwner{b.Path, u})
 		}
 	}
 	for hash, owners := range byHash {
@@ -69,20 +76,8 @@ func clones(blobs []BlobPrint, out map[string][]Finding) {
 		for _, o := range owners {
 			files[o.path] = true
 		}
-		if len(files) < 2 {
-			// Same-file duplicates in a test file are duplicate cases: bodies
-			// that differ only in fixture data.
-			if len(owners) > 1 {
-				for _, o := range owners {
-					if lang.IsTestPath(o.path) {
-						out[o.path] = append(out[o.path], Finding{
-							Rule: "x/dup-test-case", Line: o.unit.Line,
-							Match: o.unit.Name,
-							Note:  fmt.Sprintf("same normalized body as %d tests in this file (%s)", len(owners), hash[:8]),
-						})
-					}
-				}
-			}
+		if len(files) < minCloneFiles {
+			dupTestCases(hash, owners, out)
 
 			continue
 		}
@@ -96,10 +91,47 @@ func clones(blobs []BlobPrint, out map[string][]Finding) {
 	}
 }
 
+// dupTestCases flags same-file duplicates in a test file: bodies that differ
+// only in fixture data read as duplicate cases.
+func dupTestCases(hash string, owners []cloneOwner, out map[string][]Finding) {
+	if len(owners) <= 1 {
+		return
+	}
+	for _, o := range owners {
+		if lang.IsTestPath(o.path) {
+			out[o.path] = append(out[o.path], Finding{
+				Rule: "x/dup-test-case", Line: o.unit.Line,
+				Match: o.unit.Name,
+				Note: fmt.Sprintf("same normalized body as %d tests in this file (%s)",
+					len(owners), hash[:8]),
+			})
+		}
+	}
+}
+
 // singleImplIfaces flags an interface with exactly one required method
 // implemented by exactly one type: a seam for a variation that does not exist.
 func singleImplIfaces(blobs []BlobPrint, out map[string][]Finding) {
-	// Go: method sets per receiver type; TS: implements clauses per name.
+	implsByMethod, implementsByName := implIndexes(blobs)
+	for _, b := range blobs {
+		for _, iface := range b.Print.Ifaces {
+			if len(iface.Methods) != 1 {
+				continue
+			}
+			implementors := len(implsByMethod[iface.Methods[0]]) + implementsByName[iface.Name]
+			if implementors == 1 {
+				out[b.Path] = append(out[b.Path], Finding{
+					Rule: "x/single-impl-iface", Line: iface.Line,
+					Match: iface.Name, Note: "exactly one implementation in the tree",
+				})
+			}
+		}
+	}
+}
+
+// implIndexes builds the implementor counts singleImplIfaces joins on: Go
+// method sets per receiver type, TS implements clauses per interface name.
+func implIndexes(blobs []BlobPrint) (map[string]map[string]int, map[string]int) {
 	implsByMethod := map[string]map[string]int{} // method -> implementing type count (go)
 	implementsByName := map[string]int{}         // interface -> implementor count (ts)
 	for _, b := range blobs {
@@ -116,20 +148,7 @@ func singleImplIfaces(blobs []BlobPrint, out map[string][]Finding) {
 		}
 	}
 
-	for _, b := range blobs {
-		for _, iface := range b.Print.Ifaces {
-			if len(iface.Methods) != 1 {
-				continue
-			}
-			implementors := len(implsByMethod[iface.Methods[0]]) + implementsByName[iface.Name]
-			if implementors == 1 {
-				out[b.Path] = append(out[b.Path], Finding{
-					Rule: "x/single-impl-iface", Line: iface.Line,
-					Match: iface.Name, Note: "exactly one implementation in the tree",
-				})
-			}
-		}
-	}
+	return implsByMethod, implementsByName
 }
 
 // unusedOptions flags a WithX Option helper no file references: an option no
@@ -167,7 +186,7 @@ type Baseline map[string]bool
 
 // baselineKey identifies one finding for the baseline file.
 func baselineKey(path, rule string, line int, match string) string {
-	return strings.Join([]string{path, rule, fmt.Sprint(line), match}, "\x00")
+	return strings.Join([]string{path, rule, strconv.Itoa(line), match}, "\x00")
 }
 
 // LoadBaseline reads a baseline file: a JSON list of [path, rule, line, match]
@@ -185,8 +204,8 @@ func LoadBaseline(entries []BaselineEntry) Baseline {
 type BaselineEntry struct {
 	Path  string `json:"path"`
 	Rule  string `json:"rule"`
-	Line  int    `json:"line"`
 	Match string `json:"match"`
+	Line  int    `json:"line"`
 }
 
 // Entries renders a live finding set into baseline entries.
@@ -201,6 +220,7 @@ func Entries(files map[string][]Finding) []BaselineEntry {
 		if out[i].Path != out[j].Path {
 			return out[i].Path < out[j].Path
 		}
+
 		return out[i].Line < out[j].Line
 	})
 

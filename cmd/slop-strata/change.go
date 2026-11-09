@@ -25,28 +25,26 @@ const defaultRev = "HEAD"
 
 // side is one version of a changed file.
 type side struct {
-	report  *engine.FileReport
-	content []byte
 	err     error
+	content []byte
 }
 
 // changeResult is the change subcommand's JSON shape.
 type changeResult struct {
-	Base     string              `json:"base"`
-	End      string              `json:"end"`
-	Reading  string              `json:"reading"`
-	Intent   intent.Intent       `json:"intent"`
-	Delta    deltaSummary        `json:"delta"`
-	Dirs     map[string]dirDelta `json:"dirs"`
-	Findings []findingRow        `json:"findings"`
-	Files    []fileDelta         `json:"files"`
-	Skipped  []skippedRow        `json:"skipped,omitempty"`
-	Errors   []skippedRow        `json:"errors,omitempty"`
-	Context  *contextPayload     `json:"context,omitempty"`
-
 	beforeByPath map[string]structure.FileMetrics
-	afterByPath  map[string]structure.FileMetrics
+	Context      *contextPayload     `json:"context,omitempty"`
+	Dirs         map[string]dirDelta `json:"dirs"`
 	dirTouches   map[string]int
+	afterByPath  map[string]structure.FileMetrics
+	Base         string        `json:"base"`
+	End          string        `json:"end"`
+	Reading      string        `json:"reading"`
+	Intent       intent.Intent `json:"intent"`
+	Findings     []findingRow  `json:"findings"`
+	Errors       []skippedRow  `json:"errors,omitempty"`
+	Skipped      []skippedRow  `json:"skipped,omitempty"`
+	Files        []fileDelta   `json:"files"`
+	Delta        deltaSummary  `json:"delta"`
 }
 
 type deltaSummary struct {
@@ -69,8 +67,8 @@ type dirDelta struct {
 type findingRow struct {
 	Path  string `json:"path"`
 	Rule  string `json:"rule"`
-	Line  int    `json:"line"`
 	Match string `json:"match,omitempty"`
+	Line  int    `json:"line"`
 	New   bool   `json:"new"`
 }
 
@@ -89,12 +87,24 @@ type skippedRow struct {
 	Reason string `json:"reason"`
 }
 
+// percentScale converts a fraction to a percent for display.
+const percentScale = 100
+
+// parseErrorRow reports a blob tree-sitter could not fully parse, with the
+// byte share under error nodes.
+func parseErrorRow(path string, m structure.FileMetrics) skippedRow {
+	return skippedRow{
+		path,
+		fmt.Sprintf("tree-sitter parse error (%.1f%% of bytes)", m.ErrorCoverage*percentScale),
+	}
+}
+
 type contextPayload struct {
 	Hunks      map[string][]vcs.DiffHunk `json:"hunks"`
-	Messages   []string                  `json:"messages"`
 	Snippets   map[string]map[int]string `json:"snippets"`        // path -> line -> text
-	Crossed    []crossedFunc             `json:"crossed"`         // functions over CC 10 on either side
 	DirTouches map[string]int            `json:"dir_touches_90d"` // commits touching each dir in 90 days
+	Crossed    []crossedFunc             `json:"crossed"`         // functions over CC 10 on either side
+	Messages   []string                  `json:"messages"`
 }
 
 // crossedFunc is a function that sits over the complexity line on one side of
@@ -129,19 +139,20 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	if a.rev != "" {
 		d, err := s.ops.DiffRefs(ctx, s.root, base, a.rev)
 		if err != nil {
-			return err
+			return fmt.Errorf("diff %s..%s: %w", base, a.rev, err)
 		}
 		files = d
 	} else {
 		d, err := s.ops.DiffWorktree(ctx, s.root, base)
 		if err != nil {
-			return err
+			return fmt.Errorf("diff %s..worktree: %w", base, err)
 		}
 		untracked, err := s.ops.UntrackedFiles(ctx, s.root)
 		if err != nil {
-			return err
+			return fmt.Errorf("listing untracked files: %w", err)
 		}
-		files = append(d, untrackedAsAdds(untracked)...)
+		files = append(files, d...)
+		files = append(files, untrackedAsAdds(untracked)...)
 	}
 
 	res, err := s.scoreChange(ctx, base, end, files, a.rev != "")
@@ -153,13 +164,17 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		if a.ctx {
 			res.Context = s.buildContext(ctx, base, end, files, res)
 		}
-		return report.WriteJSON(w, "change", s.root, res, s.warnings(res))
+		if err := report.WriteJSON(w, "change", s.root, res, warnings(res)); err != nil {
+			return fmt.Errorf("writing result: %w", err)
+		}
+
+		return nil
 	}
-	if a.ctx && !a.json {
+	if a.ctx {
 		report.Fprintln(w, "--context only applies to --json output")
 	}
 
-	s.printChange(w, res, a.all)
+	printChange(w, res, a.all)
 
 	return nil
 }
@@ -169,8 +184,12 @@ func (s *session) defaultBranch(ctx context.Context) (string, error) {
 	if s.cfg.DefaultBranch != "" {
 		return s.cfg.DefaultBranch, nil
 	}
+	name, err := s.ops.DefaultBranchName(ctx, s.root)
+	if err != nil {
+		return "", fmt.Errorf("resolving default branch: %w", err)
+	}
 
-	return s.ops.DefaultBranchName(ctx, s.root)
+	return name, nil
 }
 
 // untrackedAsAdds turns untracked paths into added-file records; their blobs
@@ -184,18 +203,24 @@ func untrackedAsAdds(paths []string) []vcs.CommitFile {
 	return out
 }
 
+// scoredFile is one changed file's delta plus the metrics each side yielded.
+type scoredFile struct {
+	before *structure.FileMetrics
+	after  *structure.FileMetrics
+	delta  fileDelta
+}
+
 // scoreChange analyzes both sides of every changed file.
-func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs.CommitFile, committed bool) (*changeResult, error) {
-	// Batch-read old blobs.
-	var oldSHAs []string
-	for _, f := range files {
-		if f.OldSHA != "" {
-			oldSHAs = append(oldSHAs, f.OldSHA)
-		}
-	}
-	oldBlobs, err := s.ops.BlobContents(ctx, s.root, oldSHAs)
+func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs.CommitFile,
+	committed bool,
+) (*changeResult, error) {
+	oldBlobs, err := s.oldBlobs(ctx, files)
 	if err != nil {
 		return nil, err
+	}
+	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
+	if err != nil {
+		return nil, fmt.Errorf("reading baseline: %w", err)
 	}
 
 	res := &changeResult{
@@ -204,65 +229,18 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	}
 	var before, after []structure.FileMetrics
 	old := map[string]bool{}
-	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
-	if err != nil {
-		return nil, err
-	}
-
 	for _, f := range files {
-		fd := fileDelta{Path: f.Path, Status: f.Status.String(), Added: f.LinesAdded(), Deleted: f.LinesDeleted()}
-		res.Delta.LinesAdded += f.LinesAdded()
-		res.Delta.LinesDeleted += f.LinesDeleted()
-
-		if f.OldSHA != "" && !f.Binary {
-			if content, ok := oldBlobs[f.OldSHA]; ok {
-				oldPath := f.Path
-				if f.OldPath != "" {
-					oldPath = f.OldPath
-				}
-				rep := s.eng.Analyze(oldPath, f.OldSHA, content)
-				if rep.Skipped == "" {
-					before = append(before, rep.Metrics)
-					res.beforeByPath[oldPath] = rep.Metrics
-					fd.MassBefore = fileMass(rep.Metrics)
-					res.Delta.MassRemoved += fd.MassBefore
-					for _, fn := range rep.Findings {
-						old[fn.Rule+"\x00"+fn.Match] = true
-					}
-				}
-			}
+		sf, err := s.scoreFile(ctx, f, oldBlobs, committed, baseline, res, old)
+		if err != nil {
+			return nil, err
 		}
-
-		newSide := s.newContent(ctx, f, committed)
-		if newSide.err != nil {
-			return nil, newSide.err
+		if sf.before != nil {
+			before = append(before, *sf.before)
 		}
-		if newSide.content != nil {
-			sha := f.NewSHA
-			if sha == "" || strings.Trim(sha, "0") == "" {
-				sha = vcs.BlobSHA(newSide.content)
-			}
-			rep := s.eng.Analyze(f.Path, sha, newSide.content)
-			if rep.Skipped != "" {
-				res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
-			} else {
-				if rep.Metrics.ParseError {
-					res.Errors = append(res.Errors, skippedRow{
-						f.Path,
-						fmt.Sprintf("tree-sitter parse error (%.1f%% of bytes)", rep.Metrics.ErrorCoverage*100),
-					})
-				}
-				after = append(after, rep.Metrics)
-				res.afterByPath[f.Path] = rep.Metrics
-				fd.MassAfter = fileMass(rep.Metrics)
-				fd.Lang = rep.Lang
-				res.Delta.MassAdded += fd.MassAfter
-				for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
-					res.Findings = append(res.Findings, findingRow{Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true})
-				}
-			}
+		if sf.after != nil {
+			after = append(after, *sf.after)
 		}
-		res.Files = append(res.Files, fd)
+		res.Files = append(res.Files, sf.delta)
 	}
 
 	aggBefore := structure.Aggregate(before)
@@ -271,13 +249,108 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	res.Delta.ErosionBefore = aggBefore.Erosion
 	res.Delta.ErosionAfter = aggAfter.Erosion
 
-	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // a detached HEAD just leaves intent to the subjects
+	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // detached HEAD leaves intent to subjects
 	res.Intent = s.changeIntent(ctx, base, end, branch)
 	markFindingsOld(old, res)
-	s.dirDeltas(ctx, res, files)
-	res.Reading = s.readingFor(res, aggBefore, aggAfter, before, after)
+	s.dirDeltas(ctx, res)
+	res.Reading = readingFor(res, aggBefore, aggAfter, before, after)
 
 	return res, nil
+}
+
+// oldBlobs batch-reads every old-side blob in the diff.
+func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[string][]byte, error) {
+	var shas []string
+	for _, f := range files {
+		if f.OldSHA != "" {
+			shas = append(shas, f.OldSHA)
+		}
+	}
+	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
+	if err != nil {
+		return nil, fmt.Errorf("reading blobs: %w", err)
+	}
+
+	return blobs, nil
+}
+
+// scoreFile analyzes one changed file on both sides and folds it into res;
+// old collects the old side's (rule, match) pairs for markFindingsOld.
+func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[string][]byte,
+	committed bool, baseline rules.Baseline, res *changeResult, old map[string]bool,
+) (scoredFile, error) {
+	sf := scoredFile{delta: fileDelta{
+		Path: f.Path, Status: f.Status.String(),
+		Added: f.LinesAdded(), Deleted: f.LinesDeleted(),
+	}}
+	res.Delta.LinesAdded += f.LinesAdded()
+	res.Delta.LinesDeleted += f.LinesDeleted()
+
+	if rep := s.oldReport(ctx, f, oldBlobs); rep != nil && rep.Skipped == "" {
+		sf.before = &rep.Metrics
+		res.beforeByPath[oldPathOf(f)] = rep.Metrics
+		sf.delta.MassBefore = fileMass(rep.Metrics)
+		res.Delta.MassRemoved += sf.delta.MassBefore
+		for _, fn := range rep.Findings {
+			old[fn.Rule+"\x00"+fn.Match] = true
+		}
+	}
+
+	newSide := s.newContent(ctx, f, committed)
+	if newSide.err != nil {
+		return sf, newSide.err
+	}
+	if newSide.content == nil {
+		return sf, nil
+	}
+	sha := f.NewSHA
+	if sha == "" || strings.Trim(sha, "0") == "" {
+		sha = vcs.BlobSHA(newSide.content)
+	}
+	rep := s.eng.Analyze(ctx, f.Path, sha, newSide.content)
+	if rep.Skipped != "" {
+		res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
+
+		return sf, nil
+	}
+	if rep.Metrics.ParseError {
+		res.Errors = append(res.Errors, parseErrorRow(f.Path, rep.Metrics))
+	}
+	sf.after = &rep.Metrics
+	res.afterByPath[f.Path] = rep.Metrics
+	sf.delta.MassAfter = fileMass(rep.Metrics)
+	sf.delta.Lang = rep.Lang
+	res.Delta.MassAdded += sf.delta.MassAfter
+	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
+		res.Findings = append(res.Findings, findingRow{
+			Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
+		})
+	}
+
+	return sf, nil
+}
+
+// oldReport analyzes a file's before-side blob, when it has one.
+func (s *session) oldReport(ctx context.Context, f vcs.CommitFile, oldBlobs map[string][]byte) *engine.FileReport {
+	if f.OldSHA == "" || f.Binary {
+		return nil
+	}
+	content, ok := oldBlobs[f.OldSHA]
+	if !ok {
+		return nil
+	}
+
+	return s.eng.Analyze(ctx, oldPathOf(f), f.OldSHA, content)
+}
+
+// oldPathOf names the path a file's before side lived at, which differs from
+// f.Path after a rename.
+func oldPathOf(f vcs.CommitFile) string {
+	if f.OldPath != "" {
+		return f.OldPath
+	}
+
+	return f.Path
 }
 
 // fileMass is one file's total complexity mass.
@@ -321,7 +394,7 @@ func (s *session) changeIntent(ctx context.Context, base, end, branch string) in
 }
 
 // readingFor composes the one-line reading.
-func (s *session) readingFor(res *changeResult, before, after structure.Aggregates,
+func readingFor(res *changeResult, before, after structure.Aggregates,
 	beforeFiles, afterFiles []structure.FileMetrics,
 ) string {
 	f := reading.Fields{
@@ -375,7 +448,7 @@ func markFindingsOld(old map[string]bool, res *changeResult) {
 }
 
 // dirDeltas rolls the change up per directory and flags hotspots.
-func (s *session) dirDeltas(ctx context.Context, res *changeResult, files []vcs.CommitFile) {
+func (s *session) dirDeltas(ctx context.Context, res *changeResult) {
 	// Roll per-dir mass deltas from the file deltas.
 	massNet := map[string]float64{}
 	for _, fd := range res.Files {
@@ -423,8 +496,8 @@ func mapKeys[V any](m map[string]V) []string {
 }
 
 // warnings lists skip and parse-error reasons worth surfacing.
-func (s *session) warnings(res *changeResult) []string {
-	var out []string
+func warnings(res *changeResult) []string {
+	out := make([]string, 0, len(res.Skipped)+len(res.Errors))
 	for _, sk := range res.Skipped {
 		out = append(out, "skipped "+sk.Path+": "+sk.Reason)
 	}
@@ -436,7 +509,9 @@ func (s *session) warnings(res *changeResult) []string {
 }
 
 // buildContext assembles what a model would open next.
-func (s *session) buildContext(ctx context.Context, base, end string, files []vcs.CommitFile, res *changeResult) *contextPayload {
+func (s *session) buildContext(ctx context.Context, base, end string, files []vcs.CommitFile,
+	res *changeResult,
+) *contextPayload {
 	cp := &contextPayload{
 		Hunks:    map[string][]vcs.DiffHunk{},
 		Snippets: map[string]map[int]string{},
@@ -461,23 +536,16 @@ func (s *session) buildContext(ctx context.Context, base, end string, files []vc
 		}
 	}
 	for path, m := range res.beforeByPath {
-		for _, fn := range m.Funcs {
-			if fn.CC > structure.CCLimit {
-				cp.Crossed = append(cp.Crossed, crossedFunc{Path: path, Name: fn.Name, CC: fn.CC, Lines: fn.SLOC, Before: true})
-			}
-		}
+		cp.Crossed = append(cp.Crossed, crossedFuncs(path, m, true)...)
 	}
 	for path, m := range res.afterByPath {
-		for _, fn := range m.Funcs {
-			if fn.CC > structure.CCLimit {
-				cp.Crossed = append(cp.Crossed, crossedFunc{Path: path, Name: fn.Name, CC: fn.CC, Lines: fn.SLOC, After: true})
-			}
-		}
+		cp.Crossed = append(cp.Crossed, crossedFuncs(path, m, false)...)
 	}
 	sort.Slice(cp.Crossed, func(i, j int) bool {
 		if cp.Crossed[i].Path != cp.Crossed[j].Path {
 			return cp.Crossed[i].Path < cp.Crossed[j].Path
 		}
+
 		return cp.Crossed[i].Name < cp.Crossed[j].Name
 	})
 	cp.DirTouches = res.dirTouches
@@ -485,9 +553,29 @@ func (s *session) buildContext(ctx context.Context, base, end string, files []vc
 	return cp
 }
 
+// crossedFuncs lists one file's functions over the CC limit; before marks
+// which side of the change they were measured on.
+func crossedFuncs(path string, m structure.FileMetrics, before bool) []crossedFunc {
+	var out []crossedFunc
+	for _, fn := range m.Funcs {
+		if fn.CC <= structure.CCLimit {
+			continue
+		}
+		cf := crossedFunc{Path: path, Name: fn.Name, CC: fn.CC, Lines: fn.SLOC}
+		if before {
+			cf.Before = true
+		} else {
+			cf.After = true
+		}
+		out = append(out, cf)
+	}
+
+	return out
+}
+
 // snippetLine reads one source line for a finding's context.
 func snippetLine(root, path string, line int) string {
-	content, err := os.ReadFile(filepath.Join(root, path))
+	content, err := os.ReadFile(filepath.Join(root, path)) //nolint:gosec // root is the caller's repo path
 	if err != nil {
 		return ""
 	}
@@ -500,7 +588,7 @@ func snippetLine(root, path string, line int) string {
 }
 
 // printChange renders the human form: reading, delta table, findings.
-func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
+func printChange(w io.Writer, res *changeResult, all bool) {
 	report.Fprintln(w, res.Reading)
 	report.Fprintln(w)
 
@@ -515,7 +603,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 
 	if len(res.Dirs) > 0 {
 		report.Fprintln(w)
-		var rows [][]string
+		rows := make([][]string, 0, len(res.Dirs))
 		for _, d := range report.SortedKeys(res.Dirs) {
 			dd := res.Dirs[d]
 			hot := ""
@@ -524,7 +612,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 			}
 			rows = append(rows, []string{d, fmt.Sprintf("%+.1f", dd.MassNet), hot})
 		}
-		report.Table(w, []string{"dir", "mass net", ""}, rows)
+		report.Table(w, []string{colDir, "mass net", ""}, rows)
 	}
 
 	newOnly := res.Findings
@@ -539,7 +627,7 @@ func (s *session) printChange(w io.Writer, res *changeResult, all bool) {
 	}
 	if len(newOnly) > 0 {
 		report.Fprintln(w)
-		var rows [][]string
+		rows := make([][]string, 0, len(newOnly))
 		for _, f := range newOnly {
 			mark := ""
 			if !f.New {

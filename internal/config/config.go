@@ -21,6 +21,13 @@ const FileName = ".slop-strata.toml"
 // ruleset tightened after code landed does not re-report it.
 const BaselineFileName = ".slop-strata-baseline.json"
 
+const (
+	// The byte cap past which a blob is skipped and reported by name.
+	defaultMaxFileBytes = 1 << 20
+	// The average line length past which a blob reads as minified.
+	defaultMinifiedAvgLine = 200
+)
+
 // AuthorClass groups commits by who wrote them, so every metric can split
 // agent-authored from person-authored work. Classes are tried in order and the
 // first match wins; a commit matching none is "person".
@@ -55,31 +62,31 @@ func (a *AuthorClass) Matches(author, committer, body string) bool {
 
 // Config is the parsed .slop-strata.toml.
 type Config struct {
+	// Baseline names the file of accepted findings relative to the repo root.
+	Baseline string `toml:"baseline"`
+	// DefaultBranch overrides the detected branch a change diffs against.
+	DefaultBranch string `toml:"default_branch"`
+	// Skip lists path globs (filepath.Match syntax) excluded from every
+	// analysis: vendored trees, generated code, lockfiles.
+	Skip []string `toml:"skip"`
+	// AuthorClasses classifies commits in order; first match wins.
+	AuthorClasses []AuthorClass `toml:"author_class"`
+	// AstGrep lists ast-grep YAML rule files or directories, relative to the
+	// repository root, loaded through `sg` as an optional external rule source.
+	AstGrep []string `toml:"ast_grep"`
 	// MaxFileBytes skips blobs above the cap; minified bundles and vendored
 	// output trip it and are reported by name rather than parsed.
 	MaxFileBytes int64 `toml:"max_file_bytes"`
 	// MinifiedAvgLine marks a blob minified when its average line length
 	// passes this; those are skipped with the same warning as oversize files.
 	MinifiedAvgLine int `toml:"minified_avg_line"`
-	// Skip lists path globs (filepath.Match syntax) excluded from every
-	// analysis: vendored trees, generated code, lockfiles.
-	Skip []string `toml:"skip"`
-	// Baseline names the file of accepted findings relative to the repo root.
-	Baseline string `toml:"baseline"`
-	// DefaultBranch overrides the detected branch a change diffs against.
-	DefaultBranch string `toml:"default_branch"`
-	// AuthorClasses classifies commits in order; first match wins.
-	AuthorClasses []AuthorClass `toml:"author_class"`
-	// AstGrep lists ast-grep YAML rule files or directories, relative to the
-	// repository root, loaded through `sg` as an optional external rule source.
-	AstGrep []string `toml:"ast_grep"`
 }
 
 // Default returns the configuration a repository gets with no file.
 func Default() *Config {
 	return &Config{
-		MaxFileBytes:    1 << 20,
-		MinifiedAvgLine: 200,
+		MaxFileBytes:    defaultMaxFileBytes,
+		MinifiedAvgLine: defaultMinifiedAvgLine,
 		Baseline:        BaselineFileName,
 		AuthorClasses: []AuthorClass{
 			{Name: "bot", Logins: nil, Trailers: []string{`(?i)co-authored-by:.*\[bot\]`}},
@@ -92,10 +99,12 @@ func Default() *Config {
 func Load(root string) (*Config, error) {
 	cfg := Default()
 
-	data, err := os.ReadFile(filepath.Join(root, FileName))
+	data, err := os.ReadFile(filepath.Join(root, FileName)) //nolint:gosec // root is the caller's repo path
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return cfg, cfg.compile()
+			cerr := cfg.compile()
+
+			return cfg, cerr
 		}
 
 		return nil, fmt.Errorf("reading %s: %w", FileName, err)
@@ -107,7 +116,9 @@ func Load(root string) (*Config, error) {
 		return nil, fmt.Errorf("parsing %s: %w", FileName, err)
 	}
 
-	return cfg, cfg.compile()
+	cerr := cfg.compile()
+
+	return cfg, cerr
 }
 
 func (c *Config) compile() error {

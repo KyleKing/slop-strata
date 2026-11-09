@@ -11,13 +11,16 @@ import (
 // BaselineFile is the on-disk shape of the baseline: a JSON list of accepted
 // findings.
 type BaselineFile struct {
-	Version int             `json:"version"`
 	Entries []BaselineEntry `json:"entries"`
+	Version int             `json:"version"`
 }
+
+// baselinePerm is the mode for the baseline file: owner-only.
+const baselinePerm = 0o600
 
 // ReadBaseline loads a baseline file; a missing file is an empty baseline.
 func ReadBaseline(path string) (Baseline, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path is the repo's own config'd baseline file
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return Baseline{}, nil
@@ -41,5 +44,9 @@ func WriteBaseline(path string, files map[string][]Finding) error {
 		return fmt.Errorf("rendering baseline: %w", err)
 	}
 
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	if err := os.WriteFile(path, append(data, '\n'), baselinePerm); err != nil {
+		return fmt.Errorf("writing baseline: %w", err)
+	}
+
+	return nil
 }

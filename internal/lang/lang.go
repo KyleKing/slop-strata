@@ -17,21 +17,22 @@ import (
 // cached under a stale grammar is recomputed.
 const GrammarVersion = 2
 
-// kindSet builds a node-kind set.
-func kindSet(kinds ...string) map[string]bool {
-	m := make(map[string]bool, len(kinds))
-	for _, k := range kinds {
-		m[k] = true
-	}
-
-	return m
-}
+// Tree-sitter node kinds shared across the language vocabularies.
+const (
+	kindComment          = "comment"
+	kindIfStatement      = "if_statement"
+	kindForStatement     = "for_statement"
+	kindWhileStatement   = "while_statement"
+	kindMethodDefinition = "method_definition"
+)
 
 // Language describes one grammar's node vocabulary for the metric walkers.
 type Language struct {
-	ID         string
-	Extensions []string
-
+	// CallKinds are node types for a function or method call.
+	CallKinds map[string]bool
+	// OpContainerKinds are expression node types whose operator child may be a
+	// counted decision operator (and/or/&&/||/??).
+	OpContainerKinds map[string]bool
 	// FunctionKinds are node types counted as functions.
 	FunctionKinds map[string]bool
 	// MethodReceiverKinds are node types that make a function a method, used
@@ -42,29 +43,25 @@ type Language struct {
 	// LiteralKinds are node types treated as literals by duplication rules and
 	// clone hashing.
 	LiteralKinds map[string]bool
-	// CallKinds are node types for a function or method call.
-	CallKinds map[string]bool
-	// ParamContainerKind holds a function's parameters.
-	ParamContainerKind string
+	newLanguage  func() *ts.Language
 	// ParamSkipKinds are named children of the parameter container that are
 	// not parameters (separators, comments).
 	ParamSkipKinds map[string]bool
-	// DecisionKinds are node types that each add one cyclomatic complexity
-	// point: branches, loops, and case clauses.
-	DecisionKinds map[string]bool
-	// OpContainerKinds are expression node types whose operator child may be a
-	// counted decision operator (and/or/&&/||/??).
-	OpContainerKinds map[string]bool
-	// DecisionOps are operator spellings that each add one complexity point.
-	DecisionOps map[string]bool
-	// NestKinds are node types that raise the cognitive-complexity nesting
-	// level inside their body.
-	NestKinds map[string]bool
 	// FlatKinds add one cognitive-complexity point without raising nesting
 	// (else, elif, catch alternatives already counted elsewhere).
 	FlatKinds map[string]bool
-
-	newLanguage func() *ts.Language
+	// DecisionKinds are node types that each add one cyclomatic complexity
+	// point: branches, loops, and case clauses.
+	DecisionKinds map[string]bool
+	// NestKinds are node types that raise the cognitive-complexity nesting
+	// level inside their body.
+	NestKinds map[string]bool
+	// DecisionOps are operator spellings that each add one complexity point.
+	DecisionOps map[string]bool
+	// ParamContainerKind holds a function's parameters.
+	ParamContainerKind string
+	ID                 string
+	Extensions         []string
 }
 
 // Go is the spec for *.go.
@@ -77,10 +74,10 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 		"func_literal":         true,
 	},
 	MethodKinds:        map[string]bool{"method_declaration": true},
-	CommentKinds:       map[string]bool{"comment": true},
+	CommentKinds:       map[string]bool{kindComment: true},
 	CallKinds:          map[string]bool{"call_expression": true},
 	ParamContainerKind: "parameter_list",
-	ParamSkipKinds:     map[string]bool{"comment": true},
+	ParamSkipKinds:     map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"interpreted_string_literal": true,
 		"raw_string_literal":         true,
@@ -90,8 +87,8 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 		"imaginary_literal":          true,
 	},
 	DecisionKinds: map[string]bool{
-		"if_statement":       true,
-		"for_statement":      true,
+		kindIfStatement:      true,
+		kindForStatement:     true,
 		"expression_case":    true,
 		"type_case":          true,
 		"communication_case": true,
@@ -99,8 +96,8 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	OpContainerKinds: map[string]bool{"binary_expression": true},
 	DecisionOps:      map[string]bool{"&&": true, "||": true},
 	NestKinds: map[string]bool{
-		"if_statement":          true,
-		"for_statement":         true,
+		kindIfStatement:         true,
+		kindForStatement:        true,
 		"switch_statement":      true,
 		"type_switch_statement": true,
 		"select_statement":      true,
@@ -118,11 +115,11 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"function_definition": true,
 		"lambda":              true,
 	},
-	CommentKinds:       map[string]bool{"comment": true},
+	CommentKinds:       map[string]bool{kindComment: true},
 	CallKinds:          map[string]bool{"call": true},
 	ParamContainerKind: "parameters",
 	ParamSkipKinds: map[string]bool{
-		"comment":              true,
+		kindComment:            true,
 		"keyword_separator":    true,
 		"positional_separator": true,
 	},
@@ -136,10 +133,10 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"concatenated_string": true,
 	},
 	DecisionKinds: map[string]bool{
-		"if_statement":           true,
+		kindIfStatement:          true,
 		"elif_clause":            true,
-		"for_statement":          true,
-		"while_statement":        true,
+		kindForStatement:         true,
+		kindWhileStatement:       true,
 		"except_clause":          true,
 		"conditional_expression": true,
 		"case_clause":            true,
@@ -147,10 +144,10 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 	OpContainerKinds: map[string]bool{"boolean_operator": true},
 	DecisionOps:      map[string]bool{"and": true, "or": true},
 	NestKinds: map[string]bool{
-		"if_statement":           true,
+		kindIfStatement:          true,
 		"elif_clause":            true,
-		"for_statement":          true,
-		"while_statement":        true,
+		kindForStatement:         true,
+		kindWhileStatement:       true,
 		"except_clause":          true,
 		"case_clause":            true,
 		"match_statement":        true,
@@ -171,14 +168,14 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		"function_declaration":           true,
 		"function_expression":            true,
 		"arrow_function":                 true,
-		"method_definition":              true,
+		kindMethodDefinition:             true,
 		"generator_function_declaration": true,
 	},
-	MethodKinds:        map[string]bool{"method_definition": true},
-	CommentKinds:       map[string]bool{"comment": true},
+	MethodKinds:        map[string]bool{kindMethodDefinition: true},
+	CommentKinds:       map[string]bool{kindComment: true},
 	CallKinds:          map[string]bool{"call_expression": true},
 	ParamContainerKind: "formal_parameters",
-	ParamSkipKinds:     map[string]bool{"comment": true},
+	ParamSkipKinds:     map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"string":          true,
 		"number":          true,
@@ -189,10 +186,10 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		"regex":           true,
 	},
 	DecisionKinds: map[string]bool{
-		"if_statement":       true,
-		"for_statement":      true,
+		kindIfStatement:      true,
+		kindForStatement:     true,
 		"for_in_statement":   true,
-		"while_statement":    true,
+		kindWhileStatement:   true,
 		"do_statement":       true,
 		"switch_case":        true,
 		"catch_clause":       true,
@@ -201,17 +198,17 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	OpContainerKinds: map[string]bool{"binary_expression": true},
 	DecisionOps:      map[string]bool{"&&": true, "||": true, "??": true},
 	NestKinds: map[string]bool{
-		"if_statement":        true,
-		"for_statement":       true,
+		kindIfStatement:       true,
+		kindForStatement:      true,
 		"for_in_statement":    true,
-		"while_statement":     true,
+		kindWhileStatement:    true,
 		"do_statement":        true,
 		"switch_statement":    true,
 		"catch_clause":        true,
 		"ternary_expression":  true,
 		"function_expression": true,
 		"arrow_function":      true,
-		"method_definition":   true,
+		kindMethodDefinition:  true,
 	},
 	FlatKinds: map[string]bool{"else": true},
 	newLanguage: func() *ts.Language {
