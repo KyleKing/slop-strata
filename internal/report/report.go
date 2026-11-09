@@ -17,14 +17,14 @@ const Version = 1
 
 // Envelope wraps every subcommand's JSON output.
 type Envelope struct {
-	Schema   int               `json:"schema"`
+	Result   any               `json:"result"`
+	Docs     map[string]string `json:"docs"`
 	Tool     string            `json:"tool"`
 	Command  string            `json:"command"`
 	Repo     string            `json:"repo"`
 	At       string            `json:"at"`
-	Result   any               `json:"result"`
-	Docs     map[string]string `json:"docs"`
 	Warnings []string          `json:"warnings,omitempty"`
+	Schema   int               `json:"schema"`
 }
 
 // Fprint writes to an output stream, converting every print call's noise.
@@ -51,8 +51,11 @@ func WriteJSON(w io.Writer, command, repo string, result any, warnings []string)
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	if err := enc.Encode(env); err != nil {
+		return fmt.Errorf("encoding envelope: %w", err)
+	}
 
-	return enc.Encode(env)
+	return nil
 }
 
 // Docs is the per-metric reference, the same text --explain prints and the
@@ -61,28 +64,43 @@ func WriteJSON(w io.Writer, command, repo string, result any, warnings []string)
 //
 //nolint:gochecknoglobals // the metric glossary is a constant table
 var Docs = map[string]string{
-	"erosion":       "Share of complexity mass (CC x sqrt(SLOC) per function) held by functions with cyclomatic complexity over 10, per arXiv 2603.24755. No target; watch direction per directory. When it rises on routine work, the complex functions are getting more of them.",
-	"mass":          "Total complexity mass: sum over functions of CC x sqrt(SLOC). Gross added/removed/net are reported separately; a refactor that removes mass differs from one that adds it.",
-	"p90_len":       "90th percentile function length in lines. Long functions carry context a reader must hold; watch the max, not the mean.",
-	"max_len":       "Longest function in lines.",
-	"p90_nesting":   "90th percentile control-nesting depth. Deep nesting is the shape refactors actually need to fix.",
-	"max_nesting":   "Deepest control nesting in any function.",
-	"p90_params":    "90th percentile parameter count. Many parameters signal a missing abstraction or a config object.",
-	"max_params":    "Largest parameter count on any function.",
-	"p90_cognitive": "90th percentile cognitive complexity (nesting-weighted decision count, approximating the SonarSource definition).",
+	"erosion": "Share of complexity mass (CC x sqrt(SLOC) per function) held by functions with " +
+		"cyclomatic complexity over 10, per arXiv 2603.24755. No target; watch direction per " +
+		"directory. When it rises on routine work, the complex functions are getting more of them.",
+	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). " +
+		"Gross added/removed/net are reported separately; a refactor that removes mass differs " +
+		"from one that adds it.",
+	"p90_len": "90th percentile function length in lines. Long functions carry context a reader " +
+		"must hold; watch the max, not the mean.",
+	"max_len": "Longest function in lines.",
+	"p90_nesting": "90th percentile control-nesting depth. Deep nesting is the shape refactors " +
+		"actually need to fix.",
+	"max_nesting": "Deepest control nesting in any function.",
+	"p90_params": "90th percentile parameter count. Many parameters signal a missing abstraction " +
+		"or a config object.",
+	"max_params": "Largest parameter count on any function.",
+	"p90_cognitive": "90th percentile cognitive complexity (nesting-weighted decision count, " +
+		"approximating the SonarSource definition).",
 	"max_cognitive": "Highest cognitive complexity in any function.",
 	"over_50":       "Functions longer than 50 lines. Each is a candidate to split, not a violation.",
-	"churn_14d":     "Lines added in the range that were modified or deleted within 14 days of landing. High churn reads as work that did not settle.",
-	"churn_30d":     "Lines added in the range that were modified or deleted within 30 days.",
-	"rework":        "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
-	"reverts":       "Commits in the range that revert another change.",
-	"survival":      "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity.",
-	"concentration": "Largest single author's share of each directory's live lines. Reported per directory, never as a person ranking.",
-	"coupling":      "File pairs changed in the same commit 3+ times, skipping commits over 30 files (code-maat's definition of co-change).",
-	"hotspot":       "Directories where recent touches meet high complexity mass: churn x complexity.",
-	"rule_hits":     "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted.",
-	"findings":      "New rule hits attributable to this change, after the baseline and pre-existing hits are excluded.",
-	"virality":      "For each rule: the first commit that hit it, then how hits spread afterward per author class. Answers whether a pattern gets copied once it lands.",
+	"churn_14d": "Lines added in the range that were modified or deleted within 14 days of " +
+		"landing. High churn reads as work that did not settle.",
+	"churn_30d": "Lines added in the range that were modified or deleted within 30 days.",
+	"rework":    "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
+	"reverts":   "Commits in the range that revert another change.",
+	"survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, " +
+		"per monthly cohort. At-risk is approximated at month granularity.",
+	"concentration": "Largest single author's share of each directory's live lines. Reported per " +
+		"directory, never as a person ranking.",
+	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
+		"(code-maat's definition of co-change).",
+	"hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
+	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
+		"holds the ones already accepted.",
+	"findings": "New rule hits attributable to this change, after the baseline and pre-existing " +
+		"hits are excluded.",
+	"virality": "For each rule: the first commit that hit it, then how hits spread afterward per " +
+		"author class. Answers whether a pattern gets copied once it lands.",
 }
 
 // Explain prints a metric's doc for --explain.

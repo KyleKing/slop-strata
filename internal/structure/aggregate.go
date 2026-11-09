@@ -34,14 +34,17 @@ func Mass(f FuncMetrics) float64 {
 	return float64(f.CC) * math.Sqrt(float64(f.SLOC))
 }
 
-// percentile answers the nearest-rank percentile of values, 0 when empty.
-func percentile(values []int, pct float64) int {
+// p90Rank is the percentile the aggregates report.
+const p90Rank = 0.9
+
+// p90 answers the nearest-rank 90th percentile of values, 0 when empty.
+func p90(values []int) int {
 	if len(values) == 0 {
 		return 0
 	}
 	sorted := slices.Clone(values)
 	slices.Sort(sorted)
-	idx := int(math.Ceil(pct/100*float64(len(sorted)))) - 1
+	idx := int(math.Ceil(p90Rank*float64(len(sorted)))) - 1
 
 	return sorted[max(idx, 0)]
 }
@@ -79,13 +82,13 @@ func Aggregate(files []FileMetrics) Aggregates {
 	if totalMass > 0 {
 		agg.Erosion = erodedMass / totalMass
 	}
-	agg.P90Len = percentile(lens, 90) //nolint:mnd // p90 is the documented percentile
-	agg.MaxLen = maxOf(lens)          //nolint:predeclared // max is a builtin shadow risk, name stands
-	agg.P90Nesting = percentile(nestings, 90)
+	agg.P90Len = p90(lens)
+	agg.MaxLen = maxOf(lens)
+	agg.P90Nesting = p90(nestings)
 	agg.MaxNesting = maxOf(nestings)
-	agg.P90Params = percentile(params, 90)
+	agg.P90Params = p90(params)
 	agg.MaxParams = maxOf(params)
-	agg.P90Cognitive = percentile(cognitives, 90)
+	agg.P90Cognitive = p90(cognitives)
 	agg.MaxCognitive = maxOf(cognitives)
 
 	return agg

@@ -25,11 +25,11 @@ type FuncMetrics struct {
 // FileMetrics is one parsed blob.
 type FileMetrics struct {
 	Lang       string        `json:"lang"`
+	Funcs      []FuncMetrics `json:"funcs"`
 	Lines      int           `json:"lines"`
 	SLOC       int           `json:"sloc"`
 	Comments   int           `json:"comments"`
 	ParseError bool          `json:"parse_error,omitempty"`
-	Funcs      []FuncMetrics `json:"funcs"`
 }
 
 // lineClass names what a line's content is.

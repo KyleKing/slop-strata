@@ -12,16 +12,16 @@ import (
 // Fields is what a reading is built from.
 type Fields struct {
 	Intent        intent.Intent
+	TouchedDirs   []string
 	MassAdded     float64
 	MassRemoved   float64
 	ErosionBefore float64
 	ErosionAfter  float64
 	FuncHighAdded int // functions crossing CC 10 that appeared
 	FuncHighGone  int // functions over CC 10 that disappeared
-	Hotspot       bool
 	FindingsNew   int
 	FindingsGone  int
-	TouchedDirs   []string
+	Hotspot       bool
 }
 
 // Disagreement reports whether the numbers argue against the stated intent.

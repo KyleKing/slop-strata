@@ -21,7 +21,9 @@ const (
 )
 
 // ccPattern parses a Conventional Commit subject.
-var ccPattern = regexp.MustCompile(`^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)`) //nolint:gochecknoglobals // a compiled pattern is a constant
+//
+//nolint:gochecknoglobals // a compiled pattern is a constant
+var ccPattern = regexp.MustCompile(`^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)`)
 
 // revertPattern spots a revert by subject or body.
 var revertPattern = regexp.MustCompile(`(?i)\brevert\b`) //nolint:gochecknoglobals // a compiled pattern is a constant
@@ -30,34 +32,18 @@ var revertPattern = regexp.MustCompile(`(?i)\brevert\b`) //nolint:gochecknogloba
 type Intent struct {
 	Kind    Kind   `json:"kind"`
 	Scope   string `json:"scope,omitempty"`
-	Revert  bool   `json:"revert,omitempty"`
 	Summary string `json:"summary,omitempty"`
+	Revert  bool   `json:"revert,omitempty"`
 }
 
 // Of reads the intent from a commit subject plus the branch name, falling back
 // to issue keywords when both are silent.
 func Of(subject, branch, body string) Intent {
-	in := Intent{}
+	in := Intent{Kind: Unknown, Summary: strings.TrimSpace(subject)}
 	if m := ccPattern.FindStringSubmatch(strings.TrimSpace(subject)); m != nil {
-		in.Summary = m[4]
-		switch Kind(strings.ToLower(m[1])) {
-		case Feat:
-			in.Kind = Feat
-		case Fix:
-			in.Kind = Fix
-		case Refactor, "perf", "style", "cleanup", "chore-cleanup":
-			in.Kind = Refactor
-		case Test, "docs":
-			in.Kind = Test
-		case Chore, "ci", "build", "bump", "deps":
-			in.Kind = Chore
-		default:
-			in.Kind = Unknown
-		}
+		in.Kind = subjectKind(m[1])
 		in.Scope = m[2]
-	} else {
-		in.Kind = Unknown
-		in.Summary = strings.TrimSpace(subject)
+		in.Summary = m[4]
 	}
 
 	if revertPattern.MatchString(subject) || strings.Contains(body, "This reverts commit") {
@@ -66,23 +52,49 @@ func Of(subject, branch, body string) Intent {
 
 	// A branch name refines an unknown or ambiguous reading: "fix/login-loop"
 	// says what the merge did not.
-	if in.Kind == Unknown && branch != "" {
-		first, _, _ := strings.Cut(strings.ToLower(branch), "/")
-		switch first {
-		case "feat", "feature":
-			in.Kind = Feat
-		case "fix", "bug", "hotfix":
-			in.Kind = Fix
-		case "refactor", "cleanup":
-			in.Kind = Refactor
-		case "test":
-			in.Kind = Test
-		case "chore":
-			in.Kind = Chore
-		}
+	if in.Kind == Unknown {
+		in.Kind = branchKind(branch)
 	}
 
 	return in
+}
+
+// subjectKind maps a Conventional Commit type to a Kind.
+func subjectKind(typ string) Kind {
+	switch Kind(strings.ToLower(typ)) {
+	case Feat:
+		return Feat
+	case Fix:
+		return Fix
+	case Refactor, "perf", "style", "cleanup", "chore-cleanup":
+		return Refactor
+	case Test, "docs":
+		return Test
+	case Chore, "ci", "build", "bump", "deps":
+		return Chore
+	default:
+		return Unknown
+	}
+}
+
+// branchKind reads a Kind off a branch prefix like "fix/login-loop"; anything
+// unrecognized is Unknown.
+func branchKind(branch string) Kind {
+	first, _, _ := strings.Cut(strings.ToLower(branch), "/")
+	switch first {
+	case "feat", "feature":
+		return Feat
+	case "fix", "bug", "hotfix":
+		return Fix
+	case "refactor", "cleanup":
+		return Refactor
+	case "test":
+		return Test
+	case "chore":
+		return Chore
+	default:
+		return Unknown
+	}
 }
 
 // ForChange folds the intents of a change's commits into one: the majority
