@@ -227,6 +227,42 @@ func TestChangePairsEmitsOneEnvelopePerPair(t *testing.T) {
 	}
 }
 
+func TestChangeScoresPureRename(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "--initial-branch=main")
+	body := "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n"
+	if err := os.WriteFile(filepath.Join(repo, "old.py"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "feat: init")
+	gitIn(t, repo, "mv", "old.py", "new.py")
+	gitIn(t, repo, "commit", "-m", "refactor: rename")
+
+	out, err := runCLI(t, repo, "change", "--json", "--base", "HEAD~1", "--rev", "HEAD")
+	if err != nil {
+		t.Fatalf("change: %v\n%s", err, out)
+	}
+	var env struct {
+		Result *struct {
+			Files []struct {
+				Path string `json:"path"`
+			} `json:"files"`
+			Errors []skippedRow `json:"errors"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	if env.Result == nil || len(env.Result.Errors) != 0 {
+		t.Fatalf("pure rename should score without errors: %s", out)
+	}
+	if len(env.Result.Files) != 1 || env.Result.Files[0].Path != "new.py" {
+		t.Errorf("want new.py as the one changed file: %s", out)
+	}
+}
+
 func TestCountsNameUnscoredFiles(t *testing.T) {
 	t.Parallel()
 	repo := fixtureRepo(t)

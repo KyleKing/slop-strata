@@ -193,6 +193,9 @@ func (s *session) scoreCommits(ctx context.Context, base, rev string) (*changeRe
 	if err != nil {
 		return nil, nil, fmt.Errorf("diff %s..%s: %w", base, rev, err)
 	}
+	if err := s.fillPureRenames(ctx, base, rev, files, true); err != nil {
+		return nil, nil, err
+	}
 	res, err := s.scoreChange(ctx, base, rev, files, true)
 	if err != nil {
 		return nil, nil, err
@@ -277,6 +280,9 @@ func (s *session) worktreeFiles(ctx context.Context, base string) ([]vcs.CommitF
 	files, err := s.ops.DiffWorktree(ctx, s.root, base)
 	if err != nil {
 		return nil, fmt.Errorf("diff %s..worktree: %w", base, err)
+	}
+	if err := s.fillPureRenames(ctx, base, "", files, false); err != nil {
+		return nil, err
 	}
 	untracked, err := s.ops.UntrackedFiles(ctx, s.root)
 	if err != nil {
@@ -651,6 +657,85 @@ func fileMass(m structure.FileMetrics) float64 {
 	}
 
 	return total
+}
+
+// errNoRenameBlob marks a rename whose path a revision's tree does not hold.
+var errNoRenameBlob = errors.New("rename path missing from tree")
+
+// fillPureRenames sets the blob ids of renames whose diff carries no index line,
+// which git omits for a 100% rename, from the trees the change compares.
+func (s *session) fillPureRenames(ctx context.Context, base, end string, files []vcs.CommitFile, committed bool) error {
+	var pure []*vcs.CommitFile
+	for i := range files {
+		f := &files[i]
+		if f.Status == vcs.StatusRenamed && (f.OldSHA == "" || committed && f.NewSHA == "") {
+			pure = append(pure, f)
+		}
+	}
+	if len(pure) == 0 {
+		return nil
+	}
+	oldIDs, err := s.pathIDs(ctx, base)
+	if err != nil {
+		return err
+	}
+	var newIDs map[string]string
+	if committed {
+		if newIDs, err = s.pathIDs(ctx, end); err != nil {
+			return err
+		}
+	}
+	for _, f := range pure {
+		if err := fillSHAs(f, oldIDs, newIDs, base, end); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// fillSHAs sets a pure rename's missing blob ids from the listings of its trees.
+func fillSHAs(f *vcs.CommitFile, oldIDs, newIDs map[string]string, base, end string) error {
+	if f.OldSHA == "" {
+		sha, err := blobAt(oldIDs, f.OldPath, base)
+		if err != nil {
+			return err
+		}
+		f.OldSHA = sha
+	}
+	if newIDs != nil && f.NewSHA == "" {
+		sha, err := blobAt(newIDs, f.Path, end)
+		if err != nil {
+			return err
+		}
+		f.NewSHA = sha
+	}
+
+	return nil
+}
+
+// blobAt looks up a path's blob id in a tree listing from pathIDs.
+func blobAt(ids map[string]string, path, rev string) (string, error) {
+	sha, ok := ids[path]
+	if !ok {
+		return "", fmt.Errorf("%s in %s: %w", path, rev, errNoRenameBlob)
+	}
+
+	return sha, nil
+}
+
+// pathIDs maps each blob path in a revision's tree to its blob id.
+func (s *session) pathIDs(ctx context.Context, rev string) (map[string]string, error) {
+	entries, err := s.ops.TreeEntries(ctx, s.root, rev)
+	if err != nil {
+		return nil, fmt.Errorf("listing tree at %s: %w", rev, err)
+	}
+	ids := make(map[string]string, len(entries))
+	for _, e := range entries {
+		ids[e.Path] = e.SHA
+	}
+
+	return ids, nil
 }
 
 // hasNewBlob reports whether a changed file's after side is a stored object: a
