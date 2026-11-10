@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "slop-strata JSON envelope",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, or history result. Schema version 2. Each metric's meaning is in docs (the same text as --explain).",
+  "type": "object",
+  "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
+  "additionalProperties": false,
+  "properties": {
+    "result": {"description": "The command's result, or null on a failed pair of change --pairs."},
+    "docs": {"type": "object", "additionalProperties": {"type": "string"}},
+    "tool": {"const": "slop-strata"},
+    "command": {"enum": ["change", "snapshot", "history"]},
+    "repo": {"type": "string"},
+    "at": {"type": "string", "format": "date-time"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
+    "counts": {"$ref": "#/$defs/counts"},
+    "schema": {"const": 2}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"command": {"const": "change"}}, "required": ["command"]},
+      "then": {"properties": {"result": {"anyOf": [{"$ref": "#/$defs/changeResult"}, {"type": "null"}]}}}
+    },
+    {
+      "if": {"properties": {"command": {"const": "snapshot"}}, "required": ["command"]},
+      "then": {"properties": {"result": {"$ref": "#/$defs/snapshotResult"}}}
+    },
+    {
+      "if": {"properties": {"command": {"const": "history"}}, "required": ["command"]},
+      "then": {"properties": {"result": {"$ref": "#/$defs/historyResult"}}}
+    }
+  ],
+  "$defs": {
+    "counts": {
+      "description": "Files the run could not score. A non-zero count means the numbers cover less of the tree.",
+      "type": "object",
+      "required": ["errors", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "skippedRow": {
+      "type": "object",
+      "required": ["path", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "reason": {"type": "string", "description": "Why the file was skipped (config-skip, oversize, binary, minified, generated, unsupported), or a parse error's text, which names the byte share under error nodes."}
+      }
+    },
+    "findingRow": {
+      "type": "object",
+      "required": ["path", "rule", "line", "new"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "rule": {"type": "string"},
+        "match": {"type": "string"},
+        "line": {"type": "integer", "minimum": 0},
+        "new": {"type": "boolean", "description": "True when the finding sits on a line the change added."}
+      }
+    },
+    "fileDelta": {
+      "type": "object",
+      "required": ["path", "status", "mass_before", "mass_after", "mass_grown", "over_limit", "added", "deleted"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "status": {"type": "string"},
+        "lang": {"type": "string"},
+        "mass_before": {"type": "number"},
+        "mass_after": {"type": "number"},
+        "mass_grown": {"type": "number"},
+        "over_limit": {"type": "number"},
+        "added": {"type": "integer", "minimum": 0},
+        "deleted": {"type": "integer", "minimum": 0}
+      }
+    },
+    "intent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["feat", "fix", "refactor", "test", "chore", "unknown"]},
+        "scope": {"type": "string"},
+        "summary": {"type": "string"},
+        "revert": {"type": "boolean"}
+      }
+    },
+    "changeResult": {
+      "type": "object",
+      "required": ["base", "end", "reading", "intent", "findings", "files", "delta", "dirs"],
+      "properties": {
+        "base": {"type": "string", "description": "Commit the change diffs from."},
+        "end": {"type": "string"},
+        "reading": {"type": "string", "description": "One sentence over the numbers, from rules, never a model."},
+        "intent": {"$ref": "#/$defs/intent"},
+        "findings": {"type": ["array", "null"], "items": {"$ref": "#/$defs/findingRow"}},
+        "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
+        "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
+        "files": {"type": "array", "items": {"$ref": "#/$defs/fileDelta"}},
+        "delta": {
+          "type": "object",
+          "required": ["mass_added", "mass_removed", "mass_net", "mass_grown", "over_limit", "erosion_before", "erosion_after", "lines_added", "lines_deleted"],
+          "properties": {
+            "mass_added": {"type": "number"},
+            "mass_removed": {"type": "number"},
+            "mass_net": {"type": "number", "description": "Gross added minus gross removed."},
+            "mass_grown": {"type": "number", "description": "Function-matched growth; see the mass_grown doc."},
+            "over_limit": {"type": "number"},
+            "erosion_before": {"type": "number"},
+            "erosion_after": {"type": "number"},
+            "lines_added": {"type": "integer"},
+            "lines_deleted": {"type": "integer"}
+          }
+        },
+        "dirs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["mass_net", "erosion_before", "erosion_after", "hotspot"],
+            "properties": {
+              "mass_net": {"type": "number"},
+              "erosion_before": {"type": "number"},
+              "erosion_after": {"type": "number"},
+              "hotspot": {"type": "boolean"}
+            }
+          }
+        },
+        "context": {"type": "object", "description": "Present with --context: hunks, snippets, crossed functions, messages."}
+      }
+    },
+    "aggregates": {
+      "type": "object",
+      "required": ["erosion", "mass", "func_count", "files", "over_50"],
+      "properties": {
+        "erosion": {"type": "number"},
+        "mass": {"type": "number"},
+        "func_count": {"type": "integer"},
+        "files": {"type": "integer"},
+        "files_parse_error": {"type": "integer"},
+        "over_50": {"type": "integer"},
+        "p90_len": {"type": "integer"},
+        "max_len": {"type": "integer"},
+        "p90_nesting": {"type": "integer"},
+        "max_nesting": {"type": "integer"},
+        "p90_params": {"type": "integer"},
+        "max_params": {"type": "integer"},
+        "p90_cognitive": {"type": "integer"},
+        "max_cognitive": {"type": "integer"}
+      }
+    },
+    "snapshotResult": {
+      "type": "object",
+      "required": ["rev", "dirs", "findings", "total"],
+      "properties": {
+        "rev": {"type": "string"},
+        "dirs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dir", "files", "erosion", "mass", "funcs", "over_50", "hotspot", "findings"],
+            "properties": {
+              "dir": {"type": "string"},
+              "files": {"type": "integer"},
+              "erosion": {"type": "number"},
+              "mass": {"type": "number"},
+              "funcs": {"type": "integer"},
+              "over_50": {"type": "integer"},
+              "hotspot": {"type": "number"},
+              "findings": {"type": "integer"}
+            }
+          }
+        },
+        "findings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rule", "line"],
+              "properties": {
+                "rule": {"type": "string"},
+                "line": {"type": "integer"},
+                "match": {"type": "string"},
+                "note": {"type": "string"}
+              }
+            }
+          }
+        },
+        "total": {"$ref": "#/$defs/aggregates"},
+        "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
+        "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
+        "context": {"type": "object"}
+      }
+    },
+    "historyResult": {
+      "type": "object",
+      "required": ["range", "changes", "lineage", "weeks", "virality", "pairing", "hotspots"],
+      "properties": {
+        "range": {"type": "string"},
+        "changes": {"type": "integer", "description": "First-parent commits in the window."},
+        "lineage": {
+          "type": "object",
+          "required": ["commits", "reverts", "dirs", "survival", "test_survival", "coupling", "concentration"],
+          "properties": {
+            "commits": {"type": "integer"},
+            "reverts": {"type": "integer"},
+            "dirs": {"type": "object", "additionalProperties": {"type": "object"}},
+            "survival": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["cohort", "added", "surviving", "s_30d", "s_90d"],
+                "properties": {
+                  "cohort": {"type": "string"},
+                  "added": {"type": "integer"},
+                  "surviving": {"type": "integer"},
+                  "s_30d": {"type": ["number", "null"]},
+                  "s_90d": {"type": ["number", "null"]}
+                }
+              }
+            },
+            "test_survival": {"type": "array"},
+            "coupling": {"type": ["array", "null"]},
+            "concentration": {"type": "object", "additionalProperties": {"type": "number"}}
+          }
+        },
+        "weeks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["week", "commits", "kinds", "added", "removed", "mass_net"],
+            "properties": {
+              "week": {"type": "string", "format": "date"},
+              "commits": {"type": "integer"},
+              "kinds": {"type": "object", "additionalProperties": {"type": "integer"}},
+              "added": {"type": "integer"},
+              "removed": {"type": "integer"},
+              "mass_net": {"type": "number"}
+            }
+          }
+        },
+        "virality": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "first_week", "hits_by_class", "spread_dirs"],
+            "properties": {
+              "rule": {"type": "string"},
+              "first_week": {"type": "string"},
+              "hits_by_class": {"type": "object", "additionalProperties": {"type": "integer"}},
+              "spread_dirs": {"type": "integer"}
+            }
+          }
+        },
+        "pairing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["week", "dir", "class_mass_net", "class_commits", "provisional"],
+            "properties": {
+              "week": {"type": "string"},
+              "dir": {"type": "string"},
+              "class_mass_net": {"type": "object", "additionalProperties": {"type": "number"}},
+              "class_commits": {"type": "object", "additionalProperties": {"type": "integer"}},
+              "class_churn": {"type": "object", "additionalProperties": {"type": "integer"}},
+              "provisional": {"type": "boolean"}
+            }
+          }
+        },
+        "hotspots": {"type": "object", "additionalProperties": {"type": "number"}}
+      }
+    }
+  }
+}

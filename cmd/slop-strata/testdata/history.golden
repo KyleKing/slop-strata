@@ -1,0 +1,161 @@
+{
+  "at": "",
+  "command": "history",
+  "counts": {
+    "errors": 0,
+    "skipped": 0
+  },
+  "docs": {
+    "churn_14d": "Lines added in the range that were modified or deleted within 14 days of landing. High churn reads as work that did not settle.",
+    "churn_30d": "Lines added in the range that were modified or deleted within 30 days.",
+    "concentration": "Largest single author's share of each directory's live lines. Reported per directory, never as a person ranking.",
+    "counts": "Files the run could not score: skipped (excluded by config, size, binary content, minified or generated shape) and errors (a parse that left error nodes). Metrics exclude them, so a non-zero count means the numbers cover less of the tree. Unsupported file types are listed as skipped but not counted.",
+    "coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files (code-maat's definition of co-change).",
+    "erosion": "Share of complexity mass (CC x sqrt(SLOC) per function) held by functions with cyclomatic complexity over 10, per arXiv 2603.24755. No target; watch direction per directory. When it rises on routine work, the complex functions are getting more of them.",
+    "errors": "Files the parser could not fully read, with the byte share under error nodes. Metrics still count what parsed; the row is a warning, not an abort.",
+    "experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the narrating-comment, dup-literal, dup-test-case, dead-export, and stale-prose rules and the type-any and test-reads-source families. Enable them per run with --experimental, or for a repository with experimental = true in .slop-strata.toml. A rule leaves this list when a labels file shows it clears the bar.",
+    "findings": "New rule hits attributable to this change, after the baseline and pre-existing hits are excluded.",
+    "hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
+    "intent": "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection.",
+    "mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). Gross added/removed/net are reported separately; a refactor that removes mass differs from one that adds it.",
+    "mass_grown": "Function-matched growth: for each function present after the change, max(0, mass_after - mass_before) summed, matched by name within the same file. New functions count in full. This is the mass a change actually adds, as distinct from mass_added which totals the after-side mass of every touched file.",
+    "max_cognitive": "Highest cognitive complexity in any function.",
+    "max_len": "Longest function in lines.",
+    "max_nesting": "Deepest control nesting in any function.",
+    "max_params": "Largest parameter count on any function.",
+    "over_50": "Functions longer than 50 lines. Each is a candidate to split, not a violation.",
+    "over_limit": "The share of mass_grown sitting in functions whose cyclomatic complexity exceeds 10. A change that concentrates its growth in already-complex functions is the shape erosion measures.",
+    "p90_cognitive": "90th percentile cognitive complexity (nesting-weighted decision count, approximating the SonarSource definition).",
+    "p90_len": "90th percentile function length in lines. Long functions carry context a reader must hold; watch the max, not the mean.",
+    "p90_nesting": "90th percentile control-nesting depth. Deep nesting is the shape refactors actually need to fix.",
+    "p90_params": "90th percentile parameter count. Many parameters signal a missing abstraction or a config object.",
+    "pairing": "Author classes compared on the same week and directory: net mass moved and commits each. A cell is provisional under 5 commits.",
+    "reverts": "Commits in the range that revert another change.",
+    "rework": "Young lines (\u003c=30 days) removed by fix commits: fixes to things just built.",
+    "rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted. Experimental rules report only with --experimental.",
+    "skipped": "Files excluded by config, size, binary content, minified shape, or generated code, each named with its reason. Generated means a generator marker in the first five lines, or linguist-generated in the working tree's root .gitattributes.",
+    "survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity. Null when too few lines in the cohort have run as long as the horizon.",
+    "test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count. Live files younger than a horizon are left out, and the share is null when none is old enough.",
+    "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands."
+  },
+  "repo": "\u003crepo\u003e",
+  "result": {
+    "changes": 3,
+    "hotspots": {
+      ".": 75.05455430851504
+    },
+    "lineage": {
+      "added_30d_window": 35,
+      "churned_30d": 4,
+      "commits": 3,
+      "concentration": {
+        ".": 1
+      },
+      "coupling": null,
+      "dirs": {
+        ".": {
+          "added": 36,
+          "churn_14d": 0,
+          "churn_30d": 4,
+          "removed": 4,
+          "rework": 0,
+          "touches": 3
+        }
+      },
+      "reverts": 0,
+      "survival": [
+        {
+          "added": 35,
+          "cohort": "2026-01",
+          "s_30d": null,
+          "s_90d": null,
+          "surviving": 31
+        }
+      ],
+      "test_survival": []
+    },
+    "pairing": [
+      {
+        "class_churn": {},
+        "class_commits": {
+          "person": 1
+        },
+        "class_mass_net": {
+          "person": 14.422205101855956
+        },
+        "dir": ".",
+        "provisional": true,
+        "week": "2026-01-05"
+      },
+      {
+        "class_churn": {},
+        "class_commits": {
+          "person": 1
+        },
+        "class_mass_net": {
+          "person": 4.47213595499958
+        },
+        "dir": ".",
+        "provisional": true,
+        "week": "2026-01-12"
+      },
+      {
+        "class_churn": {},
+        "class_commits": {
+          "person": 1
+        },
+        "class_mass_net": {
+          "person": -0.13070247972677507
+        },
+        "dir": ".",
+        "provisional": true,
+        "week": "2026-01-19"
+      }
+    ],
+    "range": "HEAD",
+    "virality": [
+      {
+        "first_week": "2026-01-12",
+        "hits_by_class": {
+          "person": 1
+        },
+        "rule": "py/silent-except",
+        "spread_dirs": 1
+      }
+    ],
+    "weeks": [
+      {
+        "added": 19,
+        "commits": 1,
+        "kinds": {
+          "feat": 1
+        },
+        "mass_net": 14.422205101855956,
+        "removed": 0,
+        "week": "2026-01-05"
+      },
+      {
+        "added": 5,
+        "commits": 1,
+        "kinds": {
+          "feat": 1
+        },
+        "mass_net": 4.47213595499958,
+        "removed": 0,
+        "week": "2026-01-12"
+      },
+      {
+        "added": 12,
+        "commits": 1,
+        "kinds": {
+          "refactor": 1
+        },
+        "mass_net": -0.13070247972677507,
+        "removed": 5,
+        "week": "2026-01-19"
+      }
+    ]
+  },
+  "schema": 2,
+  "tool": "slop-strata"
+}
