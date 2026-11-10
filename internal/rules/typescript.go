@@ -163,7 +163,7 @@ func tsMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if !ctx.Lang.FunctionKinds[n.Kind()] {
+		if !ctx.Lang.FunctionKinds[n.Kind()] || !isTestCallback(ctx, n) {
 			return
 		}
 		expects, mockOnly := 0, true
@@ -187,6 +187,22 @@ func tsMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 			})
 		}
 	})
+}
+
+// isTestCallback reports whether a function is the body passed to an it or test
+// call, so an enclosing describe block is not judged as one test.
+func isTestCallback(ctx *Ctx, fn *ts.Node) bool {
+	args := fn.Parent()
+	if args == nil || args.Kind() != "arguments" {
+		return false
+	}
+	call := args.Parent()
+	if call == nil || call.Kind() != kindCallExpression {
+		return false
+	}
+	callee := ctx.calleeText(call)
+
+	return callee == "it" || callee == "test"
 }
 
 // constName matches the CONSTANT_CASE shape an echoed constant has.

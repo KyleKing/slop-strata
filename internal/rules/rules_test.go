@@ -137,7 +137,7 @@ func TestRuleHits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range slices.Concat(
 		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), pyMockPatchCases(),
-		tsHitCases(), commentHitCases(),
+		tsHitCases(), tsMockOnlyCases(), commentHitCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -723,6 +723,32 @@ func pyMockPatchCases() []hitCase {
 			path: "test_client.py",
 			src:  "def test_x(client):\n    client.patch(\"/items\", json={})\n",
 			rule: mockPatch, want: 0,
+		},
+	}
+}
+
+func tsMockOnlyCases() []hitCase {
+	const mockOnly = "ts/mock-only-assert"
+
+	return []hitCase{
+		{
+			name: "it body judged alone when describe wraps it",
+			path: "svc.test.ts",
+			src: "describe(\"svc\", () => {\n  it(\"calls once\", () => {\n    const spy = vi.fn();\n" +
+				"    run(spy);\n    expect(spy).toHaveBeenCalled();\n  });\n});\n",
+			rule: mockOnly, want: 1,
+		},
+		{
+			name: "helper outside it and test stays quiet",
+			path: "helper.test.ts",
+			src:  "function helper(spy) {\n  expect(spy).toHaveBeenCalled();\n}\n",
+			rule: mockOnly, want: 0,
+		},
+		{
+			name: "return value assertion stays quiet",
+			path: "value.test.ts",
+			src:  "it(\"returns\", () => {\n  expect(run()).toBe(3);\n});\n",
+			rule: mockOnly, want: 0,
 		},
 	}
 }
