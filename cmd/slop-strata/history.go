@@ -306,7 +306,7 @@ func printHistory(w io.Writer, res *historyResult) {
 		for _, sv := range res.Lineage.Survival {
 			rows = append(rows, []string{
 				sv.Cohort, strconv.Itoa(sv.Added), strconv.Itoa(sv.Surviving),
-				fmt.Sprintf("%.2f", sv.S30), fmt.Sprintf("%.2f", sv.S90),
+				shareCell(sv.S30), shareCell(sv.S90),
 			})
 		}
 		report.Table(w, []string{"cohort", colAdded, "alive", "s30", "s90"}, rows)
@@ -353,10 +353,19 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 	for _, ts := range res.Lineage.TestSurvival {
 		rows = append(rows, []string{
 			ts.Class, strconv.Itoa(ts.Added), strconv.Itoa(ts.Dead30), strconv.Itoa(ts.Dead90),
-			fmt.Sprintf("%.2f", ts.S30), fmt.Sprintf("%.2f", ts.S90),
+			shareCell(ts.S30), shareCell(ts.S90),
 		})
 	}
 	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s30", "s90"}, rows)
+}
+
+// shareCell formats a survival share, or an em dash when the horizon runs past the data.
+func shareCell(share *float64) string {
+	if share == nil {
+		return "—"
+	}
+
+	return fmt.Sprintf("%.2f", *share)
 }
 
 // printHotspots renders the churn-weighted directory mass table.

@@ -96,7 +96,8 @@ var Docs = map[string]string{
 	"rework":    "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
 	"reverts":   "Commits in the range that revert another change.",
 	"survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, " +
-		"per monthly cohort. At-risk is approximated at month granularity.",
+		"per monthly cohort. At-risk is approximated at month granularity. Null when no line in the " +
+		"cohort has run as long as the horizon.",
 	"concentration": "Largest single author's share of each directory's live lines. Reported per " +
 		"directory, never as a person ranking.",
 	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
@@ -110,7 +111,8 @@ var Docs = map[string]string{
 		"author class and across directories (spread_dirs). Answers whether a pattern gets " +
 		"copied once it lands.",
 	"test_survival": "Share of test files added in the range that were deleted within 30 and 90 " +
-		"days, split by the adding commit's author class. Only adds observed inside the range count.",
+		"days, split by the adding commit's author class. Only adds observed inside the range count. " +
+		"Live files younger than a horizon are left out, and the share is null when none is old enough.",
 	"pairing": "Author classes compared on the same week and directory: net mass moved and " +
 		"commits each. A cell is provisional under 5 commits.",
 	"errors": "Files the parser could not fully read, with the byte share under error nodes. " +

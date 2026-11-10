@@ -67,11 +67,11 @@ type death struct {
 // months are the pinned unit: at-risk is approximated at month granularity,
 // which the cohort docs should name before quoting.
 type Survival struct {
-	Cohort    string  `json:"cohort"`
-	Added     int     `json:"added"`
-	Surviving int     `json:"surviving"`
-	S30       float64 `json:"s_30d"`
-	S90       float64 `json:"s_90d"`
+	S30       *float64 `json:"s_30d"`
+	S90       *float64 `json:"s_90d"`
+	Cohort    string   `json:"cohort"`
+	Added     int      `json:"added"`
+	Surviving int      `json:"surviving"`
 }
 
 // DirStats is a directory's aggregate over the range.
@@ -88,12 +88,12 @@ type DirStats struct {
 // and 90 days of being added. Only adds observed inside the walked range
 // count; a test file older than the range has no measurable birth.
 type TestSurvival struct {
-	Class  string  `json:"class"`
-	Added  int     `json:"added"`
-	Dead30 int     `json:"dead_30d"`
-	Dead90 int     `json:"dead_90d"`
-	S30    float64 `json:"s_30d"`
-	S90    float64 `json:"s_90d"`
+	S30    *float64 `json:"s_30d"`
+	S90    *float64 `json:"s_90d"`
+	Class  string   `json:"class"`
+	Added  int      `json:"added"`
+	Dead30 int      `json:"dead_30d"`
+	Dead90 int      `json:"dead_90d"`
 }
 
 // Result is the lineage walk's output.
@@ -513,16 +513,17 @@ func (w *Walker) survival() []Survival {
 	return out
 }
 
-// testSurvival shares each author class's test files deleted within the 30-
-// and 90-day horizons. Deaths also count toward the denominator of what was
-// added.
+// testSurvival scores each author class's test files against the 30- and
+// 90-day horizons. Deaths also count toward the denominator of what was added.
 func (w *Walker) testSurvival() []TestSurvival {
 	byClass := map[string]*TestSurvival{}
+	obsByClass := map[string][]obs{}
 	for _, tb := range w.testBirths {
 		if byClass[tb.klass] == nil {
 			byClass[tb.klass] = &TestSurvival{Class: tb.klass}
 		}
 		byClass[tb.klass].Added++
+		obsByClass[tb.klass] = append(obsByClass[tb.klass], obs{age: w.lastDay - tb.day})
 	}
 	for _, td := range w.testDeaths {
 		if byClass[td.klass] == nil {
@@ -536,18 +537,39 @@ func (w *Walker) testSurvival() []TestSurvival {
 			ts.Dead90++
 		}
 		ts.Added++
+		obsByClass[td.klass] = append(obsByClass[td.klass], obs{age: td.age, dead: true})
 	}
 	out := make([]TestSurvival, 0, len(byClass))
 	for _, c := range byClass {
-		if c.Added > 0 {
-			c.S30 = float64(c.Dead30) / float64(c.Added)
-			c.S90 = float64(c.Dead90) / float64(c.Added)
-		}
+		c.S30 = testShare(obsByClass[c.Class], horizon30Days)
+		c.S90 = testShare(obsByClass[c.Class], horizon90Days)
 		out = append(out, *c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Class < out[j].Class })
 
 	return out
+}
+
+// testShare is one minus the share of tests deleted within the horizon, among
+// tests observed for at least that long. A live test younger than the horizon
+// is censored out of the denominator. It answers nil when no test is at risk.
+func testShare(observed []obs, horizon int) *float64 {
+	atRisk, deleted := 0, 0
+	for _, o := range observed {
+		if !o.dead && o.age < horizon {
+			continue
+		}
+		atRisk++
+		if o.dead && o.age <= horizon {
+			deleted++
+		}
+	}
+	if atRisk == 0 {
+		return nil
+	}
+	share := 1 - float64(deleted)/float64(atRisk)
+
+	return &share
 }
 
 // concentration finds each directory's largest single-author share of its
@@ -604,10 +626,11 @@ func (w *Walker) totalAdded() int {
 // km is the Kaplan-Meier product-limit estimate at horizon: at each distinct
 // death age the at-risk set is every observation that reached it, dead or
 // still alive (censored observations drop out as their exposure ends). The
-// ages slice arrives sorted ascending.
-func km(ages []obs, horizon int) float64 {
-	if len(ages) == 0 {
-		return 0
+// ages slice arrives sorted ascending. It answers nil when no observation ran
+// as long as the horizon, because the estimate would extrapolate past the data.
+func km(ages []obs, horizon int) *float64 {
+	if len(ages) == 0 || ages[len(ages)-1].age < horizon {
+		return nil
 	}
 	surv := 1.0
 	for i := 0; i < len(ages); {
@@ -627,9 +650,6 @@ func km(ages []obs, horizon int) float64 {
 			surv *= 1 - float64(died)/float64(risk)
 		}
 	}
-	if surv == 1 {
-		return 1
-	}
 
-	return surv
+	return &surv
 }

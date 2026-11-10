@@ -102,3 +102,114 @@ func TestPureInsertionHunkLandsAfterAnchor(t *testing.T) {
 		t.Fatalf("removed = %d, want only the inserted lines (%d)", got, len(inserted))
 	}
 }
+
+var walkEpoch = time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+
+func commitOn(day int, files ...vcs.CommitFile) vcs.CommitRecord {
+	return vcs.CommitRecord{
+		AuthorTime: walkEpoch.Add(time.Duration(day) * 24 * time.Hour), AuthorName: "Dev", AuthorEmail: "dev@x",
+		CommitterName: "Dev", CommitterEmail: "dev@x", Files: files,
+	}
+}
+
+func share(v float64) *float64 { return &v }
+
+func TestSurvivalNullBeyondExposure(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		wantS30  *float64
+		wantS90  *float64
+		name     string
+		walkDays int
+	}{
+		{name: "walk shorter than both horizons", walkDays: 2},
+		{name: "walk past 30 days but not 90", walkDays: 45, wantS30: share(1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			w.Commit(commitOn(0, vcs.CommitFile{
+				Path: "a.go", Status: vcs.StatusAdded, Added: []string{"func a() {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+			w.Commit(commitOn(tc.walkDays, vcs.CommitFile{
+				Path: "b.go", Status: vcs.StatusAdded, Added: []string{"func b() {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+
+			var cohort lineage.Survival
+			for _, s := range w.Finish().Survival {
+				if s.Cohort == "2025-03" {
+					cohort = s
+				}
+			}
+			if !sameShare(cohort.S30, tc.wantS30) || !sameShare(cohort.S90, tc.wantS90) {
+				t.Fatalf("s30 = %v, s90 = %v; want s30 = %v, s90 = %v",
+					fmtShare(cohort.S30), fmtShare(cohort.S90), fmtShare(tc.wantS30), fmtShare(tc.wantS90))
+			}
+		})
+	}
+}
+
+func TestTestSurvivalCensorsYoungFiles(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		wantS30   *float64
+		wantS90   *float64
+		name      string
+		deleteDay int // negative keeps the file alive to the end of the walk
+		endDay    int
+	}{
+		{
+			name: "never deleted, observed past both horizons", deleteDay: -1, endDay: 100,
+			wantS30: share(1), wantS90: share(1),
+		},
+		{name: "deleted inside 30 days", deleteDay: 10, endDay: 100, wantS30: share(0), wantS90: share(0)},
+		{name: "deleted between 30 and 90 days", deleteDay: 50, endDay: 100, wantS30: share(1), wantS90: share(0)},
+		{name: "alive but younger than 30 days", deleteDay: -1, endDay: 5},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			w.Commit(commitOn(0, vcs.CommitFile{
+				Path: "pkg/a_test.go", Status: vcs.StatusAdded, Added: []string{"func TestA(t *testing.T) {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+			if tc.deleteDay >= 0 {
+				deleted := vcs.CommitFile{Path: "pkg/a_test.go", Status: vcs.StatusDeleted}
+				w.Commit(commitOn(tc.deleteDay, deleted), false, false)
+			}
+			w.Commit(commitOn(tc.endDay, vcs.CommitFile{
+				Path: "pkg/other.go", Status: vcs.StatusAdded, Added: []string{"func other() {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+
+			classes := w.Finish().TestSurvival
+			if len(classes) != 1 {
+				t.Fatalf("test survival classes = %d, want 1", len(classes))
+			}
+			if !sameShare(classes[0].S30, tc.wantS30) || !sameShare(classes[0].S90, tc.wantS90) {
+				t.Fatalf("s30 = %v, s90 = %v; want s30 = %v, s90 = %v",
+					fmtShare(classes[0].S30), fmtShare(classes[0].S90), fmtShare(tc.wantS30), fmtShare(tc.wantS90))
+			}
+		})
+	}
+}
+
+func sameShare(got, want *float64) bool {
+	if got == nil || want == nil {
+		return got == want
+	}
+
+	return *got == *want
+}
+
+func fmtShare(v *float64) string {
+	if v == nil {
+		return "null"
+	}
+
+	return fmt.Sprintf("%.2f", *v)
+}
