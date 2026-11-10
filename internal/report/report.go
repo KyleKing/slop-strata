@@ -107,7 +107,7 @@ var Docs = map[string]string{
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
-		"narrating-comment, dup-literal, dead-export, and stale-prose rules and the type-any and " +
+		"narrating-comment, dup-literal, dup-test-case, dead-export, and stale-prose rules and the type-any and " +
 		"test-reads-source families. Enable them per run with --experimental, or for a repository " +
 		"with experimental = true in .slop-strata.toml. A rule leaves this list when a labels file " +
 		"shows it clears the bar.",

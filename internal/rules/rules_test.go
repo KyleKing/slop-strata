@@ -70,6 +70,7 @@ func countRule(fs []rules.Finding, rule string) int {
 }
 
 type gateCase struct {
+	files        map[string]string
 	name         string
 	rule         string
 	experimental bool
@@ -102,11 +103,23 @@ func TestExperimentalCrossFileWaitsForFlag(t *testing.T) {
 	cases := []gateCase{
 		{name: "dead export off by default", rule: "x/dead-export", experimental: false, want: 0},
 		{name: "dead export on with flag", rule: "x/dead-export", experimental: true, want: 1},
+		{
+			name: "dup test case off by default", rule: "x/dup-test-case", experimental: false, want: 0,
+			files: sameTestBodies,
+		},
+		{
+			name: "dup test case on with flag", rule: "x/dup-test-case", experimental: true, want: 2,
+			files: sameTestBodies,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := countRule(flatten(crossFileOf(t, files, tc.experimental)), tc.rule)
+			src := files
+			if tc.files != nil {
+				src = tc.files
+			}
+			got := countRule(flatten(crossFileOf(t, src, tc.experimental)), tc.rule)
 			if got != tc.want {
 				t.Errorf("%s hits = %d, want %d", tc.rule, got, tc.want)
 			}
@@ -272,9 +285,40 @@ type crossCase struct {
 	want  int
 }
 
+// sameTestBodies is a Go test file whose two cases differ only in name.
+var sameTestBodies = map[string]string{ //nolint:gochecknoglobals // fixture shared by the flag gate
+	"p_test.go": `package p
+
+import "testing"
+
+func TestAdd(t *testing.T) {
+	a := 1
+	b := 2
+	c := a + b
+	if c != 3 {
+		t.Fatalf("got %d", c)
+	}
+	t.Log(c)
+	t.Log(a, b)
+}
+
+func TestSum(t *testing.T) {
+	a := 1
+	b := 2
+	c := a + b
+	if c != 3 {
+		t.Fatalf("got %d", c)
+	}
+	t.Log(c)
+	t.Log(a, b)
+}
+`,
+}
+
 func TestCrossFileHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range slices.Concat(crossHitCases(), staleProseCases(), deadExportCases(), cloneCases()) {
+	cases := slices.Concat(crossHitCases(), staleProseCases(), deadExportCases(), cloneCases(), dupTestCaseCases())
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(flatten(crossFileOf(t, tc.files, true)), tc.rule)
@@ -596,6 +640,11 @@ func deadExportCases() []crossCase {
 			rule: private, want: 0,
 		},
 		{
+			name:  "exported go method nothing calls is not dead",
+			files: map[string]string{"a.go": "package p\n\ntype f struct{}\n\nfunc (f) Close() error { return nil }\n"},
+			rule:  dead, want: 0,
+		},
+		{
 			name: "pyproject console script target stays quiet",
 			files: map[string]string{
 				"pyproject.toml": "[project.scripts]\ntool = \"pkg.mod:main\"\n",
@@ -617,6 +666,39 @@ func deadExportCases() []crossCase {
 // sameBody gives each file the same function body under its own name.
 func sameBody(body string) map[string]string {
 	return map[string]string{"one.py": "def load(p):\n" + body, "two.py": "def fetch(q):\n" + body}
+}
+
+// dupTestCaseCases pin which same-file bodies count as duplicate test cases.
+func dupTestCaseCases() []crossCase {
+	const dup = "x/dup-test-case"
+	const body = `	a := 1
+	b := 2
+	c := a + b
+	if c != 3 {
+		t.Fatalf("got %d", c)
+	}
+	t.Log(c)
+	t.Log(a, b)
+`
+	helpers := "package p\n\nfunc addOne(a int) int {\n" + body + "}\n\nfunc addTwo(a int) int {\n" + body + "}\n"
+	subtests := "package p\n\nimport \"testing\"\n\nfunc TestOps(t *testing.T) {\n" +
+		"\tt.Run(\"empty\", func(t *testing.T) {\n" +
+		body + "\t})\n\tt.Run(\"full\", func(t *testing.T) {\n" + body + "\t})\n}\n"
+	benches := "package p\n\nimport \"testing\"\n\nfunc BenchmarkOps(b *testing.B) {\n" +
+		"\tb.Run(\"empty\", func(b *testing.B) {\n" +
+		body + "\t})\n\tb.Run(\"full\", func(b *testing.B) {\n" + body + "\t})\n}\n"
+	its := "import { it } from 'vitest'\n\nit('adds', () => {\n  const a = 1\n  const b = 2\n  const c = a + b\n" +
+		"  if (c !== 3) {\n    throw new Error('x')\n  }\n  console.log(c)\n  console.log(a, b)\n})\n\n" +
+		"it('sums', () => {\n  const a = 1\n  const b = 2\n  const c = a + b\n" +
+		"  if (c !== 3) {\n    throw new Error('x')\n  }\n  console.log(c)\n  console.log(a, b)\n})\n"
+
+	return []crossCase{
+		{name: "same-body test functions in one file fire", files: sameTestBodies, rule: dup, want: 2},
+		{name: "same-body helpers stay quiet", files: map[string]string{"p_test.go": helpers}, rule: dup, want: 0},
+		{name: "same-body t.Run subtests fire", files: map[string]string{"p_test.go": subtests}, rule: dup, want: 2},
+		{name: "same-body b.Run closures stay quiet", files: map[string]string{"p_test.go": benches}, rule: dup, want: 0},
+		{name: "same-body it callbacks fire", files: map[string]string{"a.test.ts": its}, rule: dup, want: 2},
+	}
 }
 
 func cloneCases() []crossCase {

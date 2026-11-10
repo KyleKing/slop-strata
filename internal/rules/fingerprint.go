@@ -36,11 +36,13 @@ type LiteralUse struct {
 	Count int `json:"count"`
 }
 
-// CloneUnit is one function's normalized-body hash plus where it lives.
+// CloneUnit is one function's normalized-body hash plus where it lives. Test
+// marks a test case, whose name is the function's or, for a subtest, its label.
 type CloneUnit struct {
 	Name string `json:"name"`
 	Hash string `json:"hash"`
 	Line int    `json:"line"`
+	Test bool   `json:"test,omitempty"`
 }
 
 // IfaceDecl is one interface declaration and the method names it requires.
@@ -183,25 +185,73 @@ func collectClone(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	}
 	walk(n)
 	sum := sha1.Sum([]byte(b.String())) //nolint:gosec // dedup hash
+	name, test := testCase(ctx, n)
+	if !test {
+		name = lang.FunctionName(ctx.Lang, n, ctx.Src)
+	}
 	fp.Clones = append(fp.Clones, CloneUnit{
-		Name: lang.FunctionName(ctx.Lang, n, ctx.Src),
+		Name: name,
 		Hash: hex.EncodeToString(sum[:8]),
 		Line: lineOf(n),
+		Test: test,
 	})
+}
+
+// testCase names a function that is one test case: a top-level Go Test or
+// Benchmark function, a Python test_ function, a Go t.Run subtest closure or a
+// TS it or test callback, which are named by their label. Go's b.Run closures
+// are benchmarks, not cases, and stay out.
+func testCase(ctx *Ctx, n *ts.Node) (string, bool) {
+	switch ctx.Lang {
+	case lang.Go:
+		if n.Kind() == kindFunctionDecl {
+			name := lang.FunctionName(ctx.Lang, n, ctx.Src)
+			return name, strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Benchmark")
+		}
+
+		return callbackLabel(ctx, n, "t.Run")
+	case lang.Python:
+		name := lang.FunctionName(ctx.Lang, n, ctx.Src)
+		return name, n.Kind() == kindFunctionDef && strings.HasPrefix(name, "test_")
+	case lang.TypeScript, lang.TSX:
+		if label, ok := callbackLabel(ctx, n, "it"); ok {
+			return label, true
+		}
+
+		return callbackLabel(ctx, n, "test")
+	}
+
+	return "", false
+}
+
+// callbackLabel reads a function passed as the second argument of a call to
+// callee, returning the call's first argument as its label.
+func callbackLabel(ctx *Ctx, n *ts.Node, callee string) (string, bool) {
+	args := n.Parent()
+	if args == nil || args.NamedChildCount() < 2 || !args.NamedChild(1).Equals(*n) {
+		return "", false
+	}
+	call := args.Parent()
+	if call == nil || !ctx.Lang.CallKinds[call.Kind()] || ctx.calleeText(call) != callee {
+		return "", false
+	}
+	label := args.NamedChild(0)
+
+	return strings.Trim(ctx.Text(label), "\"'`"), strings.Contains(label.Kind(), "string")
 }
 
 // collectDecls records top-level declared names: package-level functions,
 // types, variables, and Go's functional-option helpers.
 func collectDecls(ctx *Ctx, fp *Fingerprint) {
 	declKinds := map[string]bool{
-		"function_declaration": true, "method_declaration": true, "type_declaration": true,
+		kindFunctionDecl: true, kindMethodDecl: true, "type_declaration": true,
 		"var_declaration": true, "const_declaration": true, "var_spec": true, "const_spec": true,
 		kindFunctionDef: true, "class_definition": true, "assignment": true,
 		"lexical_declaration": true, "variable_declaration": true, "interface_declaration": true,
 		"type_alias_declaration": true, "enum_declaration": true, "variable_declarator": true,
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if !declKinds[n.Kind()] || !isTopLevel(n) {
+		if !declKinds[n.Kind()] || n.Kind() == kindMethodDecl || !isTopLevel(n) {
 			return
 		}
 		text := declName(ctx, n)

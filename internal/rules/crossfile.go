@@ -260,19 +260,19 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 
 // deadExports flags an exported name no other file references, split by
 // whether the declaring file uses it: a name used only in its own file is
-// could-be-private. Names a package manifest names as entry points, and Go
-// methods that satisfy an interface declared in the tree, count as referenced.
-// Entry-point globs and test files are exempt — their exports answer a caller
-// outside the tree.
+// could-be-private. Names a package manifest names as entry points count as
+// referenced. Go methods are never reported, because a method can satisfy an
+// interface declared outside the tree. Entry-point globs and test files are
+// exempt, since their exports answer a caller outside the tree.
 func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string) {
-	refCount, ifaceMethods := referenceIndex(blobs)
+	refCount := referenceIndex(blobs)
 	entryNames, entryGlobs := manifestEntries(blobs, entryPoints)
 	for _, b := range blobs {
 		if lang.IsTestPath(b.Path) || matchAny(entryGlobs, b.Path) {
 			continue
 		}
 		for name, line := range b.Print.Exported {
-			if entryNames[name] || (ifaceMethods[name] && isGoMethod(b.Print, name)) {
+			if entryNames[name] {
 				continue
 			}
 			elsewhere := refCount[name]
@@ -297,23 +297,16 @@ func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []stri
 	}
 }
 
-// referenceIndex counts the files referencing each identifier and collects the
-// method names every declared Go interface requires.
-func referenceIndex(blobs []BlobPrint) (map[string]int, map[string]bool) {
+// referenceIndex counts the files referencing each identifier.
+func referenceIndex(blobs []BlobPrint) map[string]int {
 	refCount := map[string]int{}
-	ifaceMethods := map[string]bool{}
 	for _, b := range blobs {
 		for name := range b.Print.Referenced {
 			refCount[name]++
 		}
-		for _, iface := range b.Print.Ifaces {
-			for _, m := range iface.Methods {
-				ifaceMethods[m] = true
-			}
-		}
 	}
 
-	return refCount, ifaceMethods
+	return refCount
 }
 
 // manifestEntries splits what package manifests name as entry points into
@@ -344,17 +337,6 @@ func selfUses(fp *Fingerprint, name string) int {
 	}
 
 	return fp.Referenced[name] - 1
-}
-
-// isGoMethod reports whether a file declares a method with the given name.
-func isGoMethod(fp *Fingerprint, name string) bool {
-	for _, methods := range fp.MethodImpls {
-		if slices.Contains(methods, name) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // matchAny reports whether path matches any glob in the list.
@@ -393,7 +375,9 @@ func clones(blobs []BlobPrint, out map[string][]Finding, experimental bool) {
 			files[o.path] = true
 		}
 		if len(files) < minCloneFiles {
-			dupTestCases(hash, owners, out)
+			if experimental {
+				dupTestCases(hash, owners, out)
+			}
 
 			continue
 		}
@@ -410,21 +394,26 @@ func clones(blobs []BlobPrint, out map[string][]Finding, experimental bool) {
 	}
 }
 
-// dupTestCases flags same-file duplicates in a test file: bodies that differ
-// only in fixture data read as duplicate cases.
+// dupTestCases flags same-file test cases whose bodies match once identifiers
+// and literals are normalized, so cases that differ only in fixture data read
+// as duplicates. Helpers and benchmark closures are not cases.
 func dupTestCases(hash string, owners []cloneOwner, out map[string][]Finding) {
-	if len(owners) <= 1 {
+	var cases []cloneOwner
+	for _, o := range owners {
+		if o.unit.Test && lang.IsTestPath(o.path) {
+			cases = append(cases, o)
+		}
+	}
+	if len(cases) <= 1 {
 		return
 	}
-	for _, o := range owners {
-		if lang.IsTestPath(o.path) {
-			out[o.path] = append(out[o.path], Finding{
-				Rule: "x/dup-test-case", Line: o.unit.Line,
-				Match: o.unit.Name,
-				Note: fmt.Sprintf("same normalized body as %d tests in this file (%s)",
-					len(owners), hash[:8]),
-			})
-		}
+	for _, o := range cases {
+		out[o.path] = append(out[o.path], Finding{
+			Rule: "x/dup-test-case", Line: o.unit.Line,
+			Match: o.unit.Name,
+			Note: fmt.Sprintf("same normalized body as %d tests in this file (%s)",
+				len(cases), hash[:8]),
+		})
 	}
 }
 
