@@ -1,3 +1,21 @@
+## v0.10.0 (2026-11-10)
+
+### Feat
+
+- **explain**: list metric names and cover every table header with an entry
+- **history**: add Greenwood intervals and a median-absolute-deviation noise floor
+- **report**: mark rates from thin samples as provisional
+- **history**: add churn_14d and an eight-week mass sparkline to the directory table
+
+### Fix
+
+- **history**: print the provisional footnote only beside a marked rate
+- **rules**: skip event-loop sleep(0) in py/timing-hack
+
+### Refactor
+
+- **history**: move the week table out of printHistory
+
 ## v0.9.0 (2026-11-10)
 
 ### Feat
