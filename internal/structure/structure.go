@@ -44,10 +44,25 @@ const (
 	lineCode
 )
 
-// lines is a byte-offset index of every line in a blob.
+// byteSpan is a half-open byte range of a blob.
+type byteSpan struct{ start, end uint }
+
+func containsAny(spans []byteSpan, i uint) bool {
+	for _, s := range spans {
+		if i >= s.start && i < s.end {
+			return true
+		}
+	}
+
+	return false
+}
+
+// lines is a byte-offset index of every line in a blob, with the comment spans
+// each row carries.
 type lines struct {
-	starts []int
-	src    []byte
+	starts   []int
+	src      []byte
+	comments [][]byteSpan
 }
 
 func indexLines(src []byte) *lines {
@@ -74,24 +89,16 @@ func (l *lines) span(row int) (int, int) {
 	return l.starts[row], end
 }
 
-// isCode reports whether row carries non-whitespace, non-comment bytes, given
-// the comment node spans covering it.
-func (l *lines) isCode(row int, comments []*ts.Node) bool {
+// isCode reports whether row carries non-whitespace bytes outside its comments
+// and outside skip.
+func (l *lines) isCode(row int, skip []byteSpan) bool {
 	start, end := l.span(row)
 	for i := start; i < end; i++ {
 		b := l.src[i]
 		if b == ' ' || b == '\t' || b == '\r' {
 			continue
 		}
-		inComment := false
-		for _, c := range comments {
-			if uint(i) >= c.StartByte() && uint(i) < c.EndByte() {
-				inComment = true
-
-				break
-			}
-		}
-		if !inComment {
+		if !containsAny(l.comments[row], uint(i)) && !containsAny(skip, uint(i)) {
 			return true
 		}
 	}
@@ -103,27 +110,24 @@ func (l *lines) isCode(row int, comments []*ts.Node) bool {
 // a trailing comment counts as code.
 func classify(src []byte, root *ts.Node, l *lang.Language) ([]lineClass, *lines) {
 	idx := indexLines(src)
-	classes := make([]lineClass, len(idx.starts))
-
-	var comments []*ts.Node
+	idx.comments = make([][]byteSpan, len(idx.starts))
 	lang.EachNamed(root, func(n *ts.Node) {
-		if l.CommentKinds[n.Kind()] {
-			comments = append(comments, n)
+		if !l.CommentKinds[n.Kind()] {
+			return
+		}
+		span := byteSpan{n.StartByte(), n.EndByte()}
+		for row := int(n.StartPosition().Row); row <= int(n.EndPosition().Row) && row < len(idx.comments); row++ {
+			idx.comments[row] = append(idx.comments[row], span)
 		}
 	})
-	byRow := make([][]*ts.Node, len(idx.starts))
-	for _, c := range comments {
-		for row := int(c.StartPosition().Row); row <= int(c.EndPosition().Row) && row < len(byRow); row++ {
-			byRow[row] = append(byRow[row], c)
-		}
-	}
 
+	classes := make([]lineClass, len(idx.starts))
 	for row := range classes {
 		start, end := idx.span(row)
 		switch {
 		case start == end:
 			classes[row] = lineBlank
-		case idx.isCode(row, byRow[row]):
+		case idx.isCode(row, nil):
 			classes[row] = lineCode
 		default:
 			classes[row] = lineCommentOnly
@@ -145,6 +149,9 @@ type complexity struct {
 // walk recurses with the cognitive-complexity nesting level.
 func (c *complexity) walk(node *ts.Node, level int) {
 	kind := node.Kind()
+	if c.l.FunctionKinds[kind] {
+		return
+	}
 
 	if c.l.DecisionKinds[kind] {
 		c.cc++
@@ -191,7 +198,7 @@ const parseErrorShare = 0.01
 // Analyze measures one parsed blob.
 func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 	root := tree.RootNode()
-	classes, _ := classify(src, root, l)
+	classes, idx := classify(src, root, l)
 
 	coverage := errorCoverage(root, src)
 	fm := FileMetrics{
@@ -212,7 +219,7 @@ func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 
 	lang.EachNamed(root, func(n *ts.Node) {
 		if l.FunctionKinds[n.Kind()] {
-			fm.Funcs = append(fm.Funcs, measureFunc(l, n, src, classes))
+			fm.Funcs = append(fm.Funcs, measureFunc(l, n, src, idx))
 		}
 	})
 
@@ -239,26 +246,49 @@ func errorCoverage(root *ts.Node, src []byte) float64 {
 	return float64(bad) / float64(len(src))
 }
 
+// owned is what a function scores as its own: its comments and the spans of
+// the functions nested in it, which are scored separately.
+type owned struct {
+	nested   []byteSpan
+	comments int
+}
+
+func ownedBy(l *lang.Language, node *ts.Node) owned {
+	var o owned
+	o.collect(l, node)
+
+	return o
+}
+
+func (o *owned) collect(l *lang.Language, node *ts.Node) {
+	for i := range node.NamedChildCount() {
+		child := node.NamedChild(i)
+		if l.FunctionKinds[child.Kind()] {
+			o.nested = append(o.nested, byteSpan{child.StartByte(), child.EndByte()})
+
+			continue
+		}
+		if l.CommentKinds[child.Kind()] {
+			o.comments++
+		}
+		o.collect(l, child)
+	}
+}
+
 // measureFunc computes one function node's metrics.
-func measureFunc(l *lang.Language, node *ts.Node, src []byte, classes []lineClass) FuncMetrics {
+func measureFunc(l *lang.Language, node *ts.Node, src []byte, idx *lines) FuncMetrics {
 	startRow := int(node.StartPosition().Row)
 	endRow := int(node.EndPosition().Row)
+	own := ownedBy(l, node)
 
 	c := &complexity{l: l, src: src}
 	for i := range node.NamedChildCount() {
 		c.walk(node.NamedChild(i), 0)
 	}
 
-	comments := 0
-	lang.EachNamed(node, func(n *ts.Node) {
-		if l.CommentKinds[n.Kind()] {
-			comments++
-		}
-	})
-
 	sloc := 0
-	for row := startRow; row <= endRow && row < len(classes); row++ {
-		if classes[row] == lineCode {
+	for row := startRow; row <= endRow && row < len(idx.starts); row++ {
+		if idx.isCode(row, own.nested) {
 			sloc++
 		}
 	}
@@ -272,6 +302,6 @@ func measureFunc(l *lang.Language, node *ts.Node, src []byte, classes []lineClas
 		Cognitive: c.cognitive,
 		Nesting:   c.nesting,
 		Params:    l.ParamCount(node),
-		Comments:  comments,
+		Comments:  own.comments,
 	}
 }

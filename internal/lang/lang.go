@@ -15,7 +15,7 @@ import (
 
 // GrammarVersion bumps when a grammar or the queries over it change, so a blob
 // cached under a stale grammar is recomputed.
-const GrammarVersion = 2
+const GrammarVersion = 3
 
 // Tree-sitter node kinds shared across the language vocabularies.
 const (
@@ -101,7 +101,6 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 		"switch_statement":      true,
 		"type_switch_statement": true,
 		"select_statement":      true,
-		"func_literal":          true,
 	},
 	FlatKinds:   map[string]bool{"else": true},
 	newLanguage: func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
@@ -152,8 +151,6 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"case_clause":            true,
 		"match_statement":        true,
 		"conditional_expression": true,
-		"function_definition":    true,
-		"lambda":                 true,
 	},
 	FlatKinds:   map[string]bool{"else_clause": true},
 	newLanguage: func() *ts.Language { return ts.NewLanguage(tspy.Language()) },
@@ -198,17 +195,14 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	OpContainerKinds: map[string]bool{"binary_expression": true},
 	DecisionOps:      map[string]bool{"&&": true, "||": true, "??": true},
 	NestKinds: map[string]bool{
-		kindIfStatement:       true,
-		kindForStatement:      true,
-		"for_in_statement":    true,
-		kindWhileStatement:    true,
-		"do_statement":        true,
-		"switch_statement":    true,
-		"catch_clause":        true,
-		"ternary_expression":  true,
-		"function_expression": true,
-		"arrow_function":      true,
-		kindMethodDefinition:  true,
+		kindIfStatement:      true,
+		kindForStatement:     true,
+		"for_in_statement":   true,
+		kindWhileStatement:   true,
+		"do_statement":       true,
+		"switch_statement":   true,
+		"catch_clause":       true,
+		"ternary_expression": true,
 	},
 	FlatKinds: map[string]bool{"else": true},
 	newLanguage: func() *ts.Language {
