@@ -136,7 +136,7 @@ type hitCase struct {
 func TestRuleHits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range slices.Concat(
-		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), tsHitCases(),
+		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), tsHitCases(), commentHitCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -352,7 +352,7 @@ func crossHitCases() []crossCase {
 	}
 }
 
-func pyOrDefaultCases() []hitCase {
+func pyOrDefaultCases() []hitCase { //nolint:dupl // a case table repeats its shape by design
 	const orDefault = "py/or-default"
 
 	return []hitCase{
@@ -636,6 +636,55 @@ func cloneCases() []crossCase {
 			files: sameBody("    return g(\n        p,\n        1,\n        2,\n        3,\n" +
 				"        4,\n    )\n"),
 			rule: clone, want: 2,
+		},
+	}
+}
+
+func commentHitCases() []hitCase { //nolint:dupl // a case table repeats its shape by design
+	const narrating = "x/narrating-comment"
+
+	return []hitCase{
+		{
+			name: "change narration phrase fires",
+			path: "cache.go",
+			src:  "package p\n\n// now uses a map for lookups\nvar cache = map[string]int{}\n",
+			rule: narrating, want: 1,
+		},
+		{
+			name: "used to phrase fires",
+			path: "list.go",
+			src:  "package p\n\n// used to be a slice\nvar items []int\n",
+			rule: narrating, want: 1,
+		},
+		{
+			name: "previously in a python comment fires",
+			path: "parse.py",
+			src:  "def f():\n    # previously returned a list\n    return {}\n",
+			rule: narrating, want: 1,
+		},
+		{
+			name: "bare now stays quiet",
+			path: "warm.go",
+			src:  "package p\n\n// Now the cache is warm.\nvar warm = true\n",
+			rule: narrating, want: 0,
+		},
+		{
+			name: "bare was stays quiet",
+			path: "nil.go",
+			src:  "package p\n\n// returns nil when the key is missing, was nil before\nvar nilKey = 0\n",
+			rule: narrating, want: 0,
+		},
+		{
+			name: "ticket cited as history fires",
+			path: "rollout.go",
+			src:  "package p\n\n// see ABC-123 for the rollout\nvar rollout = 1\n",
+			rule: narrating, want: 1,
+		},
+		{
+			name: "ticket pointing at its retirement stays quiet",
+			path: "hack.go",
+			src:  "package p\n\n// remove once ABC-123 lands\nvar hack = 1\n",
+			rule: narrating, want: 0,
 		},
 	}
 }

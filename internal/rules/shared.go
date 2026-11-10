@@ -10,11 +10,10 @@ import (
 	"github.com/kyleking/slop-strata/internal/lang"
 )
 
-// narrationWords are the markers of a comment telling a diff's story rather
-// than a standing invariant. The list matches the project's comment rules:
-// words that only make sense with the change in memory.
+// narrationWords are the phrases of a comment telling a diff's story rather than
+// a standing invariant: they only make sense with the change in memory.
 var narrationWords = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
-	`(?i)\b(now|moved|renamed|previously|used to|no longer|was|as of|newly)\b`)
+	`(?i)\b(now uses|was changed|previously|no longer|used to|we changed|this PR|moved from|renamed from)\b`)
 
 // ticketRef matches a tracker id inside a comment.
 var ticketRef = regexp.MustCompile(`\b[A-Z]{2,}-\d+\b`) //nolint:gochecknoglobals // a compiled pattern is a constant
