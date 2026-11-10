@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -110,5 +114,104 @@ func TestFuncGrowthMatchesSameNamedFunctionsByOwner(t *testing.T) {
 				t.Fatalf("grown = %.3f, want %.3f", got, want)
 			}
 		})
+	}
+}
+
+const svcBefore = `def load(path):
+    try:
+        return open(path).read()
+    except Exception:
+        pass
+    return ""
+
+
+def store(path, data):
+    try:
+        return len(data)
+    except Exception:
+        pass
+    return 0
+`
+
+const svcAfter = `def load(path):
+    try:
+        return open(path).read()
+    except Exception:
+        pass
+    return ""
+
+
+def store(path, data):
+    try:
+        return len(data)
+    except OSError:
+        pass
+    return 0
+
+
+def flush(path):
+    try:
+        return 1
+    except ValueError:
+        pass
+    return 0
+`
+
+func gitRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestChangeFindingsAreNewOnlyOnAddedLines(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(dir, "svc.py"), []byte(svcBefore), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: add store")
+	if err := os.WriteFile(filepath.Join(dir, "svc.py"), []byte(svcAfter), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "fix: narrow store's except and add flush")
+
+	out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
+	if err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Findings []struct {
+				Rule string `json:"rule"`
+				Line int    `json:"line"`
+				New  bool   `json:"new"`
+			} `json:"findings"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	got := map[int]bool{}
+	for _, f := range env.Result.Findings {
+		if f.Rule == "py/silent-except" {
+			got[f.Line] = f.New
+		}
+	}
+	want := map[int]bool{4: false, 12: false, 20: true}
+	if len(got) != len(want) {
+		t.Fatalf("silent-except findings = %v, want %v", got, want)
+	}
+	for line, isNew := range want {
+		if got[line] != isNew {
+			t.Fatalf("line %d new = %t, want %t (all: %v)", line, got[line], isNew, got)
+		}
 	}
 }

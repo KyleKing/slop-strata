@@ -272,6 +272,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		res.Delta.OverLimit += over
 	}
 
+	markFindingsOld(old, res)
 	s.lastRefs(ctx, base, end, files, scored, res)
 
 	aggBefore := structure.Aggregate(before)
@@ -282,7 +283,6 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 
 	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // detached HEAD leaves intent to subjects
 	res.Intent = s.changeIntent(ctx, base, end, branch)
-	markFindingsOld(old, res)
 	s.dirDeltas(ctx, res)
 	res.Reading = readingFor(res, aggBefore, aggAfter, before, after)
 
@@ -306,7 +306,8 @@ func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[str
 }
 
 // scoreFile analyzes one changed file on both sides and folds it into res;
-// old collects the old side's (rule, match) pairs for markFindingsOld.
+// old collects the old side's (rule, match) pairs for markFindingsOld. A hit
+// is new only when its line was added by the change.
 func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map[string][]byte,
 	committed bool, baseline rules.Baseline, res *changeResult, old map[string]bool,
 ) (scoredFile, error) {
@@ -317,6 +318,7 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	res.Delta.LinesAdded += f.LinesAdded()
 	res.Delta.LinesDeleted += f.LinesDeleted()
 
+	oldAt := map[string]bool{}
 	if rep := s.oldReport(ctx, *f, oldBlobs); rep != nil && rep.Skipped == "" {
 		sf.before = &rep.Metrics
 		sf.beforePrint = rep.Print
@@ -325,6 +327,7 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 		res.Delta.MassRemoved += sf.delta.MassBefore
 		for _, fn := range rep.Findings {
 			old[fn.Rule+"\x00"+fn.Match] = true
+			oldAt[ruleLine(fn.Rule, fn.Line)] = true
 		}
 	}
 
@@ -354,13 +357,38 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	res.Delta.MassAdded += sf.delta.MassAfter
+	added := addedLines(f.Hunks)
 	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
-		res.Findings = append(res.Findings, findingRow{
-			Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
-		})
+		row := findingRow{Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
+		if oldLine, ok := added[fn.Line]; ok {
+			row.New = fn.Match != "" || !oldAt[ruleLine(fn.Rule, oldLine)]
+		}
+		res.Findings = append(res.Findings, row)
 	}
 
 	return sf, nil
+}
+
+// addedLines maps each line a file's hunks add to the old line it replaced, or
+// to 0 for a pure addition.
+func addedLines(hunks []vcs.DiffHunk) map[int]int {
+	out := map[int]int{}
+	for _, h := range hunks {
+		for i := range h.NewLines {
+			replaced := 0
+			if i < h.OldLines {
+				replaced = h.OldStart + i
+			}
+			out[h.NewStart+i] = replaced
+		}
+	}
+
+	return out
+}
+
+// ruleLine keys a finding by its rule and line on one side of a file.
+func ruleLine(rule string, line int) string {
+	return rule + "\x00" + strconv.Itoa(line)
 }
 
 // funcKey identifies a moved function exactly: a move keeps its name and
