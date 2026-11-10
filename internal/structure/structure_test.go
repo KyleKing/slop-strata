@@ -3,6 +3,7 @@ package structure_test
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -183,6 +184,32 @@ func TestAnalyzeFunctions(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("funcs = %+v\nwant   %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeLineClasses(t *testing.T) {
+	t.Parallel()
+	const lf = "def f(x):\n\n    # note\n    return x\n"
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{name: "lf line endings", src: lf},
+		{name: "crlf line endings", src: strings.ReplaceAll(lf, "\n", "\r\n")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			l := lang.ByPath("ok.py")
+			src := []byte(tc.src)
+			tree := lang.NewPool().Parse(l, src)
+			defer tree.Close()
+
+			fm := structure.Analyze(l, tree, src)
+			if fm.Lines != 4 || fm.SLOC != 2 || fm.Comments != 1 {
+				t.Errorf("lines=%d sloc=%d comments=%d, want 4, 2, 1", fm.Lines, fm.SLOC, fm.Comments)
 			}
 		})
 	}

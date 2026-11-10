@@ -76,17 +76,21 @@ func indexLines(src []byte) *lines {
 	return &lines{starts: starts, src: src}
 }
 
-// span returns the byte range of 0-based row, without its newline.
+// span returns the byte range of 0-based row, without its line ending.
 func (l *lines) span(row int) (int, int) {
 	if row < 0 || row >= len(l.starts) {
 		return 0, 0
 	}
+	start := l.starts[row]
 	end := len(l.src)
 	if row+1 < len(l.starts) {
 		end = l.starts[row+1] - 1 // drop the newline itself
 	}
+	if end > start && l.src[end-1] == '\r' {
+		end--
+	}
 
-	return l.starts[row], end
+	return start, end
 }
 
 // isCode reports whether row carries non-whitespace bytes outside its comments
