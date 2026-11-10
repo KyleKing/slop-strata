@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func staleProse(blobs []BlobPrint, out map[string][]Finding, treePaths []string)
 		files[filepath.Base(p)] = true
 	}
 	for _, b := range blobs {
-		if lang.IsTestPath(b.Path) {
+		if lang.IsTestPath(b.Path) || proseExempt(b.Path) {
 			continue
 		}
 		for tok, line := range b.Print.ProseRefs {
@@ -64,6 +65,23 @@ func staleProse(blobs []BlobPrint, out map[string][]Finding, treePaths []string)
 			}
 		}
 	}
+}
+
+// proseExempt reports whether a file records past states, where a name that no
+// longer resolves is the content rather than rot.
+func proseExempt(path string) bool {
+	base := strings.ToUpper(filepath.Base(path))
+	for _, prefix := range []string{"CHANGELOG", "HISTORY", "MIGRATION"} {
+		if strings.HasPrefix(base, prefix) {
+			return true
+		}
+	}
+	dirs := strings.Split(filepath.ToSlash(filepath.Dir(path)), "/")
+	if strings.HasPrefix(path, "docs/adr") || strings.HasSuffix(dirs[0], "-research") {
+		return true
+	}
+
+	return slices.Contains(dirs, "adr")
 }
 
 // proseIndex gathers what a prose token can name: declared, referenced, and
@@ -96,15 +114,6 @@ var fileExts = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
 	"css": true, "png": true, "svg": true,
 }
 
-// tlds are the suffixes that make a dotted token a domain or an external
-// tool's plugin name, skipped outright.
-var tlds = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
-	"com": true, "org": true, "net": true, "io": true, "dev": true,
-	"app": true, "ai": true, "me": true, "co": true, "gg": true,
-	"edu": true, "gov": true, "ca": true, "uk": true, "ac": true,
-	"us": true, "xyz": true, "nvim": true, "vim": true, "lua": true,
-}
-
 // resolvesToken answers whether the token names something real, and whether
 // it read as a file reference.
 func resolvesToken(names, files map[string]bool, tok string) (bool, bool) {
@@ -122,11 +131,26 @@ func resolvesToken(names, files map[string]bool, tok string) (bool, bool) {
 	switch {
 	case fileExts[leaf]:
 		return files[tok], true
-	case tlds[leaf]:
+	case looksLikeDomain(leaf):
 		return true, false
 	default:
 		return names[leaf] || names[tok[:strings.IndexByte(tok, '.')]], false
 	}
+}
+
+// looksLikeDomain reports whether a dotted token's last part has the shape of a
+// top-level domain or a plugin name: two to six lowercase letters.
+func looksLikeDomain(leaf string) bool {
+	if len(leaf) < 2 || len(leaf) > 6 {
+		return false
+	}
+	for _, r := range leaf {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // allSingleLetters reports whether a dotted token is an abbreviation like

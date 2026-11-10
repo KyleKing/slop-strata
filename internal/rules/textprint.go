@@ -117,10 +117,16 @@ func keyShape(text string) bool {
 	return true
 }
 
+// linkTarget matches a markdown link destination, an autolink, a bare URL, or a
+// bare host-and-path: none of them names code in the repository.
+var linkTarget = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`\]\([^)]*\)|<[a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]*>|[a-zA-Z][a-zA-Z0-9+.-]*://\S+|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,6}/\S*`)
+
 // proseTokens extracts code-shaped names from comment, docstring, and prose
 // text, mapping each to its first 1-based line.
 func proseTokens(text string, baseLine int) map[string]int {
 	out := map[string]int{}
+	text = linkTarget.ReplaceAllString(text, " ")
 	for i, l := range strings.Split(text, "\n") {
 		for _, tok := range lineTokens(l) {
 			if _, ok := out[tok]; !ok {

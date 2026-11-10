@@ -273,7 +273,7 @@ type crossCase struct {
 
 func TestCrossFileHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range crossHitCases() {
+	for _, tc := range slices.Concat(crossHitCases(), staleProseCases()) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(flatten(crossFileOf(t, tc.files, true)), tc.rule)
@@ -500,6 +500,63 @@ func tsHitCases() []hitCase {
 			src: "import { readFileSync } from \"fs\";\n" +
 				"test(\"reads\", () => {\n  readFileSync(\"src/config/app.yaml\");\n});\n",
 			rule: reads, want: 1,
+		},
+	}
+}
+
+func staleProseCases() []crossCase {
+	const stale = "x/stale-prose"
+	const prose = "Call `fetchRecords()` to load the page.\n"
+
+	return []crossCase{
+		{
+			name:  "prose name nothing in the tree declares fires",
+			files: map[string]string{"README.md": prose, "store.go": "package p\n\nfunc loadPage() {}\n"},
+			rule:  stale, want: 1,
+		},
+		{
+			name:  "prose name declared in the tree stays quiet",
+			files: map[string]string{"README.md": prose, "store.go": "package p\n\nfunc fetchRecords() {}\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name: "markdown link destination stays quiet",
+			files: map[string]string{
+				"README.md": "See [the guide](https://example.com/docs/fetchRecords.md) for details.\n",
+			},
+			rule: stale, want: 0,
+		},
+		{
+			name:  "autolink stays quiet",
+			files: map[string]string{"README.md": "Docs live at <https://example.com/fetchRecords>.\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name: "bare host and path stays quiet",
+			files: map[string]string{
+				"README.md": "Source is github.com/example/tool/blob/main/fetchRecords.md today.\n",
+			},
+			rule: stale, want: 0,
+		},
+		{
+			name:  "domain token stays quiet",
+			files: map[string]string{"README.md": "Hosted at `example.com` today.\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name:  "changelog stays quiet",
+			files: map[string]string{"CHANGELOG.md": "Renamed away from `fetchRecords()`.\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name:  "adr stays quiet",
+			files: map[string]string{"docs/adr/0001-store.md": "Chose `fetchRecords()` for loads.\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name:  "research folder stays quiet",
+			files: map[string]string{"storage-research/notes.md": "Tried `fetchRecords()` first.\n"},
+			rule:  stale, want: 0,
 		},
 	}
 }
