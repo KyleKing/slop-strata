@@ -1,3 +1,9 @@
+## v0.4.0 (2026-11-10)
+
+### Feat
+
+- add init command writing config and baseline
+
 ## v0.3.1 (2026-11-10)
 
 ### Fix
