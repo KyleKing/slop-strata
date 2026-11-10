@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kyleking/aragonite/diff"
 	"github.com/kyleking/aragonite/vcs"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -180,74 +181,97 @@ func DirOf(path string) string {
 	return "."
 }
 
-// moves carries one commit's moved-line accounting: removed-line tags keyed
-// by text for the added side to reuse, and the old positions whose removal
-// is a move rather than a death.
+// moves carries one commit's moved-line accounting: the tag each added line
+// takes from the removed line it moved from, and the old positions whose
+// removal is a move rather than a death.
 type moves struct {
-	tags   map[string][]tag
+	tags   map[addedLine]tag
 	exempt map[string]map[int]bool
+}
+
+// addedLine names an added line by its file and its index in that file's Added list.
+type addedLine struct {
+	path string
+	idx  int
 }
 
 // moveTextFloor is the fewest trimmed bytes a line needs before a text match
 // reads as a move; shorter lines like braces match by coincidence.
 const moveTextFloor = 8
 
-// moveTextKey normalizes a line for move matching.
-func moveTextKey(text string) string {
-	if key := strings.TrimSpace(text); len(key) >= moveTextFloor {
-		return key
-	}
-
-	return ""
+// removedRun is where one hunk's removed lines start: the old-file position of
+// the first line, and the path its tags are stored under before the commit.
+type removedRun struct {
+	path, tagPath string
+	pos           int
 }
 
-// collectMoves pairs the commit's removed and added line texts. Each removed
-// line whose text also arrives (up to the number of copies arriving) keeps its
-// tag: it moves rather than dying and being reborn as new code.
+// addedRun is where one hunk's added lines start in the file's Added list.
+type addedRun struct {
+	path string
+	idx  int
+}
+
+// collectMoves matches the commit's removed and added lines, one hunk at a time,
+// with diff.MatchMoves. A removed line matched to an added line keeps its tag:
+// it moves rather than dying and being reborn as new code.
 func (w *Walker) collectMoves(rec vcs.CommitRecord) *moves {
-	addCount := map[string]int{}
+	var removed, added [][]string
+	var fromRemoved []removedRun
+	var toAdded []addedRun
+
 	for i := range rec.Files {
-		for _, text := range rec.Files[i].Added {
-			if key := moveTextKey(text); key != "" {
-				addCount[key]++
+		f := &rec.Files[i]
+		tagPath := f.Path
+		if f.Status == vcs.StatusRenamed && f.OldPath != "" {
+			tagPath = f.OldPath
+		}
+
+		removedAt, addedAt := 0, 0
+		for _, h := range f.Hunks {
+			if lines := hunkSlice(f.Removed, removedAt, h.OldLines); len(lines) > 0 {
+				removed = append(removed, lines)
+				fromRemoved = append(fromRemoved, removedRun{f.Path, tagPath, h.OldStart - 1})
 			}
+
+			if lines := hunkSlice(f.Added, addedAt, h.NewLines); len(lines) > 0 {
+				added = append(added, lines)
+				toAdded = append(toAdded, addedRun{f.Path, addedAt})
+			}
+
+			removedAt += h.OldLines
+			addedAt += h.NewLines
 		}
 	}
-	mv := &moves{tags: map[string][]tag{}, exempt: map[string]map[int]bool{}}
-	for i := range rec.Files {
-		w.stashRemoved(&rec.Files[i], addCount, mv)
+
+	mv := &moves{tags: map[addedLine]tag{}, exempt: map[string]map[int]bool{}}
+	pairs := diff.MatchMoves(removed, added, diff.MoveOptions{MinRun: 1, TextFloor: moveTextFloor})
+
+	for r, a := range pairs {
+		from, to := fromRemoved[r.Seq], toAdded[a.Seq]
+		pos := from.pos + r.Line
+		lines := w.files[from.tagPath]
+		if pos < 0 || pos >= len(lines) {
+			continue
+		}
+
+		mv.tags[addedLine{to.path, to.idx + a.Line}] = lines[pos]
+		if mv.exempt[from.path] == nil {
+			mv.exempt[from.path] = map[int]bool{}
+		}
+		mv.exempt[from.path][pos] = true
 	}
 
 	return mv
 }
 
-// stashRemoved banks the tags of one file's removed lines that arrive
-// elsewhere in the same commit, keyed by text for the added side to claim.
-func (w *Walker) stashRemoved(f *vcs.CommitFile, addCount map[string]int, mv *moves) {
-	tagPath := f.Path
-	if f.Status == vcs.StatusRenamed && f.OldPath != "" {
-		tagPath = f.OldPath
+// hunkSlice returns the n lines from index from, clipped to the end of the list.
+func hunkSlice(all []string, from, n int) []string {
+	if from >= len(all) {
+		return nil
 	}
-	lines := w.files[tagPath]
-	cur := 0
-	for _, h := range f.Hunks {
-		for i := range h.OldLines {
-			pos := h.OldStart - 1 + i
-			key := ""
-			if cur < len(f.Removed) {
-				key = moveTextKey(f.Removed[cur])
-			}
-			cur++
-			if key == "" || pos < 0 || pos >= len(lines) || len(mv.tags[key]) >= addCount[key] {
-				continue
-			}
-			mv.tags[key] = append(mv.tags[key], lines[pos])
-			if mv.exempt[f.Path] == nil {
-				mv.exempt[f.Path] = map[int]bool{}
-			}
-			mv.exempt[f.Path][pos] = true
-		}
-	}
+
+	return all[from:min(from+n, len(all))]
 }
 
 // Commit applies one commit's record to the line state.
@@ -301,11 +325,9 @@ func (w *Walker) addFile(f *vcs.CommitFile, klass string, cohort, birth int,
 	for i := range n {
 		t := tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
 		kept := false
-		if i < len(f.Added) {
-			if t2, ok := mv.take(f.Added[i]); ok {
-				t = t2
-				kept = true
-			}
+		if t2, ok := mv.take(f.Path, i); ok {
+			t = t2
+			kept = true
 		}
 		if !kept {
 			births++
@@ -340,16 +362,11 @@ func (w *Walker) renameFile(f *vcs.CommitFile) {
 	}
 }
 
-// take claims the tag a moved line brings, if one was stashed for its text.
-func (mv *moves) take(text string) (tag, bool) {
-	key := moveTextKey(text)
-	if key == "" || len(mv.tags[key]) == 0 {
-		return tag{}, false
-	}
-	t := mv.tags[key][0]
-	mv.tags[key] = mv.tags[key][1:]
+// take returns the tag a moved added line brings, if its removed line was matched.
+func (mv *moves) take(path string, idx int) (tag, bool) {
+	t, ok := mv.tags[addedLine{path, idx}]
 
-	return t, true
+	return t, ok
 }
 
 // killAll records every live line of a deleted file as a death.
@@ -362,11 +379,12 @@ func (w *Walker) killAll(path string, ds *DirStats, _ vcs.CommitRecord, deathDay
 	delete(w.files, path)
 }
 
-// hunkEdit pairs a hunk with the text it adds, split out of the file-level
-// Added list in patch order before the hunks get applied last-first.
+// hunkEdit pairs a hunk with where its added lines start in the file's Added
+// list, before the hunks get applied last-first.
 type hunkEdit struct {
-	add []string
-	h   vcs.DiffHunk
+	path  string
+	first int
+	h     vcs.DiffHunk
 }
 
 // applyHunks rewrites a file's line tags through its hunks, last hunk first so
@@ -378,9 +396,8 @@ func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
 	edits := make([]hunkEdit, len(f.Hunks))
 	cur := 0
 	for i, h := range f.Hunks {
-		n := min(h.NewLines, max(len(f.Added)-cur, 0))
-		edits[i] = hunkEdit{f.Added[cur : cur+n], h}
-		cur += n
+		edits[i] = hunkEdit{f.Path, cur, h}
+		cur += h.NewLines
 	}
 	sort.Slice(edits, func(i, j int) bool { return edits[i].h.OldStart > edits[j].h.OldStart })
 	exempt := mv.exempt[f.Path]
@@ -436,12 +453,10 @@ func insertTags(edit hunkEdit, cohort, birth int, klass string,
 	births := 0
 	for i := range mid {
 		mid[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
-		if i < len(edit.add) {
-			if kept, ok := mv.take(edit.add[i]); ok {
-				mid[i] = kept
+		if kept, ok := mv.take(edit.path, edit.first+i); ok {
+			mid[i] = kept
 
-				continue
-			}
+			continue
 		}
 		births++
 	}
