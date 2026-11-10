@@ -131,6 +131,7 @@ type Walker struct {
 	testDeaths []testDeath
 	res        *Result
 	deaths     []death
+	lastDay    int
 }
 
 // NewWalker builds a Walker; class classifies a commit's author class.
@@ -163,6 +164,9 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 	klass := w.class(rec.AuthorName+" <"+rec.AuthorEmail+">", rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
 	cohort := cohortOf(rec.AuthorTime)
 	birth := days(rec.AuthorTime)
+	if birth > w.lastDay {
+		w.lastDay = birth
+	}
 
 	touched := map[string]bool{}
 	for _, f := range rec.Files {
@@ -320,18 +324,28 @@ func (w *Walker) Finish() *Result {
 	return res
 }
 
+// obs is one line's outcome for the survival estimate: the age it died at, or
+// the exposure it had when the walk ended (censored).
+type obs struct {
+	age  int
+	dead bool
+}
+
 // survival computes the Kaplan-Meier per cohort: events are line deaths at an
-// age in days; at-risk is approximated at month granularity (every birth taken
-// as day 1 of its cohort).
+// age in days, and lines still alive at the walk's end are censored at their
+// exposure, so a line born recently is at-risk only for the days it lived.
 func (w *Walker) survival() []Survival {
-	agesByCohort := map[int][]int{}
+	obsByCohort := map[int][]obs{}
 	for _, d := range w.deaths {
-		agesByCohort[d.cohort] = append(agesByCohort[d.cohort], d.age)
+		obsByCohort[d.cohort] = append(obsByCohort[d.cohort], obs{age: d.age, dead: true})
 	}
 	survivingByCohort := map[int]int{}
 	for _, lines := range w.files {
 		for _, t := range lines {
 			survivingByCohort[t.cohort]++
+			if t.cohort >= 0 {
+				obsByCohort[t.cohort] = append(obsByCohort[t.cohort], obs{age: w.lastDay - t.birthDays})
+			}
 		}
 	}
 	cohorts := make([]int, 0, len(w.births))
@@ -343,10 +357,10 @@ func (w *Walker) survival() []Survival {
 	out := make([]Survival, 0, len(cohorts))
 	for _, c := range cohorts {
 		s := Survival{Cohort: cohortLabel(c), Added: w.births[c], Surviving: survivingByCohort[c]}
-		ages := agesByCohort[c]
-		sort.Ints(ages)
-		s.S30 = km(ages, s.Added, horizon30Days)
-		s.S90 = km(ages, s.Added, horizon90Days)
+		ages := obsByCohort[c]
+		sort.Slice(ages, func(i, j int) bool { return ages[i].age < ages[j].age })
+		s.S30 = km(ages, horizon30Days)
+		s.S90 = km(ages, horizon90Days)
 		out = append(out, s)
 	}
 
@@ -441,30 +455,34 @@ func (w *Walker) totalAdded() int {
 	return total
 }
 
-// km computes the Kaplan-Meier survival share at horizon days: the product of
-// (1 - deaths/at-risk) over every event inside the horizon. At-risk counts
-// all cohort births still alive before each event.
-func km(ages []int, added, horizon int) float64 {
-	if added == 0 {
+// km is the Kaplan-Meier product-limit estimate at horizon: at each distinct
+// death age the at-risk set is every observation that reached it, dead or
+// still alive (censored observations drop out as their exposure ends). The
+// ages slice arrives sorted ascending.
+func km(ages []obs, horizon int) float64 {
+	if len(ages) == 0 {
 		return 0
 	}
 	surv := 1.0
-	risk := added
 	for i := 0; i < len(ages); {
-		j := i
-		for j < len(ages) && ages[j] == ages[i] {
-			j++
-		}
-		if ages[i] > horizon {
+		age := ages[i].age
+		if age > horizon {
 			break
 		}
-		died := j - i
-		surv *= 1 - float64(died)/float64(risk)
-		risk -= died
-		i = j
+		risk := len(ages) - i
+		died := 0
+		for i < len(ages) && ages[i].age == age {
+			if ages[i].dead {
+				died++
+			}
+			i++
+		}
+		if died > 0 {
+			surv *= 1 - float64(died)/float64(risk)
+		}
 	}
-	if risk <= 0 {
-		return 0
+	if surv == 1 {
+		return 1
 	}
 
 	return surv
