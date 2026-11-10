@@ -26,7 +26,7 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 
 - Built from [my_go_template](https://github.com/KyleKing/my_go_template). Version control through [aragonite](https://github.com/KyleKing/aragonite) `vcs`, so jj works through the colocated git repository
 - Parsing through the official [tree-sitter/go-tree-sitter](https://github.com/tree-sitter/go-tree-sitter) with the Python, TypeScript, and Go grammars, one parser pool per language, and explicit `Close`. Storage in `modernc.org/sqlite`
-- A SQLite cache keyed by (blob SHA, grammar version, rule-pack version). A commit or change score sums only the blobs it touched. The file lives under the user cache directory, and CI restores it from a cache keyed by the tool's version
+- A SQLite cache keyed by (blob SHA, path class, digest of the code that produced the payload). Path class is the language and whether the path is a test, since test-only rules read it. Rules that read the file name run outside the cache. A commit or change score sums only the blobs it touched. The file lives under the user cache directory, and CI restores it from a cache keyed by the tool's version
 - Files over a size cap or with a minified shape (very long average line) are skipped with a warning naming each one. A file that will not parse gets an error row and the run continues
 - Cross-file passes (clones, repeated literals, coupling) run over cached per-blob fingerprints, never by re-parsing
 

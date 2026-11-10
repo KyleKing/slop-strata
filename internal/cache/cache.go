@@ -1,6 +1,6 @@
 // Package cache stores per-blob analysis in SQLite so a run only ever scores
-// the blobs it has not seen, keyed by blob id plus the grammar and rule
-// versions that produced the score.
+// the blobs it has not seen. An entry is keyed by blob id, the path class the
+// blob was read under, and the digest of the code that produced it.
 package cache
 
 import (
@@ -26,12 +26,12 @@ type Store struct {
 const dirPerm = 0o750
 
 const schema = `
-CREATE TABLE IF NOT EXISTS blobs (
+CREATE TABLE IF NOT EXISTS analyses (
 	sha TEXT NOT NULL,
-	grammar INT NOT NULL,
-	rules INT NOT NULL,
+	class TEXT NOT NULL,
+	analysis TEXT NOT NULL,
 	payload BLOB NOT NULL,
-	PRIMARY KEY (sha, grammar, rules)
+	PRIMARY KEY (sha, class, analysis)
 )`
 
 // openAttempts bounds the busy retry: parallel slop-strata invocations race
@@ -114,15 +114,15 @@ func Path(toolVersion string) (string, error) {
 	return filepath.Join(base, "slop-strata", "blobs-"+toolVersion+".db"), nil
 }
 
-// Get returns the payload stored for a blob under the given versions.
-func (s *Store) Get(ctx context.Context, sha string, grammar, rules int) ([]byte, bool) {
+// Get returns the payload stored for a blob under a path class and analysis key.
+func (s *Store) Get(ctx context.Context, sha, class, analysis string) ([]byte, bool) {
 	if s.db == nil {
 		return nil, false
 	}
 	var payload []byte
 	err := s.db.QueryRowContext(ctx,
-		"SELECT payload FROM blobs WHERE sha = ? AND grammar = ? AND rules = ?",
-		sha, grammar, rules).Scan(&payload)
+		"SELECT payload FROM analyses WHERE sha = ? AND class = ? AND analysis = ?",
+		sha, class, analysis).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false
 	}
@@ -133,15 +133,15 @@ func (s *Store) Get(ctx context.Context, sha string, grammar, rules int) ([]byte
 	return payload, true
 }
 
-// Put stores a blob's payload under the given versions.
-func (s *Store) Put(ctx context.Context, sha string, grammar, rules int, payload []byte) {
+// Put stores a blob's payload under a path class and analysis key.
+func (s *Store) Put(ctx context.Context, sha, class, analysis string, payload []byte) {
 	if s.db == nil {
 		return
 	}
 	// A failed write loses only a memo; the answer was already computed.
 	if _, err := s.db.ExecContext(ctx,
-		"INSERT OR REPLACE INTO blobs (sha, grammar, rules, payload) VALUES (?, ?, ?, ?)",
-		sha, grammar, rules, payload); err != nil {
+		"INSERT OR REPLACE INTO analyses (sha, class, analysis, payload) VALUES (?, ?, ?, ?)",
+		sha, class, analysis, payload); err != nil {
 		return
 	}
 }

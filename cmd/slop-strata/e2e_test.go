@@ -11,6 +11,26 @@ import (
 	"testing"
 )
 
+// TestMain points the user cache at a throwaway directory, so a run never reads
+// or writes the developer's blob cache and a stale entry cannot pass a test.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "slop-strata-cmd-test")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("HOME", dir); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_CACHE_HOME", dir); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	if err := os.RemoveAll(dir); err != nil {
+		panic(err)
+	}
+	os.Exit(code)
+}
+
 // fixtureRepo builds a small repo exercising every pipeline stage: a complex
 // function, a silent error, a timing-hack test, a rename, and a worktree edit.
 func fixtureRepo(t *testing.T) string {
@@ -38,7 +58,7 @@ func fixtureRepo(t *testing.T) string {
 
 import "fmt"
 
-// was a stub
+// now uses a plain loop
 func big(a, b, c int) int {
 	if a > 0 {
 		for i := 0; i < a; i++ {

@@ -9,13 +9,6 @@ import (
 	"github.com/kyleking/slop-strata/internal/lang"
 )
 
-// Version bumps when a rule's logic changes so cached findings are recomputed.
-const Version = 6
-
-// experimentalCacheSlot offsets the cache key of an experimental run, so a
-// default run never reads a payload scored without the experimental rules.
-const experimentalCacheSlot = 1 << 16
-
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.
 const (
@@ -46,15 +39,6 @@ type Finding struct {
 	Note  string `json:"note,omitempty"`
 	Match string `json:"match,omitempty"`
 	Line  int    `json:"line"`
-}
-
-// CacheVersion is the rule-set number a blob's payload is stored under.
-func CacheVersion(experimental bool) int {
-	if experimental {
-		return Version + experimentalCacheSlot
-	}
-
-	return Version
 }
 
 // Ctx is what a per-blob rule sees.
@@ -101,7 +85,18 @@ var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile 
 	{ID: "x/single-entry-registry", Apply: singleEntryRegistry, Experimental: true},
 	{ID: ruleXNarratingComment, Apply: narratingComment, Experimental: true},
 	{ID: "x/comment-density", Apply: commentDensity, Experimental: true},
-	{ID: "x/spent-test", TestOnly: true, Apply: spentTest, Experimental: true},
+}
+
+// PathFindings runs the rules that read the file name rather than its content.
+// They stay out of the blob cache, which is keyed by content, so they run on
+// every path.
+func PathFindings(path string, test, experimental bool) []Finding {
+	var findings []Finding
+	if test && experimental {
+		spentTest(&Ctx{Path: path}, &findings)
+	}
+
+	return findings
 }
 
 // Run applies every rule appropriate for the blob.

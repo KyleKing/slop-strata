@@ -696,7 +696,10 @@ func dupTestCaseCases() []crossCase {
 		{name: "same-body test functions in one file fire", files: sameTestBodies, rule: dup, want: 2},
 		{name: "same-body helpers stay quiet", files: map[string]string{"p_test.go": helpers}, rule: dup, want: 0},
 		{name: "same-body t.Run subtests fire", files: map[string]string{"p_test.go": subtests}, rule: dup, want: 2},
-		{name: "same-body b.Run closures stay quiet", files: map[string]string{"p_test.go": benches}, rule: dup, want: 0},
+		{
+			name: "same-body b.Run closures stay quiet", files: map[string]string{"p_test.go": benches},
+			rule: dup, want: 0,
+		},
 		{name: "same-body it callbacks fire", files: map[string]string{"a.test.ts": its}, rule: dup, want: 2},
 	}
 }

@@ -13,10 +13,6 @@ import (
 	tests "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
-// GrammarVersion bumps when a grammar or the queries over it change, so a blob
-// cached under a stale grammar is recomputed.
-const GrammarVersion = 4
-
 // Tree-sitter node kinds shared across the language vocabularies.
 const (
 	kindComment          = "comment"

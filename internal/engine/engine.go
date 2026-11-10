@@ -38,15 +38,15 @@ type cached struct {
 
 // Analyzer scores blobs through the cache.
 type Analyzer struct {
-	pool    *lang.Pool
-	store   *cache.Store
-	cfg     *config.Config
-	ruleSet int
+	pool     *lang.Pool
+	store    *cache.Store
+	cfg      *config.Config
+	analysis string
 }
 
 // New builds an Analyzer. Store may be a no-op store.
 func New(cfg *config.Config, store *cache.Store) *Analyzer {
-	return &Analyzer{pool: lang.NewPool(), store: store, cfg: cfg, ruleSet: rules.CacheVersion(cfg.Experimental)}
+	return &Analyzer{pool: lang.NewPool(), store: store, cfg: cfg, analysis: analysisKey(cfg.Experimental)}
 }
 
 // Skip reports whether a path is excluded by config or unsupported.
@@ -113,13 +113,15 @@ func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte
 		return rep
 	}
 
-	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, a.ruleSet); ok {
+	class := pathClass(path)
+	if payload, ok := a.store.Get(ctx, sha, class, a.analysis); ok {
 		var c cached
 		if err := json.Unmarshal(payload, &c); err == nil {
 			rep.Metrics = c.Metrics
 			rep.Findings = c.Findings
 			rep.Print = c.Print
 			rep.Lang = c.Metrics.Lang
+			a.addPathFindings(rep)
 
 			return rep
 		}
@@ -139,10 +141,18 @@ func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte
 
 	payload, err := json.Marshal(cached{Metrics: rep.Metrics, Findings: rep.Findings, Print: rep.Print})
 	if err == nil {
-		a.store.Put(ctx, sha, lang.GrammarVersion, a.ruleSet, payload)
+		a.store.Put(ctx, sha, class, a.analysis, payload)
 	}
+	a.addPathFindings(rep)
 
 	return rep
+}
+
+// addPathFindings appends the findings that depend on the file name, which the
+// cached payload never holds.
+func (a *Analyzer) addPathFindings(rep *FileReport) {
+	test := lang.IsTestPath(rep.Path)
+	rep.Findings = append(rep.Findings, rules.PathFindings(rep.Path, test, a.cfg.Experimental)...)
 }
 
 // minified reports whether content looks machine-packed: very long average
@@ -180,7 +190,8 @@ func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []
 
 		return rep
 	}
-	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, a.ruleSet); ok {
+	class := pathClass(path)
+	if payload, ok := a.store.Get(ctx, sha, class, a.analysis); ok {
 		var c cached
 		if err := json.Unmarshal(payload, &c); err == nil {
 			rep.Print = c.Print
@@ -191,7 +202,7 @@ func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []
 	rep.Print = rules.CollectText(path, content)
 	payload, err := json.Marshal(cached{Print: rep.Print})
 	if err == nil {
-		a.store.Put(ctx, sha, lang.GrammarVersion, a.ruleSet, payload)
+		a.store.Put(ctx, sha, class, a.analysis, payload)
 	}
 
 	return rep
