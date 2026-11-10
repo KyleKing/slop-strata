@@ -37,36 +37,62 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// pyOrDefault flags `x or <literal>` fallbacks: a default that also swallows
-// legitimate falsy values (0, "", [], None) is a silent fallback.
+// pyOrDefault flags `param or []` and `param or {}`: a parameter defaulting to
+// None that the fallback quietly replaces with an empty container. Other
+// fallbacks, such as `.get(k) or ""`, are idiom.
 func pyOrDefault(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Python {
 		return
-	}
-	literals := map[string]bool{
-		"string": true, "concatenated_string": true, "integer": true, "float": true,
-		"true": true, "false": true, "none": true,
-		"list": true, "dictionary": true, "tuple": true, "set": true,
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		if n.Kind() != "boolean_operator" {
 			return
 		}
-		op, right := "", (*ts.Node)(nil)
-		for i := range n.ChildCount() {
-			child := n.Child(i)
-			if !child.IsNamed() {
-				op = ctx.Text(child)
-			} else {
-				right = child
-			}
+		left := n.ChildByFieldName("left")
+		right := n.ChildByFieldName("right")
+		op := n.ChildByFieldName("operator")
+		if left == nil || right == nil || op == nil || ctx.Text(op) != "or" {
+			return
 		}
-		if op == "or" && right != nil && literals[right.Kind()] {
-			*findings = append(*findings, Finding{
-				Rule: "py/or-default", Line: lineOf(n), Match: ctx.Text(right),
-			})
+		if left.Kind() != kindIdentifier || !emptyContainer(right) || !isParamOfEnclosing(ctx, n, ctx.Text(left)) {
+			return
 		}
+		*findings = append(*findings, Finding{
+			Rule: "py/or-default", Line: lineOf(n), Match: ctx.Text(right),
+		})
 	})
+}
+
+// emptyContainer reports whether a node is an empty list or dict literal.
+func emptyContainer(n *ts.Node) bool {
+	return (n.Kind() == "list" || n.Kind() == "dictionary") && n.NamedChildCount() == 0
+}
+
+// isParamOfEnclosing reports whether name is a parameter of the function that
+// holds the node.
+func isParamOfEnclosing(ctx *Ctx, n *ts.Node, name string) bool {
+	fn := n.Parent()
+	for fn != nil && fn.Kind() != kindFunctionDef {
+		fn = fn.Parent()
+	}
+	if fn == nil {
+		return false
+	}
+	params := fn.ChildByFieldName("parameters")
+	if params == nil {
+		return false
+	}
+	for _, p := range lang.NamedChildren(params) {
+		target := p.ChildByFieldName("name")
+		if target == nil && p.Kind() == kindIdentifier {
+			target = p
+		}
+		if target != nil && ctx.Text(target) == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 // pyTypeAny flags `Any` in type positions: annotations, generic parameters,
@@ -95,7 +121,7 @@ func pyTypeAny(ctx *Ctx, findings *[]Finding) {
 
 				return
 			}
-			if p.Kind() == "function_definition" || p.Kind() == "class_definition" {
+			if p.Kind() == kindFunctionDef || p.Kind() == "class_definition" {
 				return
 			}
 		}

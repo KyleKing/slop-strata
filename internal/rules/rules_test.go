@@ -135,7 +135,9 @@ type hitCase struct {
 
 func TestRuleHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range slices.Concat(goHitCases(), goReadsCases(), pyHitCases(), tsHitCases()) {
+	for _, tc := range slices.Concat(
+		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), tsHitCases(),
+	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(findingsOf(t, tc.path, tc.src, true), tc.rule)
@@ -350,8 +352,58 @@ func crossHitCases() []crossCase {
 	}
 }
 
-func pyHitCases() []hitCase {
+func pyOrDefaultCases() []hitCase {
+	const orDefault = "py/or-default"
+
+	return []hitCase{
+		{
+			name: "none default replaced by an empty list fires",
+			path: "items.py",
+			src:  "def f(items=None):\n    return items or []\n",
+			rule: orDefault, want: 1,
+		},
+		{
+			name: "none default replaced by an empty dict fires",
+			path: "mapping.py",
+			src:  "def f(mapping=None):\n    return mapping or {}\n",
+			rule: orDefault, want: 1,
+		},
+		{
+			name: "get fallback to an empty string stays quiet",
+			path: "get.py",
+			src:  "def f(d, k):\n    return d.get(k) or \"\"\n",
+			rule: orDefault, want: 0,
+		},
+		{
+			name: "string literal fallback on a parameter stays quiet",
+			path: "name.py",
+			src:  "def f(name):\n    return name or \"unknown\"\n",
+			rule: orDefault, want: 0,
+		},
+		{
+			name: "zero fallback on a parameter stays quiet",
+			path: "count.py",
+			src:  "def f(n):\n    return n or 0\n",
+			rule: orDefault, want: 0,
+		},
+		{
+			name: "call result fallback stays quiet",
+			path: "call.py",
+			src:  "def f():\n    total = compute() or []\n    return total\n",
+			rule: orDefault, want: 0,
+		},
+		{
+			name: "local variable fallback stays quiet",
+			path: "local.py",
+			src:  "def f():\n    rows = []\n    return rows or []\n",
+			rule: orDefault, want: 0,
+		},
+	}
+}
+
+func pyReadsCases() []hitCase {
 	const reads = "py/test-reads-source"
+
 	return []hitCase{
 		{
 			name: "repo file read through __file__ fires",

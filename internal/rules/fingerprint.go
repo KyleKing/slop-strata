@@ -192,7 +192,7 @@ func collectDecls(ctx *Ctx, fp *Fingerprint) {
 	declKinds := map[string]bool{
 		"function_declaration": true, "method_declaration": true, "type_declaration": true,
 		"var_declaration": true, "const_declaration": true, "var_spec": true, "const_spec": true,
-		"function_definition": true, "class_definition": true, "assignment": true,
+		kindFunctionDef: true, "class_definition": true, "assignment": true,
 		"lexical_declaration": true, "variable_declaration": true, "interface_declaration": true,
 		"type_alias_declaration": true, "enum_declaration": true, "variable_declarator": true,
 	}

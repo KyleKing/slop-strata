@@ -30,6 +30,7 @@ const (
 const (
 	kindCallExpression  = "call_expression"
 	kindExportStatement = "export_statement"
+	kindFunctionDef     = "function_definition"
 	kindIdentifier      = "identifier"
 	kindTypeIdentifier  = "type_identifier"
 	kindGenericType     = "generic_type"
