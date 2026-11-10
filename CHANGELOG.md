@@ -1,3 +1,9 @@
+## v0.3.1 (2026-11-10)
+
+### Fix
+
+- **cache**: retry the WAL-and-schema open race across parallel runs
+
 ## v0.3.0 (2026-11-10)
 
 ### Feat
