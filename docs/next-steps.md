@@ -4,10 +4,7 @@ Checked against the code at 5c196df. Items from the v0.6.0 audit that are now do
 
 ## Output that misleads
 
-- `churn_30d` counts a line's death within 30 days of its birth, in the directory where the line dies. A rename carries birth days into the new path without adding to `added`, so churn can exceed added. `calcipy/experiments` at 594d31b shows 381 churn against 122 added. The `--explain churn_30d` text says "lines added in the range," which does not match. Pick the definition, then fix the text or the count.
-- `--explain survival_ci` names a field the JSON does not carry. The fields are `s30_ci` and `s90_ci`.
-- `history` text omits the pairing rows and the survival intervals. Both are JSON only.
-- `history` prints the hotspot table in name order, not score order.
+- `history` text omits the pairing rows. They are JSON only.
 - `history` does not group changes by reading. Only `change` prints a reading.
 
 ## Rules below the bar

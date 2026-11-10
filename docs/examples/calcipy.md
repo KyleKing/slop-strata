@@ -49,36 +49,37 @@ week        commits  added  removed  mass
 2026-08-31  10       +672   -904     +2~
 ~ within one noise floor (7) of the median week
 
-cohort   added  alive  s_30d  s_90d
-2026-01  11497  7021   0.69   0.64
-2026-03  686    576    0.93   0.93
-2026-07  922    553    0.99   —
-2026-08  1258   1088   —      —
-2026-09  320    315    —      —
+cohort   added  alive  s_30d              s_90d
+2026-01  11497  7021   0.69 [0.68, 0.70]  0.64 [0.63, 0.65]
+2026-03  686    576    0.93 [0.91, 0.95]  0.93 [0.91, 0.95]
+2026-07  922    553    0.99 [0.98, 0.99]  —
+2026-08  1258   1088   —                  —
+2026-09  320    315    —                  —
 
 test files by class  added  dead<30d  dead<90d  s_30d  s_90d
 person               8      1         1         0.83   0.83
 
 hotspot                score
-calcipy/markup_writer  6852
-tests/experiments      5480
-tests                  5475
-calcipy/experiments    45996
-...
-calcipy/tasks          11447
+calcipy                35565
+tests/tasks            29614
+calcipy/tasks          11129
+tests/experiments      5464
+tests                  5431
+calcipy/markup_writer  5353
+calcipy/experiments    2897
 
 dir                                     added  removed  churn_14d  churn_30d  rework  concentration  mass_8w
-.                                       4247   3763     1266       1286       704     0.55           ▁▁▁▁▁▁▁▁
+.                                       4247   3763     1273       1293       704     0.55           ▁▁▁▁▁▁▁▁
 ...
-.github/workflows                       260    63       20         22         0       0.74           ▁▁▁▁▁▁▁▁
-calcipy                                 239    335      135        136        12      0.76           ▁▁▁▁▁▁▁▁
+calcipy                                 239    335      121        122        12      0.76           ▁▁▁▁▁▁▁▁
 ...
-calcipy/code_tag_collector              81     347      20         20         0       0.94
-calcipy/experiments                     122    442      381        381        10      0.65           ▁▁█▁▁▁▁▂
-calcipy/markup_writer                   112    87       32         32         1       0.59           ▁▁▁▁▁▁█▁
-calcipy/tasks                           258    126      36         36         3       0.75           ▁▁█▁▁▁▁▁
+calcipy/experiments                     122    442      24         24         10      0.65           ▁▁█▁▁▁▁▂
+calcipy/markup_writer                   112    87       25         25         1       0.59           ▁▁▁▁▁▁█▁
+calcipy/tasks                           258    126      35         35         3       0.75           ▁▁█▁▁▁▁▁
 ...
-tests/tasks                             771    361      248        248        24      0.72           ▁▁█▁▁▁▃▁
+src/calcipy/experiments                 360    42       360        360        0       —
+...
+tests/tasks                             771    361      249        249        24      0.72           ▁▁█▁▁▁▃▁
 ...
 
 rule                 first hit   spread by class
@@ -93,9 +94,11 @@ The `~` marks a week whose net mass sits within one noise floor of the median we
 
 ### The hotspot table
 
-A hotspot score is 30-day churn times the directory's live complexity mass. The table lists directories alphabetically, so read the score column to rank them. The score has no unit you can read on its own.
+A hotspot score is 30-day churn times the directory's live complexity mass. The table is sorted by score, highest first.
 
-`calcipy/experiments` scores 45,996, which is 381 churned lines times 120.7 mass. Its `churn_14d` and `churn_30d` are both 381, so every churned line died within 14 days of being written. `calcipy` scores 39,647, which is 136 churned lines times 291.5 mass. The two rank close for different reasons. One has more churn, and the other has more live mass.
+Churn is credited to the directory where a line was written. It is not charged to the directory where the line later died. So `calcipy` scores 35,565, which is 122 churned lines times 291.5 mass, and `tests/tasks` scores 29,614, which is 249 churned lines times 118.9 mass. The two scores rank close for different reasons. One has more churn, and the other has more live mass.
+
+`calcipy/experiments` scores 2,897, which is 24 churned lines times 120.7 mass. An earlier version of slop-strata charged churn to where lines died, and it showed 381 for this directory. The difference is churn from lines written under `src/calcipy/experiments` before a rename moved them. That churn now sits on the `src` row, which shows 360.
 
 The score says where recent edits meet complexity. It does not say whether those edits were wrong, and a directory that is still being built will score high.
 
@@ -103,7 +106,7 @@ The score says where recent edits meet complexity. It does not say whether those
 
 A cohort is the lines added in one calendar month. Survival is the Kaplan-Meier share of those lines still alive at 30 and 90 days.
 
-The January cohort added 11,497 lines. Of those, 7,021 are still alive at the pinned revision. Its `s_30d` is 0.69 and its `s_90d` is 0.64, which reads as: about 69% of January's lines were still there after 30 days, and about 64% after 90. The Greenwood 95% intervals are narrow here, [0.68, 0.70] at 30 days and [0.63, 0.65] at 90 days, because the cohort has 11,497 lines behind it. The JSON carries them as `s30_ci` and `s90_ci`. The text table does not print them.
+The January cohort added 11,497 lines. Of those, 7,021 are still alive at the pinned revision. Its `s_30d` is 0.69 and its `s_90d` is 0.64, which reads as: about 69% of January's lines were still there after 30 days, and about 64% after 90. The bracketed pair is the Greenwood 95% interval, [0.68, 0.70] at 30 days and [0.63, 0.65] at 90 days. The interval is narrow because the cohort has 11,497 lines behind it. The JSON carries the same values as `s30_ci` and `s90_ci`.
 
 A dash means too few lines in the cohort have been in the tree as long as the horizon. The July cohort has `s_30d` but no `s_90d`, because no line from July had been in the tree for 90 days by September 3. The August and September cohorts have neither, because too few of their lines had reached 30 days at the pinned revision.
 
@@ -169,7 +172,7 @@ The last sentence is the one to use. A single erosion number says little. The di
 ## What the numbers do not tell you
 
 - They describe one repository with one main author. The person class has 110 of 115 commits, and the agent class has five commits in one week.
-- Churn is not the same as added lines. `calcipy/experiments` shows 381 churn against 122 added. A rename carries each line's birth day into the new path without adding to `added`, so a line that dies in the renamed directory within 30 days of its original birth counts as churn there. The `churn_30d` text says "lines added in the range," which does not describe that case.
+- Churn belongs to the directory where a line was written. A directory can show churn from code that now lives somewhere else, which is why the `src/calcipy/experiments` row shows 360 churn while `calcipy/experiments` shows 24.
 - Survival treats a rewritten line as dead. It does not judge whether the rewrite was an improvement.
 - Hotspot scores rank directories against each other. They do not say how much work a directory needs.
 - Rule hits are syntax matches. `py/mock-only-assert` reports the pattern, and a person still has to decide whether the test is weak.

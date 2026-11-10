@@ -87,10 +87,10 @@ week        commits  added  removed  mass
 2026-08-31  10       +672   -904     +2~
 ~ within one noise floor (7) of the median week
 
-cohort   added  alive  s_30d  s_90d
-2026-01  11497  7021   0.69   0.64
-2026-03  686    576    0.93   0.93
-2026-07  922    553    0.99   —
+cohort   added  alive  s_30d              s_90d
+2026-01  11497  7021   0.69 [0.68, 0.70]  0.64 [0.63, 0.65]
+2026-03  686    576    0.93 [0.91, 0.95]  0.93 [0.91, 0.95]
+2026-07  922    553    0.99 [0.98, 0.99]  —
 ...
 ```
 
@@ -104,7 +104,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `mass grown` is how much a change adds to the functions it touches, with new functions counted in full. `--explain mass_grown`
 - `erosion` is the share of mass held by functions with cyclomatic complexity over 10. `--explain erosion`
 - `over_limit` is the share of mass grown that lands in functions already over CC 10. `--explain over_limit`
-- `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written. `--explain churn_30d`
+- `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written, credited to the directory they were written in. `--explain churn_30d`
 - `rework` counts young lines removed by a fix commit. `--explain rework`
 - `hotspot` is 30-day churn times a directory's live mass. `--explain hotspot`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`

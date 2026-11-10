@@ -40,7 +40,7 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 
 ### 2. Time (git only, no parsing)
 
-- Churn within 14 and 30 days of a line's addition, counted where the line dies. Lines keep their birth day through moves and renames, so churn and survival follow the code and not the path
+- Churn within 14 and 30 days of a line's addition, credited to the directory the line was added in, so churn never exceeds the lines that directory added. Lines keep their birth day through moves and renames, so churn and survival follow the code and not the path
 - Line survival by change cohort (Kaplan-Meier, as [git-of-theseus](https://github.com/erikbern/git-of-theseus) does), with Greenwood 95% intervals at each horizon. The unit and cohort definitions are pinned and documented, because two 2026 studies of agent code ([arXiv 2601.16809](https://arxiv.org/abs/2601.16809), [arXiv 2604.00917](https://arxiv.org/abs/2604.00917)) disagree on direction. A horizon with too few lines old enough to reach it reports no rate, rather than an extrapolated one
 - Revert and rework rate: reverts, and fix commits touching recently added lines
 - Hotspots as churn × complexity, and change coupling by degree of co-change, skipping very large commits ([code-maat](https://github.com/adamtornhill/code-maat) definitions)
@@ -86,7 +86,7 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 
 - `change` prints a short block: the reading, then a table of deltas, then findings by rule. It shows only what moved, and `--all` shows the rest
 - `snapshot` prints a per-directory table, ranked by hotspot score
-- `history` prints trends per directory as a table with sparklines. The per-class pairing rows and the survival intervals are in JSON only
+- `history` prints trends per directory as a table with sparklines. The per-class pairing rows are in JSON only
 - `--json` on `change`, `snapshot`, and `history` is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML
 - second-look calls `change` behind the first frame and shows the reading and deltas on the review screen
 - Every number is documented where it is printed: `--help` and `--explain <metric>` say what it counts, its threshold, and the behavior it should change, and the JSON carries the same text per field. There is no separate glossary to drift from the code
