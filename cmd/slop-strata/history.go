@@ -461,7 +461,7 @@ func printHistory(w io.Writer, res *historyResult) {
 				rateCell(sv.S30, sv.Provisional), rateCell(sv.S90, sv.Provisional),
 			})
 		}
-		report.Table(w, []string{"cohort", colAdded, "alive", "s30", "s90"}, rows)
+		report.Table(w, []string{"cohort", colAdded, "alive", "s_30d", "s_90d"}, rows)
 		provisionalNote(w, res.Lineage.Survival, func(s lineage.Survival) bool { return s.Provisional },
 			lineage.ProvisionalLines)
 	}
@@ -515,7 +515,7 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 			rateCell(ts.S30, ts.Provisional), rateCell(ts.S90, ts.Provisional),
 		})
 	}
-	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s30", "s90"}, rows)
+	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s_30d", "s_90d"}, rows)
 	provisionalNote(w, res.Lineage.TestSurvival, func(t lineage.TestSurvival) bool { return t.Provisional },
 		lineage.ProvisionalTests)
 }
@@ -561,5 +561,5 @@ func printHotspots(w io.Writer, res *historyResult) {
 		rows = append(rows, []string{d, fmt.Sprintf("%.0f", res.Hotspots[d])})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i][1] > rows[j][1] })
-	report.Table(w, []string{"hotspot (churn30 × mass)", "score"}, rows)
+	report.Table(w, []string{"hotspot", "score"}, rows)
 }

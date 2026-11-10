@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -479,5 +480,45 @@ func TestExplain(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "complexity mass") {
 		t.Fatalf("explain output: %s", out.String())
+	}
+}
+
+// metricHeaders are the text table columns that name a metric. Each needs the
+// same --explain entry as the JSON docs map.
+var metricHeaders = []string{ //nolint:gochecknoglobals // the header vocabulary is fixed
+	"churn_14d", "churn_30d", "concentration", "erosion", "hotspot", "mass", "mass_8w",
+	"over_50", "rework", "rule_hits", "s_30d", "s_90d",
+}
+
+func TestExplainCoversEveryMetric(t *testing.T) {
+	t.Parallel()
+	var listing bytes.Buffer
+	if err := run(context.Background(), []string{"--explain"}, &listing, io.Discard); err != nil {
+		t.Fatalf("--explain with no name: %v", err)
+	}
+	names := slices.Concat(report.Names(), metricHeaders)
+	for _, name := range names {
+		if !strings.Contains(listing.String(), name+"\n") {
+			t.Errorf("--explain with no name does not list %s", name)
+		}
+	}
+	for name := range report.Docs {
+		checkExplain(t, name)
+	}
+	for _, name := range metricHeaders {
+		checkExplain(t, name)
+	}
+}
+
+func checkExplain(t *testing.T, name string) {
+	t.Helper()
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"--explain", name}, &out, io.Discard); err != nil {
+		t.Errorf("--explain %s: %v", name, err)
+
+		return
+	}
+	if !strings.HasPrefix(out.String(), name+"\n") || len(strings.TrimSpace(out.String())) <= len(name) {
+		t.Errorf("--explain %s has no explain text: %q", name, out.String())
 	}
 }

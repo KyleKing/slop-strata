@@ -136,6 +136,10 @@ var Docs = map[string]string{
 		"whose net sits within one floor of the median week shows no measurable change, so each " +
 		"is marked within_noise and printed with a ~.",
 	"within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week.",
+	"s_30d": "Survival at 30 days: the Kaplan-Meier share of lines still alive at 30 days (cohort " +
+		"rows) or of test files not deleted within 30 days (class rows). Null when too few reached " +
+		"30 days; see survival and test_survival.",
+	"s_90d": "Survival at 90 days, on the same basis as s_30d.",
 	"survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, " +
 		"per monthly cohort. At-risk is approximated at month granularity. Null when too few lines " +
 		"in the cohort have run as long as the horizon.",
@@ -175,6 +179,11 @@ var Docs = map[string]string{
 		"types are listed as skipped but not counted.",
 	"intent": "The change's stated purpose read off commit metadata: Conventional Commit type, " +
 		"branch name, then issue keywords, plus revert detection.",
+}
+
+// Names lists every metric --explain answers, sorted.
+func Names() []string {
+	return SortedKeys(Docs)
 }
 
 // Explain prints a metric's doc for --explain.

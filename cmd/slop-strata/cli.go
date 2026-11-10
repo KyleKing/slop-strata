@@ -201,6 +201,7 @@ Run "slop-strata <command> --help" for that command's flags.
 
 Global:
   --explain NAME   print a metric's doc: erosion, mass, churn_30d, survival, ...
+                   (no NAME lists every metric)
   -v, --version    print the version (with --json: {"version", "cache"})
   -h, --help       this text
 
@@ -305,7 +306,8 @@ func run(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 	}
 }
 
-// runExplain prints one metric's doc for "--explain NAME" or "--explain=NAME".
+// runExplain prints one metric's doc for "--explain NAME" or "--explain=NAME", or
+// every metric name for a bare "--explain".
 func runExplain(argv []string, stdout io.Writer) error {
 	name, inline, hasInline := strings.Cut(argv[0], "=")
 	if name != "--explain" {
@@ -315,7 +317,11 @@ func runExplain(argv []string, stdout io.Writer) error {
 	value := inline
 	if !hasInline {
 		if len(rest) == 0 {
-			return fmt.Errorf("--explain needs a metric name: %w", errUsage)
+			for _, n := range report.Names() {
+				report.Fprintln(stdout, n)
+			}
+
+			return nil
 		}
 		value, rest = rest[0], rest[1:]
 	}

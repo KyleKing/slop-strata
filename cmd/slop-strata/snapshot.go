@@ -248,7 +248,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 			fmt.Sprintf("%.0f", d.Mass), strconv.Itoa(d.Over50), strconv.Itoa(d.Findings),
 		})
 	}
-	report.Table(w, []string{colDir, "files", "erosion", "mass", ">50", "hits"}, rows)
+	report.Table(w, []string{colDir, "files", "erosion", "mass", "over_50", "rule_hits"}, rows)
 	provisionalNote(w, res.Dirs, func(d dirSnapshot) bool { return d.Provisional }, structure.ProvisionalFuncs)
 
 	if all && len(res.Findings) > 0 {
