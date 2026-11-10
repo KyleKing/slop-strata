@@ -157,7 +157,7 @@ The highest-value addition and the hardest. Things go stale where no compiler lo
 - Dead exports: an exported symbol with no reference in the repository, with entry points (CLI commands, plugin registrations, `__all__`, package `exports`) declared in config so they are not reported — shipped as `x/dead-export`
 - Stale options and flags: defined with no caller passing a non-default value (shipped as `x/unused-option`), or read with no writer anywhere in config
 - Stale config keys: a key in TOML, YAML, JSON, or Pkl that no code reads by name — shipped as `x/stale-config` over the files `config_paths` names, opt-in so tool and CI config stays quiet. Still open: a code read of a key no config defines
-- Stale prose: an identifier in a comment, docstring, or Markdown file that no longer resolves — shipped as `x/stale-prose`. Still open: a TODO or "remove when" whose forward-pointing ticket is closed (read through `gh` when available)
+- Stale prose: an identifier in a comment, docstring, or Markdown file that no longer resolves — shipped as `x/stale-prose`. `change` reports only names the change removed, since history shows they existed. A snapshot reports every unresolved name, behind `--experimental`. Still open: a TODO or "remove when" whose forward-pointing ticket is closed (read through `gh` when available)
 - Across updates: a symbol whose last reference was removed in a change is reported on that change, which is when the author still remembers it
 - Dynamic references (reflection, string-built names, dependency injection) make this unsound, so every finding names why the tool believes it is dead and a baseline file absorbs accepted ones
 

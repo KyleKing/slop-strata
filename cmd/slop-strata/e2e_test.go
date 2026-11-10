@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -469,6 +470,52 @@ func TestChangeLastRef(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("last use of helper not flagged: %s", out)
+	}
+}
+
+func TestChangeReportsProseNamingRemovedNames(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "--initial-branch=main")
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("lib.go", "package main\n\nfunc old_helper() int { return 1 }\n\nfunc main() { _ = old_helper() }\n")
+	write("README.md", "# Fixture\n\nCall `old_helper` first.\n\nThe client wraps `requests.Session`.\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "feat: add helper")
+	write("lib.go", "package main\n\nfunc new_helper() int { return 1 }\n\nfunc main() { _ = new_helper() }\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "refactor: rename helper")
+
+	out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
+	if err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Findings []struct {
+				Path  string `json:"path"`
+				Rule  string `json:"rule"`
+				Match string `json:"match"`
+				Line  int    `json:"line"`
+			} `json:"findings"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	var proseHits []string
+	for _, f := range env.Result.Findings {
+		if f.Rule == "x/stale-prose" {
+			proseHits = append(proseHits, fmt.Sprintf("%s:%d %s", f.Path, f.Line, f.Match))
+		}
+	}
+	if want := []string{"README.md:3 old_helper"}; !slices.Equal(proseHits, want) {
+		t.Fatalf("stale prose = %v, want %v", proseHits, want)
 	}
 }
 

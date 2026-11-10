@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"cmp"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -89,18 +90,81 @@ func proseExempt(path string) bool {
 func proseIndex(blobs []BlobPrint) map[string]bool {
 	names := map[string]bool{}
 	for _, b := range blobs {
-		for n := range b.Print.Declared {
-			names[n] = true
-		}
-		for n := range b.Print.Referenced {
-			names[n] = true
-		}
-		for n := range b.Print.Imports {
-			names[n] = true
-		}
+		addNames(names, b.Print)
 	}
 
 	return names
+}
+
+func addNames(names map[string]bool, fp *Fingerprint) {
+	for n := range fp.Declared {
+		names[n] = true
+	}
+	for n := range fp.Referenced {
+		names[n] = true
+	}
+	for n := range fp.Imports {
+		names[n] = true
+	}
+}
+
+// RemovedNameProse flags unresolved prose mentions of names base has and rev lacks.
+func RemovedNameProse(base, rev map[string]*Fingerprint, touched map[string]bool) map[string][]Finding {
+	present := map[string]bool{}
+	for _, fp := range rev {
+		addNames(present, fp)
+	}
+	gone := map[string]bool{}
+	for _, fp := range base {
+		addNames(gone, fp)
+	}
+	for n := range gone {
+		if present[n] {
+			delete(gone, n)
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+
+	out := map[string][]Finding{}
+	for path, fp := range rev {
+		if !proseScanned(path, touched) {
+			continue
+		}
+		for tok, line := range fp.ProseRefs {
+			if resolved, isFile := resolvesToken(present, nil, tok); resolved || isFile || !namedBy(gone, tok) {
+				continue
+			}
+			out[path] = append(out[path], Finding{
+				Rule: "x/stale-prose", Line: line, Match: tok, Note: "name removed by this change",
+			})
+		}
+	}
+	for _, fs := range out {
+		slices.SortFunc(fs, func(a, b Finding) int {
+			return cmp.Or(cmp.Compare(a.Line, b.Line), strings.Compare(a.Match, b.Match))
+		})
+	}
+
+	return out
+}
+
+func proseScanned(path string, touched map[string]bool) bool {
+	if lang.IsTestPath(path) || proseExempt(path) {
+		return false
+	}
+
+	return touched[path] || lang.TextKind(path) == lang.TextProse
+}
+
+func namedBy(gone map[string]bool, tok string) bool {
+	if gone[tok] {
+		return true
+	}
+	i := strings.LastIndexByte(tok, '.')
+
+	return i >= 0 && gone[tok[i+1:]]
 }
 
 // fileExts are the suffixes that make a dotted token a file name rather than

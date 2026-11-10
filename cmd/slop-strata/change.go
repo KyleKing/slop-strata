@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -377,7 +378,10 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	}
 
 	markFindingsOld(old, res)
-	s.lastRefs(ctx, base, end, files, scored, res)
+	if basePrints, err := s.treePrints(ctx, base); err == nil {
+		s.lastRefs(ctx, end, files, scored, basePrints, res)
+		s.removedNameProse(ctx, basePrints, files, newSides, scored, baseline, res)
+	}
 
 	aggBefore := structure.Aggregate(before)
 	aggAfter := structure.Aggregate(after)
@@ -978,13 +982,9 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 // lastRefs flags a symbol whose last live reference this change removed: its
 // declaration still stands at the end of the change, but nothing uses it now.
 // The pass is observational — a failed tree read skips it, never fails the run.
-func (s *session) lastRefs(ctx context.Context, base, end string,
-	files []vcs.CommitFile, scored []scoredFile, res *changeResult,
+func (s *session) lastRefs(ctx context.Context, end string,
+	files []vcs.CommitFile, scored []scoredFile, basePrints map[string]*rules.Fingerprint, res *changeResult,
 ) {
-	basePrints, err := s.treePrints(ctx, base)
-	if err != nil {
-		return
-	}
 	endPrints, err := s.treePrints(ctx, end)
 	if err != nil {
 		return
@@ -1017,7 +1017,7 @@ func (s *session) lastRefs(ctx context.Context, base, end string,
 	}
 }
 
-// treePrints fingerprints every code blob in a revision's tree.
+// treePrints fingerprints every code, prose, and config blob in a revision's tree.
 func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules.Fingerprint, error) {
 	entries, err := s.ops.TreeEntries(ctx, s.root, rev)
 	if err != nil {
@@ -1025,7 +1025,7 @@ func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules
 	}
 	var want []string
 	for _, e := range entries {
-		if lang.ByPath(e.Path) != nil {
+		if lang.ByPath(e.Path) != nil || lang.TextKind(e.Path) != "" {
 			want = append(want, e.SHA)
 		}
 	}
@@ -1035,19 +1035,64 @@ func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules
 	}
 	var reqs []engine.Request
 	for _, e := range entries {
-		if lang.ByPath(e.Path) != nil {
+		switch {
+		case lang.ByPath(e.Path) != nil:
 			reqs = append(reqs, engine.Request{Path: e.Path, SHA: e.SHA, Content: blobs[e.SHA]})
+		case lang.TextKind(e.Path) != "":
+			reqs = append(reqs, engine.Request{Path: e.Path, SHA: e.SHA, Content: blobs[e.SHA], Text: true})
 		}
 	}
 	s.eng.Prefetch(ctx, reqs)
 	prints := map[string]*rules.Fingerprint{}
 	for _, r := range reqs {
-		if rep := s.eng.Analyze(ctx, r.Path, r.SHA, r.Content); rep.Print != nil {
+		var rep *engine.FileReport
+		if r.Text {
+			rep = s.eng.AnalyzeText(ctx, r.Path, r.SHA, r.Content)
+		} else {
+			rep = s.eng.Analyze(ctx, r.Path, r.SHA, r.Content)
+		}
+		if rep.Print != nil {
 			prints[r.Path] = rep.Print
 		}
 	}
 
 	return prints, nil
+}
+
+// removedNameProse flags prose naming a name this change removed, reading the revision as base plus changed files.
+func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*rules.Fingerprint,
+	files []vcs.CommitFile, newSides []side, scored []scoredFile, baseline rules.Baseline, res *changeResult,
+) {
+	rev := maps.Clone(basePrints)
+	touched := map[string]bool{}
+	for i := range files {
+		f := &files[i]
+		if f.OldPath != "" {
+			delete(rev, f.OldPath)
+		}
+		if f.Status == vcs.StatusDeleted {
+			delete(rev, f.Path)
+
+			continue
+		}
+		touched[f.Path] = true
+		fp := scored[i].afterPrint
+		if fp == nil && newSides[i].content != nil && lang.TextKind(f.Path) != "" {
+			fp = s.eng.AnalyzeText(ctx, f.Path, newBlobSHA(*f, newSides[i].content), newSides[i].content).Print
+		}
+		if fp != nil {
+			rev[f.Path] = fp
+		}
+	}
+
+	hits := rules.RemovedNameProse(basePrints, rev, touched)
+	for _, path := range report.SortedKeys(hits) {
+		for _, fn := range baseline.Suppress(path, hits[path]) {
+			res.Findings = append(res.Findings, findingRow{
+				Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
+			})
+		}
+	}
 }
 
 // useCounts tallies how many files use each name, discounting a file's own
