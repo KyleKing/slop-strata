@@ -2,6 +2,7 @@ package rules_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -134,7 +135,7 @@ type hitCase struct {
 
 func TestRuleHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range goHitCases() {
+	for _, tc := range slices.Concat(goHitCases(), goReadsCases(), pyHitCases(), tsHitCases()) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(findingsOf(t, tc.path, tc.src, true), tc.rule)
@@ -215,6 +216,46 @@ func goHitCases() []hitCase {
 			path: "both.go",
 			src:  "package p\n\nfunc g() {\n\t_, _ = f()\n}\n",
 			rule: silent, want: 1,
+		},
+	}
+}
+
+func goReadsCases() []hitCase {
+	const reads = "go/test-reads-source"
+
+	return []hitCase{
+		{
+			name: "go repo file read through a parent path fires",
+			path: "read_test.go",
+			src: "package p\n\nfunc TestRead(t *testing.T) {\n" +
+				"\t_, _ = os.ReadFile(\"../../internal/rules/rules.go\")\n}\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "go testdata read stays quiet",
+			path: "testdata_test.go",
+			src: "package p\n\nfunc TestRead(t *testing.T) {\n" +
+				"\t_, _ = os.ReadFile(filepath.Join(\"testdata\", \"case.json\"))\n}\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "go temp dir read stays quiet",
+			path: "temp_test.go",
+			src: "package p\n\nfunc TestRead(t *testing.T) {\n" +
+				"\t_, _ = os.ReadFile(filepath.Join(t.TempDir(), \"case.json\"))\n}\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "go root helper read fires",
+			path: "root_test.go",
+			src:  "package p\n\nfunc TestRead(t *testing.T) {\n\t_, _ = os.ReadFile(root + \"/go.mod\")\n}\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "go stream read stays quiet",
+			path: "stream_test.go",
+			src:  "package p\n\nfunc TestRead(t *testing.T) {\n\t_, _ = io.ReadAll(resp.Body)\n}\n",
+			rule: reads, want: 0,
 		},
 	}
 }
@@ -305,6 +346,108 @@ func crossHitCases() []crossCase {
 				"a/four.ts":  "const m = require(\"./modules/reporting-window\")\n",
 			},
 			rule: dup, want: 0,
+		},
+	}
+}
+
+func pyHitCases() []hitCase {
+	const reads = "py/test-reads-source"
+	return []hitCase{
+		{
+			name: "repo file read through __file__ fires",
+			path: "test_pkg.py",
+			src: "from pathlib import Path\n\n\ndef test_x():\n" +
+				"    text = (Path(__file__).parent.parent / \"pyproject.toml\").read_text()\n    assert text\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "fixture under testdata stays quiet",
+			path: "test_fixture.py",
+			src: "from pathlib import Path\n\n\ndef test_x():\n" +
+				"    text = (Path(__file__).parent / \"testdata\" / \"case.json\").read_text()\n    assert text\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "tmp_path output stays quiet",
+			path: "test_tmp.py",
+			src:  "def test_x(tmp_path):\n    assert (tmp_path / \"out.py\").read_text()\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "parent-relative open fires",
+			path: "test_docs.py",
+			src:  "def test_x():\n    with open(\"../README.md\") as f:\n        assert f.read()\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "write mode open stays quiet",
+			path: "test_write.py",
+			src:  "def test_x():\n    with open(\"config.toml\", \"w\") as f:\n        f.write(\"\")\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "path passed in as a parameter stays quiet",
+			path: "test_param.py",
+			src:  "def test_x(path):\n    assert open(path).read()\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "ast.parse of a computed module source fires",
+			path: "test_ast.py",
+			src:  "import ast\n\n\ndef test_x(source):\n    assert ast.parse(source)\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "ast.parse of a literal snippet stays quiet",
+			path: "test_snippet.py",
+			src:  "import ast\n\n\ndef test_x():\n    assert ast.parse(\"x = 1\")\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "inspect.getsource fires",
+			path: "test_inspect.py",
+			src:  "import inspect\n\n\ndef test_x(mod):\n    assert inspect.getsource(mod)\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "data file outside the source extensions stays quiet",
+			path: "test_csv.py",
+			src:  "def test_x():\n    assert open(\"data.csv\").read()\n",
+			rule: reads, want: 0,
+		},
+	}
+}
+
+func tsHitCases() []hitCase {
+	const reads = "ts/test-reads-source"
+	return []hitCase{
+		{
+			name: "config read through __dirname fires",
+			path: "reader.test.ts",
+			src: "import { readFileSync } from \"fs\";\nimport path from \"path\";\n" +
+				"test(\"reads\", () => {\n  readFileSync(path.join(__dirname, \"../config.json\"), \"utf8\");\n});\n",
+			rule: reads, want: 1,
+		},
+		{
+			name: "temp directory read stays quiet",
+			path: "temp.test.ts",
+			src: "import { readFileSync } from \"fs\";\n" +
+				"test(\"reads\", () => {\n  readFileSync(path.join(tmpDir, \"case.json\"));\n});\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "fixture read stays quiet",
+			path: "fixture.test.ts",
+			src: "import { readFileSync } from \"fs\";\n" +
+				"test(\"reads\", () => {\n  readFileSync(\"fixtures/case.json\");\n});\n",
+			rule: reads, want: 0,
+		},
+		{
+			name: "source file read by literal path fires",
+			path: "literal.test.ts",
+			src: "import { readFileSync } from \"fs\";\n" +
+				"test(\"reads\", () => {\n  readFileSync(\"src/config/app.yaml\");\n});\n",
+			rule: reads, want: 1,
 		},
 	}
 }

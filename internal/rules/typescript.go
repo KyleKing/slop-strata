@@ -103,15 +103,17 @@ func tsModuleMock(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// tsTestReadsSource flags tests that read files.
+// tsTestReadsSource flags tests that read repository source, config, or docs.
 func tsTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	if !isTS(ctx) {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
 		for _, suffix := range []string{"readFileSync", "readdirSync", "readJSONSync", ".readFile"} {
-			if callee == suffix || strings.HasSuffix(callee, "."+suffix) || strings.HasSuffix(callee, suffix) {
-				*findings = append(*findings, Finding{Rule: "ts/test-reads-source", Line: lineOf(n), Match: callee})
+			if strings.HasSuffix(callee, suffix) {
+				if readsRepoFile(firstArgText(ctx, n)) {
+					*findings = append(*findings, Finding{Rule: "ts/test-reads-source", Line: lineOf(n), Match: callee})
+				}
 
 				return
 			}

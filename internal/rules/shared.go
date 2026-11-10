@@ -2,6 +2,8 @@ package rules
 
 import (
 	"regexp"
+	"slices"
+	"strings"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
@@ -152,4 +154,86 @@ func namedLiteralEntries(ctx *Ctx, decl *ts.Node, containerKind, entryKind strin
 	}
 
 	return entries, name
+}
+
+// sourceExt matches a literal that names a source, config, or doc file.
+var sourceExt = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`\.(py|go|ts|tsx|js|toml|yaml|yml|json|md|cfg|ini)\b`)
+
+// quotedLiteral matches a string literal in any of the quoting styles the
+// three languages use.
+var quotedLiteral = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	"\"[^\"]*\"|'[^']*'|`[^`]*`")
+
+// repoRef matches code that reaches the repository from the file itself or from
+// a root helper.
+var repoRef = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`(?i)__file__|__dirname|__filename|\b(repo|project)_?(root|dir|path)?\b|\w*root\b`)
+
+// tempRef matches code that names a directory the test creates.
+var tempRef = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`TempDir|tempfile|mkdtemp|NamedTemporaryFile|(?i)\b(tmp|out)\w*`)
+
+// fixtureDirs hold data a test is meant to read, not the repository's own files.
+var fixtureDirs = map[string]bool{ //nolint:gochecknoglobals // a fixed vocabulary
+	"__snapshots__": true, "cassettes": true, "fixtures": true, "testdata": true,
+}
+
+// readsRepoFile reports whether a path expression names repository source,
+// config, or docs, rather than temp output or fixture data.
+func readsRepoFile(expr string) bool {
+	literals, code := splitLiterals(expr)
+	if tempRef.MatchString(code) || slices.ContainsFunc(literals, inFixtureDir) {
+		return false
+	}
+	if repoRef.MatchString(code) || slices.ContainsFunc(literals, parentRelative) {
+		return true
+	}
+
+	return slices.ContainsFunc(literals, sourceExt.MatchString)
+}
+
+// computedSource reports whether an expression is built at run time rather than
+// written as a literal, outside any temp directory.
+func computedSource(expr string) bool {
+	literals, code := splitLiterals(expr)
+
+	return len(literals) == 0 && strings.TrimSpace(code) != "" && !tempRef.MatchString(code)
+}
+
+// splitLiterals separates an expression's string literals from its code.
+func splitLiterals(expr string) ([]string, string) {
+	matches := quotedLiteral.FindAllString(expr, -1)
+	literals := make([]string, 0, len(matches))
+	for _, lit := range matches {
+		literals = append(literals, strings.Trim(lit, "\"'`"))
+	}
+
+	return literals, quotedLiteral.ReplaceAllString(expr, " ")
+}
+
+// inFixtureDir reports whether a literal path runs through a fixture directory.
+func inFixtureDir(lit string) bool {
+	for _, seg := range strings.Split(lit, "/") {
+		if fixtureDirs[seg] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parentRelative reports whether a literal path climbs out of its directory.
+func parentRelative(lit string) bool {
+	return strings.Contains(lit, "../") || lit == ".."
+}
+
+// firstArgText answers the text of a call's first argument, or "" for none.
+func firstArgText(ctx *Ctx, call *ts.Node) string {
+	args := call.ChildByFieldName("arguments")
+	if args == nil || args.NamedChildCount() == 0 {
+		return ""
+	}
+
+	return ctx.Text(args.NamedChild(0))
 }

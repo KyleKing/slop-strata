@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"regexp"
 	"strings"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -114,22 +115,81 @@ func pyMockPatch(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// pyTestReadsSource flags tests that open or parse files: a test coupled to
-// source, config, or docs text breaks on every unrelated edit.
+// pyTestReadsSource flags tests that open or parse repository source, config,
+// or docs: a test coupled to that text breaks on every unrelated edit.
 func pyTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
-		switch {
-		case callee == "ast.parse":
-			*findings = append(*findings, Finding{Rule: rulePyTestReadsSource, Line: lineOf(n), Match: callee})
-		case callee == "open" || strings.HasSuffix(callee, ".open"),
-			strings.HasSuffix(callee, ".read_text"), strings.HasSuffix(callee, ".read_bytes"),
-			strings.HasSuffix(callee, ".readlines"):
+		if pyReadsSource(ctx, n, callee) {
 			*findings = append(*findings, Finding{Rule: rulePyTestReadsSource, Line: lineOf(n), Match: callee})
 		}
 	})
+}
+
+// pyReadsSource reports whether a call reads repository files or a module's
+// source. Writes and reads of temp or fixture paths do not count.
+func pyReadsSource(ctx *Ctx, call *ts.Node, callee string) bool {
+	switch {
+	case callee == "inspect.getsource" || callee == "inspect.getsourcelines":
+		return true
+	case callee == "ast.parse":
+		return computedSource(firstArgText(ctx, call))
+	case writesFile(ctx, call):
+		return false
+	case callee == "open":
+		return readsRepoFile(firstArgText(ctx, call))
+	case isPathRead(callee):
+		return readsRepoFile(receiverText(ctx, call))
+	default:
+		return false
+	}
+}
+
+// openModeLit matches a literal file mode such as "w" or "rb+".
+var openModeLit = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pattern is a constant
+	`^["'][rwxabt+]{1,3}["']$`)
+
+// writesFile reports whether a call passes a write, append, or create mode.
+func writesFile(ctx *Ctx, call *ts.Node) bool {
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return false
+	}
+	for _, arg := range lang.NamedChildren(args) {
+		text := ctx.Text(arg)
+		if openModeLit.MatchString(text) && strings.ContainsAny(text, "wxa+") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isPathRead reports whether a callee is a method that reads a path object.
+func isPathRead(callee string) bool {
+	for _, suffix := range []string{".read_text", ".read_bytes", ".readlines", ".open"} {
+		if strings.HasSuffix(callee, suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// receiverText answers the text of a method call's object, the path it reads.
+func receiverText(ctx *Ctx, call *ts.Node) string {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return ""
+	}
+	obj := fn.ChildByFieldName("object")
+	if obj == nil {
+		return ""
+	}
+
+	return ctx.Text(obj)
 }
 
 // pyMockAsserts are the unittest.mock assertion names a spy-only test calls.

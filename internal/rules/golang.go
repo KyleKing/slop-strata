@@ -100,7 +100,7 @@ func goTypeAny(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// goTestReadsSource flags tests that read files.
+// goTestReadsSource flags tests that read repository source, config, or docs.
 func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Go {
 		return
@@ -108,7 +108,9 @@ func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	ctx.eachCall(func(n *ts.Node, callee string) {
 		for _, suffix := range []string{".ReadFile", ".Open", ".OpenFile", ".ReadAll"} {
 			if strings.HasSuffix(callee, suffix) {
-				*findings = append(*findings, Finding{Rule: "go/test-reads-source", Line: lineOf(n), Match: callee})
+				if readsRepoFile(firstArgText(ctx, n)) {
+					*findings = append(*findings, Finding{Rule: "go/test-reads-source", Line: lineOf(n), Match: callee})
+				}
 
 				return
 			}
