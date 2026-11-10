@@ -36,11 +36,12 @@
     "reverts": "Commits in the range that revert another change.",
     "rework": "Young lines (\u003c=30 days) removed by fix commits: fixes to things just built.",
     "rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted. Experimental rules report only with --experimental.",
+    "s30_ci": "Greenwood 95% confidence interval for a cohort's survival at 30 days, as [low, high] clipped to 0 and 1. It widens when few lines reach the horizon, so read a wide interval as a weak estimate.",
+    "s90_ci": "Greenwood 95% confidence interval for a cohort's survival at 90 days, on the same basis as s30_ci.",
     "s_30d": "Survival at 30 days: the Kaplan-Meier share of lines still alive at 30 days (cohort rows) or of test files not deleted within 30 days (class rows). Null when too few reached 30 days; see survival and test_survival.",
     "s_90d": "Survival at 90 days, on the same basis as s_30d.",
     "skipped": "Files excluded by config, size, binary content, minified shape, or generated code, each named with its reason. Generated means a generator marker in the first five lines, or linguist-generated in the working tree's root .gitattributes.",
     "survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity. Null when too few lines in the cohort have run as long as the horizon.",
-    "survival_ci": "Greenwood 95% confidence interval for a cohort's survival at 30 and 90 days, as [low, high] clipped to 0 and 1. It widens when few lines reach the horizon, so read a wide interval as a weak estimate.",
     "test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count. Live files younger than a horizon are left out, and the share is null when none is old enough.",
     "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands.",
     "within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week."
