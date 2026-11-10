@@ -1,3 +1,23 @@
+## v0.9.0 (2026-11-10)
+
+### Feat
+
+- **report**: publish the JSON schema and golden subcommand output
+- **engine**: skip generated files by marker and linguist-generated
+- **report**: count skipped and unparsed files in every envelope
+- **cli**: per-command help, exit 2 on usage errors, and version JSON
+- **change**: score many revision pairs in one process with --pairs
+
+### Fix
+
+- **intent**: break kind ties by commit order so readings repeat
+- **cache**: key blobs by path class and the digest of the analysis code
+- **rules**: limit dup-test-case to test cases and skip Go methods in dead-export
+
+### Perf
+
+- score blobs on a worker pool with one parser per worker
+
 ## v0.8.0 (2026-11-10)
 
 ### Feat
