@@ -44,7 +44,7 @@ func tsAsUnknownAs(ctx *Ctx, findings *[]Finding) {
 			}
 		}
 		switch {
-		case typeArg != nil && ctx.Text(typeArg) == "unknown":
+		case typeArg != nil && ctx.Text(typeArg) == textUnknown:
 			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})
 		case inner != nil && inner.Kind() == "as_expression":
 			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})

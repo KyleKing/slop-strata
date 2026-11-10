@@ -155,16 +155,54 @@ func minified(content []byte, avgLine int) bool {
 	return len(content)/newlines > avgLine
 }
 
+// AnalyzeText fingerprints a prose or config blob: no parse, only the
+// text-level facts the cross-file passes join on.
+func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []byte) *FileReport {
+	rep := &FileReport{Path: path, SHA: sha, Lang: lang.TextKind(path)}
+	for _, glob := range a.cfg.Skip {
+		if ok, err := matchGlob(glob, path); err == nil && ok {
+			rep.Skipped = "config-skip"
+
+			return rep
+		}
+	}
+	if int64(len(content)) > a.cfg.MaxFileBytes {
+		rep.Skipped = "oversize"
+
+		return rep
+	}
+	if bytes.IndexByte(content, 0) >= 0 {
+		rep.Skipped = "binary"
+
+		return rep
+	}
+	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, rules.Version); ok {
+		var c cached
+		if err := json.Unmarshal(payload, &c); err == nil {
+			rep.Print = c.Print
+
+			return rep
+		}
+	}
+	rep.Print = rules.CollectText(path, content)
+	payload, err := json.Marshal(cached{Print: rep.Print})
+	if err == nil {
+		a.store.Put(ctx, sha, lang.GrammarVersion, rules.Version, payload)
+	}
+
+	return rep
+}
+
 // CrossFile runs the cross-file passes over analyzed reports and merges their
-// findings into each file's report.
-func CrossFile(reports []*FileReport, cfg *config.Config) {
+// findings into each file's report. TreePaths is every path in the tree.
+func CrossFile(reports []*FileReport, treePaths []string, cfg *config.Config) {
 	var blobs []rules.BlobPrint
 	for _, r := range reports {
 		if r.Print != nil {
 			blobs = append(blobs, rules.BlobPrint{Path: r.Path, Print: r.Print})
 		}
 	}
-	for path, findings := range rules.CrossFile(blobs, cfg.EntryPoints) {
+	for path, findings := range rules.CrossFile(blobs, treePaths, cfg.EntryPoints, cfg.ConfigPaths) {
 		for _, r := range reports {
 			if r.Path == path {
 				r.Findings = append(r.Findings, findings...)

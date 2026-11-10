@@ -82,12 +82,13 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	return nil
 }
 
-// treeReports analyzes every supported blob in the tree.
+// treeReports analyzes every supported blob in the tree, plus the prose and
+// config blobs the cross-file passes read.
 func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*engine.FileReport, error) {
 	// Keep only analyzable blobs, then batch-read them.
 	var want []string
 	for _, e := range entries {
-		if lang.ByPath(e.Path) != nil {
+		if lang.ByPath(e.Path) != nil || lang.TextKind(e.Path) != "" {
 			want = append(want, e.SHA)
 		}
 	}
@@ -99,12 +100,21 @@ func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*
 	var reports []*engine.FileReport
 	for _, e := range entries {
 		content, ok := blobs[e.SHA]
-		if !ok || lang.ByPath(e.Path) == nil {
+		if !ok {
 			continue
 		}
-		reports = append(reports, s.eng.Analyze(ctx, e.Path, e.SHA, content))
+		switch {
+		case lang.ByPath(e.Path) != nil:
+			reports = append(reports, s.eng.Analyze(ctx, e.Path, e.SHA, content))
+		case lang.TextKind(e.Path) != "":
+			reports = append(reports, s.eng.AnalyzeText(ctx, e.Path, e.SHA, content))
+		}
 	}
-	engine.CrossFile(reports, s.cfg)
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		paths = append(paths, e.Path)
+	}
+	engine.CrossFile(reports, paths, s.cfg)
 
 	return reports, nil
 }
@@ -127,8 +137,10 @@ func (s *session) snapshotRollup(
 		if r.Metrics.ParseError {
 			res.Errors = append(res.Errors, parseErrorRow(r.Path, r.Metrics))
 		}
-		files = append(files, r.Metrics)
-		byDir[lineage.DirOf(r.Path)] = append(byDir[lineage.DirOf(r.Path)], r.Metrics)
+		if r.Metrics.Lang != "" {
+			files = append(files, r.Metrics)
+			byDir[lineage.DirOf(r.Path)] = append(byDir[lineage.DirOf(r.Path)], r.Metrics)
+		}
 		fs := baseline.Suppress(r.Path, r.Findings)
 		if len(fs) > 0 {
 			res.Findings[r.Path] = fs

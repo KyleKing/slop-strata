@@ -254,6 +254,27 @@ func ByPath(path string) *Language {
 	return byExt[strings.ToLower(filepath.Ext(path))]
 }
 
+// Text kinds for files with no grammar that still carry facts the cross-file
+// passes read: prose holds names of things, config holds keys code reads.
+const (
+	TextProse  = "prose"
+	TextConfig = "config"
+)
+
+// textExt maps non-code extensions to their text kind.
+var textExt = map[string]string{ //nolint:gochecknoglobals // fixed vocabulary
+	".md": TextProse, ".markdown": TextProse, ".mdx": TextProse,
+	".rst": TextProse, ".txt": TextProse,
+	".toml": TextConfig, ".yaml": TextConfig, ".yml": TextConfig,
+	".json": TextConfig, ".pkl": TextConfig,
+}
+
+// TextKind classifies a file with no grammar as prose or config, or "" when it
+// is neither. Such files get a text fingerprint, never a parse.
+func TextKind(path string) string {
+	return textExt[strings.ToLower(filepath.Ext(path))]
+}
+
 // Language constructs the tree-sitter language for parsing.
 func (l *Language) Language() *ts.Language {
 	return l.newLanguage()

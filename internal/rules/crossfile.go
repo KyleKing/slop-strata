@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kyleking/slop-strata/internal/config"
 	"github.com/kyleking/slop-strata/internal/lang"
 )
 
@@ -18,15 +19,185 @@ type BlobPrint struct {
 
 // CrossFile runs the passes that join fingerprints across the tree, returning
 // findings per path. These never re-parse; they only read what Collect stored.
-func CrossFile(blobs []BlobPrint, entryPoints []string) map[string][]Finding {
+// TreePaths is every path in the tree, so prose file references resolve even
+// for files no pass fingerprints.
+func CrossFile(blobs []BlobPrint, treePaths, entryPoints, configPaths []string) map[string][]Finding {
 	out := map[string][]Finding{}
 	dupLiterals(blobs, out)
 	clones(blobs, out)
 	singleImplIfaces(blobs, out)
 	unusedOptions(blobs, out)
 	deadExports(blobs, out, entryPoints)
+	staleProse(blobs, out, treePaths)
+	staleConfig(blobs, out, configPaths)
 
 	return out
+}
+
+// staleProse flags a code-shaped name a comment, docstring, or prose file
+// mentions that no file declares, references, or imports: the rename the
+// prose missed.
+func staleProse(blobs []BlobPrint, out map[string][]Finding, treePaths []string) {
+	names := proseIndex(blobs)
+	files := map[string]bool{}
+	for _, p := range treePaths {
+		files[filepath.Base(p)] = true
+	}
+	for _, b := range blobs {
+		if lang.IsTestPath(b.Path) {
+			continue
+		}
+		for tok, line := range b.Print.ProseRefs {
+			if resolved, isFile := resolvesToken(names, files, tok); !resolved {
+				note := "names nothing in the tree"
+				if isFile {
+					note = "names no file in the tree"
+				}
+				out[b.Path] = append(out[b.Path], Finding{
+					Rule: "x/stale-prose", Line: line, Match: tok, Note: note,
+				})
+			}
+		}
+	}
+}
+
+// proseIndex gathers what a prose token can name: declared, referenced, and
+// imported names.
+func proseIndex(blobs []BlobPrint) map[string]bool {
+	names := map[string]bool{}
+	for _, b := range blobs {
+		for n := range b.Print.Declared {
+			names[n] = true
+		}
+		for n := range b.Print.Referenced {
+			names[n] = true
+		}
+		for n := range b.Print.Imports {
+			names[n] = true
+		}
+	}
+
+	return names
+}
+
+// fileExts are the suffixes that make a dotted token a file name rather than
+// a code path.
+var fileExts = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
+	"md": true, "markdown": true, "mdx": true, "rst": true, "txt": true,
+	"go": true, "py": true, "ts": true, "tsx": true, "js": true, "jsx": true,
+	"json": true, "jsonl": true, "yaml": true, "yml": true, "toml": true,
+	"pkl": true, "conf": true, "tape": true, "lock": true, "sum": true,
+	"mod": true, "csv": true, "sql": true, "sh": true, "html": true,
+	"css": true, "png": true, "svg": true,
+}
+
+// tlds are the suffixes that make a dotted token a domain or an external
+// tool's plugin name, skipped outright.
+var tlds = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
+	"com": true, "org": true, "net": true, "io": true, "dev": true,
+	"app": true, "ai": true, "me": true, "co": true, "gg": true,
+	"edu": true, "gov": true, "ca": true, "uk": true, "ac": true,
+	"us": true, "xyz": true, "nvim": true, "vim": true, "lua": true,
+}
+
+// resolvesToken answers whether the token names something real, and whether
+// it read as a file reference.
+func resolvesToken(names, files map[string]bool, tok string) (bool, bool) {
+	if names[tok] {
+		return true, false
+	}
+	i := strings.LastIndexByte(tok, '.')
+	if i < 0 {
+		return false, false
+	}
+	if allSingleLetters(tok) || hasDigitSegment(tok) {
+		return true, false
+	}
+	leaf := tok[i+1:]
+	switch {
+	case fileExts[leaf]:
+		return files[tok], true
+	case tlds[leaf]:
+		return true, false
+	default:
+		return names[leaf] || names[tok[:strings.IndexByte(tok, '.')]], false
+	}
+}
+
+// allSingleLetters reports whether a dotted token is an abbreviation like
+// e.g or i.e rather than a path.
+func allSingleLetters(tok string) bool {
+	for _, part := range strings.Split(tok, ".") {
+		if len(part) != 1 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// hasDigitSegment reports whether a dotted token carries an all-digit
+// segment, the shape of a version like v0.3.1 rather than a name.
+func hasDigitSegment(tok string) bool {
+	for _, part := range strings.Split(tok, ".") {
+		digits := part != ""
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				digits = false
+
+				break
+			}
+		}
+		if digits {
+			return true
+		}
+	}
+
+	return false
+}
+
+// staleConfig flags a key in a config_paths file that no code reads by name:
+// the config outlived the code that consumed it. Key names normalize case and
+// punctuation, so cfg["author_class"], a toml tag, and a field read resolve
+// the same.
+func staleConfig(blobs []BlobPrint, out map[string][]Finding, configPaths []string) {
+	if len(configPaths) == 0 {
+		return
+	}
+	read := map[string]bool{}
+	for _, b := range blobs {
+		for n := range b.Print.Referenced {
+			read[normKey(n)] = true
+		}
+		for s := range b.Print.Strings {
+			read[normKey(s)] = true
+		}
+	}
+	for _, b := range blobs {
+		if len(b.Print.ConfigKeys) == 0 || filepath.Base(b.Path) == config.FileName ||
+			lang.IsTestPath(b.Path) || !matchAny(configPaths, b.Path) {
+			continue
+		}
+		for key, line := range b.Print.ConfigKeys {
+			leaf := key[strings.LastIndexByte(key, '.')+1:]
+			if !read[normKey(leaf)] {
+				out[b.Path] = append(out[b.Path], Finding{
+					Rule: "x/stale-config", Line: line, Match: key,
+					Note: "no code reads this key",
+				})
+			}
+		}
+	}
+}
+
+// normKey folds a config key and a code reference to one spelling, so
+// author_class, AuthorClass, and author-class compare equal.
+func normKey(name string) string {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, "_", "")
+	name = strings.ReplaceAll(name, "-", "")
+
+	return name
 }
 
 // dupLiterals flags a literal carried by minDupFiles or more files.

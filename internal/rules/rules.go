@@ -10,7 +10,7 @@ import (
 )
 
 // Version bumps when a rule's logic changes so cached findings are recomputed.
-const Version = 4
+const Version = 5
 
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.
@@ -28,6 +28,7 @@ const (
 	kindTypeIdentifier = "type_identifier"
 	kindGenericType    = "generic_type"
 	textAny            = "any"
+	textUnknown        = "unknown"
 )
 
 // Finding is one rule hit: the rule, where, and an optional note.

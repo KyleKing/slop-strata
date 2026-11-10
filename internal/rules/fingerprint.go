@@ -46,6 +46,10 @@ type Fingerprint struct {
 	Exported    map[string]int      `json:"exported,omitempty"`     // public-API names -> line
 	Options     map[string]int      `json:"options,omitempty"`      // WithX funcs returning an Option -> line
 	Referenced  map[string]bool     `json:"referenced,omitempty"`   // referenced identifiers
+	Imports     map[string]int      `json:"imports,omitempty"`      // imported module names -> line
+	Strings     map[string]int      `json:"strings,omitempty"`      // short string contents -> first line
+	ProseRefs   map[string]int      `json:"prose_refs,omitempty"`   // code-shaped names in comments -> line
+	ConfigKeys  map[string]int      `json:"config_keys,omitempty"`  // config key paths -> line
 	Clones      []CloneUnit         `json:"clones,omitempty"`
 	Ifaces      []IfaceDecl         `json:"ifaces,omitempty"`
 }
@@ -59,8 +63,15 @@ func Collect(ctx *Ctx) *Fingerprint {
 		switch {
 		case ctx.Lang.LiteralKinds[kind]:
 			collectLiteral(ctx, n, fp)
+			collectShortString(ctx, n, fp)
 		case ctx.Lang.FunctionKinds[kind]:
 			collectClone(ctx, n, fp)
+		case kind == "comment":
+			collectProse(ctx, n, fp)
+		case kind == "import_declaration" || kind == "import_statement" || kind == "import_from_statement":
+			collectImports(ctx, n, fp)
+		case kind == "expression_statement" && ctx.Lang == lang.Python:
+			collectDocstring(ctx, n, fp)
 		case kind == kindIdentifier || kind == "field_identifier" || kind == "property_identifier" ||
 			kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern":
 			if fp.Referenced == nil {

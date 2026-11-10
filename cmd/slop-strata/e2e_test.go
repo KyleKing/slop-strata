@@ -162,6 +162,85 @@ func TestHistoryWalk(t *testing.T) {
 	}
 }
 
+func TestSnapshotStaleRules(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run("init", "--initial-branch=main")
+	write("main.go", `package main
+
+import "fmt"
+
+func usedFn() {}
+
+func main() { fmt.Println(usedFn, "timeout") }
+`)
+	write("README.md", "Call usedFn() here, or phantomFn for the old path.\n")
+	write("settings.toml", "timeout = 30\nghost_key = 1\n")
+	write(".slop-strata.toml", "config_paths = [\"*.toml\"]\n")
+	run("add", "-A")
+	run("commit", "-m", "feat: init")
+
+	out, err := runCLI(t, dir, "snapshot", "--json")
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Findings map[string][]struct {
+				Rule  string `json:"rule"`
+				Match string `json:"match"`
+			} `json:"findings"`
+			Total struct {
+				Files int `json:"files"`
+			} `json:"total"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	if env.Result.Total.Files != 1 {
+		t.Fatalf("text files leaked into the file count: %s", out)
+	}
+	has := func(path, rule, match string) bool {
+		for _, f := range env.Result.Findings[path] {
+			if f.Rule == rule && f.Match == match {
+				return true
+			}
+		}
+
+		return false
+	}
+	if !has("README.md", "x/stale-prose", "phantomFn") {
+		t.Fatalf("phantomFn not flagged in README.md: %s", out)
+	}
+	if has("README.md", "x/stale-prose", "usedFn") {
+		t.Fatalf("usedFn flagged though it resolves: %s", out)
+	}
+	if !has("settings.toml", "x/stale-config", "ghost_key") {
+		t.Fatalf("ghost_key not flagged in settings.toml: %s", out)
+	}
+	if has("settings.toml", "x/stale-config", "timeout") {
+		t.Fatalf("timeout flagged though code reads it: %s", out)
+	}
+}
+
 func TestExplain(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer

@@ -78,6 +78,10 @@ type Config struct {
 	// dead-export read never reports: CLI mains, package entry modules,
 	// plugin registrations.
 	EntryPoints []string `toml:"entry_points"`
+	// ConfigPaths lists path globs (filepath.Match syntax) naming the files
+	// the repository treats as application config. Only they feed the
+	// stale-config read, so tool and CI config stays out of it.
+	ConfigPaths []string `toml:"config_paths"`
 	// MaxFileBytes skips blobs above the cap; minified bundles and vendored
 	// output trip it and are reported by name rather than parsed.
 	MaxFileBytes int64 `toml:"max_file_bytes"`

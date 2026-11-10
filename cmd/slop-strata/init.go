@@ -60,7 +60,11 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 	var b strings.Builder
 	// Top-level keys must precede [[author_class]] or TOML attaches them to the
 	// last table element.
-	b.WriteString("# slop-strata configuration\n\n# skip = [\"vendor/*\", \"*.min.js\"]\n\n[[author_class]]\nname = \"bot\"\n")
+	b.WriteString("# slop-strata configuration\n\n" +
+		"# skip = [\"vendor/*\", \"*.min.js\"]\n" +
+		"# entry_points = [\"cmd/*\", \"main.go\"]\n" +
+		"# config_paths = [\"config/*.toml\", \"settings/*.yaml\"]\n\n" +
+		"[[author_class]]\nname = \"bot\"\n")
 	if len(logins) > 0 {
 		sorted := make([]string, 0, len(logins))
 		for l := range logins {
