@@ -121,3 +121,98 @@ func flatten(byPath map[string][]rules.Finding) []rules.Finding {
 
 	return out
 }
+
+// hitCase is one snippet and how many findings of one rule it must produce.
+type hitCase struct {
+	name string
+	path string
+	src  string
+	rule string
+	want int
+}
+
+func TestRuleHits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range goHitCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := countRule(findingsOf(t, tc.path, tc.src, true), tc.rule)
+			if got != tc.want {
+				t.Errorf("%s hits = %d, want %d", tc.rule, got, tc.want)
+			}
+		})
+	}
+}
+
+func goHitCases() []hitCase {
+	const silent = "go/silent-error"
+	return []hitCase{
+		{
+			name: "discarded error from a call fires",
+			path: "remove.go",
+			src:  "package p\n\nfunc g(name string) {\n\t_ = os.Remove(name)\n}\n",
+			rule: silent, want: 1,
+		},
+		{
+			name: "discarded close is allowed",
+			path: "close.go",
+			src:  "package p\n\nfunc g(conn io.Closer) {\n\t_ = conn.Close()\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "stat checked in an if init stays quiet",
+			path: "stat.go",
+			src: "package p\n\nfunc g(p string) bool {\n\tif _, err := os.Stat(p); err == nil {\n" +
+				"\t\treturn true\n\t}\n\treturn false\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "strings.Cut bool in the blank stays quiet",
+			path: "cut.go",
+			src:  "package p\n\nfunc g(s string) string {\n\tv, _ := strings.Cut(s, \":\")\n\treturn v\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "atoi error in the blank fires",
+			path: "atoi.go",
+			src:  "package p\n\nfunc g(s string) int {\n\tn, _ := strconv.Atoi(s)\n\treturn n\n}\n",
+			rule: silent, want: 1,
+		},
+		{
+			name: "blank in a non-last position stays quiet",
+			path: "first.go",
+			src:  "package p\n\nfunc g() int {\n\t_, n := f()\n\treturn n\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "map index with blank stays quiet",
+			path: "index.go",
+			src:  "package p\n\nfunc g(m map[string]int) int {\n\tv, _ := m[\"k\"]\n\treturn v\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "channel receive with blank stays quiet",
+			path: "recv.go",
+			src:  "package p\n\nfunc g(ch chan int) int {\n\tv, _ := <-ch\n\treturn v\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "type assertion with blank stays quiet",
+			path: "assert.go",
+			src:  "package p\n\nfunc g(v any) string {\n\ts, _ := v.(string)\n\treturn s\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "blank beside a bound err stays quiet",
+			path: "open.go",
+			src:  "package p\n\nfunc g(p string) error {\n\t_, err := os.Open(p)\n\treturn err\n}\n",
+			rule: silent, want: 0,
+		},
+		{
+			name: "all blank targets fire",
+			path: "both.go",
+			src:  "package p\n\nfunc g() {\n\t_, _ = f()\n}\n",
+			rule: silent, want: 1,
+		},
+	}
+}
