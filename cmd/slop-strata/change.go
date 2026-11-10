@@ -1141,28 +1141,46 @@ const treeMemoSize = 3
 
 type memoTree struct {
 	prints map[string]*rules.Fingerprint
-	rev    string
+	key    string
 }
 
 // treePrints returns a revision's tree fingerprints, which callers must not modify.
 func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules.Fingerprint, error) {
+	key, err := s.commitKey(ctx, rev)
+	if err != nil {
+		return nil, err
+	}
 	for i, m := range s.trees {
-		if m.rev == rev {
+		if m.key == key {
 			s.trees = append(slices.Delete(s.trees, i, i+1), m)
 
 			return m.prints, nil
 		}
 	}
-	prints, err := s.readTreePrints(ctx, rev)
+	prints, err := s.readTreePrints(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	s.trees = append(s.trees, memoTree{rev: rev, prints: prints})
+	s.trees = append(s.trees, memoTree{key: key, prints: prints})
 	if len(s.trees) > treeMemoSize {
 		s.trees = s.trees[1:]
 	}
 
 	return prints, nil
+}
+
+// commitKey names the commit a revision resolves to, so a branch that moves
+// between calls is read at its new commit. Git has no commit for the empty tree.
+func (s *session) commitKey(ctx context.Context, rev string) (string, error) {
+	if rev == emptyTree {
+		return rev, nil
+	}
+	sha, err := s.ops.ResolveRef(ctx, s.root, rev)
+	if err != nil {
+		return "", fmt.Errorf("resolving %s: %w", rev, err)
+	}
+
+	return sha, nil
 }
 
 // readTreePrints fingerprints every code, prose, and config blob in a revision's tree.
