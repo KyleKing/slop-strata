@@ -12,8 +12,8 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 
 ## Decisions
 
-- Named `slop-strata`. Pure Go. Rules are tree-sitter queries built into the binary. ast-grep YAML packs (scb-check's 137 rules among them) load as an optional external source through `sg`
-- Generic, configured per repository: author classes come from bot logins and trailer patterns in config, and every subcommand emits JSON. Any HTML or dashboard is the consuming system's job
+- Named `slop-strata`. Pure Go. Rules are Go functions that walk tree-sitter trees, built into the binary. ast-grep YAML packs (scb-check's 137 rules among them) load as an optional external source through `sg`
+- Generic, configured per repository: author classes come from logins and trailer patterns in `.slop-strata.toml`, with two built-in classes after the repository's own: `agent` for coding-agent co-author trailers, and `bot` for logins ending in `[bot]`. `change`, `snapshot`, and `history` emit JSON in one envelope that carries a schema version (2, published as `docs/schema.json`) and the definition of each metric. Unknown config keys fail the run. Any HTML or dashboard is the consuming system's job
 - No bare command. Subcommands are listed in this order, and `--help` recommends `change` when run with no arguments:
   1. `change`: lines added by `@` (jj) or `HEAD` against its merge base
   2. `snapshot`: the whole tree at a revision
@@ -27,7 +27,7 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 - Built from [my_go_template](https://github.com/KyleKing/my_go_template). Version control through [aragonite](https://github.com/KyleKing/aragonite) `vcs`, so jj works through the colocated git repository
 - Parsing through the official [tree-sitter/go-tree-sitter](https://github.com/tree-sitter/go-tree-sitter) with the Python, TypeScript, and Go grammars, one parser per worker goroutine, explicitly `Close`d, with blobs scored in parallel and cache writes made from one goroutine. Storage in `modernc.org/sqlite`
 - A SQLite cache keyed by (blob SHA, path class, digest of the code that produced the payload). Path class is the language and whether the path is a test, since test-only rules read it. Rules that read the file name run outside the cache. A commit or change score sums only the blobs it touched. The file lives under the user cache directory, and CI restores it from a cache keyed by the tool's version
-- Files over a size cap or with a minified shape (very long average line) are skipped with a warning naming each one. Generated files (a generator marker in the first five lines, or `linguist-generated` in the root `.gitattributes`) are skipped as generated A file that will not parse gets an error row and the run continues
+- Files over a size cap or with a minified shape (very long average line) are skipped with a warning naming each one. Generated files (a generator marker in the first five lines, or `linguist-generated` in the root `.gitattributes`) are skipped as generated. A file that will not parse gets an error row and the run continues
 - Cross-file passes (clones, repeated literals, coupling) run over cached per-blob fingerprints, never by re-parsing
 
 ## Metric families, in shipping order
@@ -40,8 +40,8 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 
 ### 2. Time (git only, no parsing)
 
-- Churn within 14 and 30 days of a line's addition
-- Line survival by change cohort (Kaplan-Meier, as [git-of-theseus](https://github.com/erikbern/git-of-theseus) does). The unit and cohort definitions are pinned and documented, because two 2026 studies of agent code ([arXiv 2601.16809](https://arxiv.org/abs/2601.16809), [arXiv 2604.00917](https://arxiv.org/abs/2604.00917)) disagree on direction
+- Churn within 14 and 30 days of a line's addition, counted where the line dies. Lines keep their birth day through moves and renames, so churn and survival follow the code and not the path
+- Line survival by change cohort (Kaplan-Meier, as [git-of-theseus](https://github.com/erikbern/git-of-theseus) does), with Greenwood 95% intervals at each horizon. The unit and cohort definitions are pinned and documented, because two 2026 studies of agent code ([arXiv 2601.16809](https://arxiv.org/abs/2601.16809), [arXiv 2604.00917](https://arxiv.org/abs/2604.00917)) disagree on direction. A horizon with too few lines old enough to reach it reports no rate, rather than an extrapolated one
 - Revert and rework rate: reverts, and fix commits touching recently added lines
 - Hotspots as churn × complexity, and change coupling by degree of co-change, skipping very large commits ([code-maat](https://github.com/adamtornhill/code-maat) definitions)
 - Knowledge concentration per file, reported by directory and never as a ranking of people
@@ -55,12 +55,13 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
   - Type evasion: `as unknown as`, `Any`, `Record<string, unknown>`, module mocking
   - Comments: density per function, and narrating comments (now, moved, was, a ticket that is not a forward pointer)
 - Duplication: normalized-subtree clones (scb-check's method), and string or number literals repeated across files
+- The default set runs only the rules that cleared the precision bar. `--experimental` adds the rest, and `--explain experimental` lists them
 
 ### 4. Virality and attribution
 
-- Author class per change from config: bot, agent co-author trailer, or person
+- Author class per commit, from the configured classes and the built-in `agent` and `bot` classes. A commit that matches none is `person`
 - After a rule's first hit in a repository, whether its hit rate rises and in which author class's commits
-- Agent changes against person changes merged the same week in the same directories, for every family above
+- Agent changes against person changes merged the same week in the same directories, for every family above. The pairing rows are in JSON only for now
 
 ## Reading a result in context
 
@@ -70,7 +71,7 @@ A delta means nothing until the tool knows what the change set out to do, so eve
 - Gross and net are reported apart: mass added, mass removed, and the net. A refactor that removes three high-complexity functions and adds one smaller one is paying down. A feature that adds the same mass is accruing
 - Location matters as much as size: whether the change touched a hotspot, a file with low survival, or code another author class wrote
 - Each result reads as a sentence before the numbers: "Refactor in a hotspot: removed 2 functions over CC 10, erosion in `pkg/parse` fell from 0.48 to 0.31." Readings come from rules over these fields, never from a model, so the same input always gives the same sentence
-- `history` groups changes into these readings, so the question "are we paying down faster than we accrue?" has a direct answer per directory and per author class
+- `change` gives each result one reading. `history` does not group changes by reading yet, so "are we paying down faster than we accrue?" has no direct answer per directory and per author class
 
 ## Enriching a result with a model
 
@@ -79,17 +80,17 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 - `--context` adds to the JSON what a reader would open next: the diff hunks behind each delta, the functions that crossed a threshold before and after, the findings with their source lines, the change's commit messages and linked issue text, and the history of the hotspot it touched
 - A prompt shipped in the repository (`prompts/explain.md`) takes that JSON and asks for four things: whether the stated intent matches what the numbers show, which one function to look at first and why, whether a rule hit is real or a false positive with the line that decides it, and what a smaller version of the change would look like
 - The model's answer is a draft for a person, never stored as a metric. Deterministic readings stay the record, which keeps runs comparable and avoids the self-grading bias that absolute LLM scores show
-- Disputed findings a person marks (false positive, or real) go back into a labels file that the rule-authoring loop reads
+- Disputed findings a person marks (false positive, or real) go back into a labels file that the rule-authoring loop reads. The labels file is not built yet, so no rule has a recorded precision
 
 ## Presentation
 
 - `change` prints a short block: the reading, then a table of deltas, then findings by rule. It shows only what moved, and `--all` shows the rest
 - `snapshot` prints a per-directory table, ranked by hotspot score
-- `history` prints trends per directory as a table with sparklines
-- `--json` on every subcommand is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML
+- `history` prints trends per directory as a table with sparklines. The per-class pairing rows and the survival intervals are in JSON only
+- `--json` on `change`, `snapshot`, and `history` is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML
 - second-look calls `change` behind the first frame and shows the reading and deltas on the review screen
 - Every number is documented where it is printed: `--help` and `--explain <metric>` say what it counts, its threshold, and the behavior it should change, and the JSON carries the same text per field. There is no separate glossary to drift from the code
-- Comparisons are paired with confidence intervals and a noise floor from repeat runs. A figure reads provisional below a minimum count, and team figures need at least 5 people
+- Survival rates carry Greenwood 95% intervals. Weekly net mass carries a noise floor, the median absolute deviation of weekly net mass, and a week inside it is marked `~`. A rate under its minimum count reads provisional (`*`): 30 lines for a cohort, 5 test files for a test class, 5 functions for a directory's erosion, and 5 commits for a pairing cell
 - Every number names the behavior it should change. A number is dropped if nothing changed after two quarters
 
 ## Testing and the premise of a change
@@ -107,8 +108,8 @@ It reports what predicts a test getting deleted:
 - Timing hacks: sleep patches, clock patches, and retry markers in tests
 
 A change whose stated intent disagrees with its numbers (a refactor that raises erosion, a cleanup that adds mass) gets a reading that says so, as evidence a reviewer can use to question the premise. It never blocks a change, and a reading that a reviewer overrules teaches the rule nothing until a person marks it.
-- Its own tests run the built binary against pinned public repositories at fixed SHAs and diff golden JSON. Unit tests stay for the counting rules where a fixture cannot show the edge, such as nested functions and decorators
-- Each metric is checked against a small human-labeled sample before it ships: does a high reading match code a reviewer would call hard to change? A metric that fails this does not ship
+- Its tests run the built binary against a generated repository and diff golden JSON for each subcommand. Unit tests stay for the counting rules where a fixture cannot show the edge, such as nested functions and decorators. Goldens at pinned public SHAs are not built yet
+- Each metric is checked against a small human-labeled sample before it ships: does a high reading match code a reviewer would call hard to change? A metric that fails this does not ship. The labels file that would record each rule's measured precision per release is not built yet
 
 ## Evaluation corpus
 
@@ -119,6 +120,8 @@ Public repositories at pinned SHAs, chosen to cover the three languages and both
 - [google/go-github](https://github.com/google/go-github) (Go, large, many contributors)
 - [facebook/lexical](https://github.com/facebook/lexical) (TypeScript, large)
 - [KyleKing/second-look](https://github.com/KyleKing/second-look) (Go, agent-assisted history)
+
+The worked example pins calcipy at [594d31b](https://github.com/KyleKing/calcipy/commit/594d31bcf9321433336f2ef11135bd29a82cef98) in [docs/examples/calcipy.md](docs/examples/calcipy.md). The other entries have no pinned goldens yet.
 
 Each milestone reports wall time, peak memory, and cache hit rate on a cold and a warm cache for each repository.
 
@@ -158,7 +161,7 @@ The highest-value addition and the hardest. Things go stale where no compiler lo
 - Stale options and flags: defined with no caller passing a non-default value (shipped as `x/unused-option`), or read with no writer anywhere in config
 - Stale config keys: a key in TOML, YAML, JSON, or Pkl that no code reads by name — shipped as `x/stale-config` over the files `config_paths` names, opt-in so tool and CI config stays quiet. Still open: a code read of a key no config defines
 - Stale prose: an identifier in a comment, docstring, or Markdown file that no longer resolves — shipped as `x/stale-prose`. `change` reports only names the change removed, since history shows they existed. A snapshot reports every unresolved name, behind `--experimental`. Still open: a TODO or "remove when" whose forward-pointing ticket is closed (read through `gh` when available)
-- Across updates: a symbol whose last reference was removed in a change is reported on that change, which is when the author still remembers it
+- Across updates: a symbol whose last reference was removed in a change is reported on that change, which is when the author still remembers it. Shipped as `x/last-ref`
 - Dynamic references (reflection, string-built names, dependency injection) make this unsound, so every finding names why the tool believes it is dead and a baseline file absorbs accepted ones
 
 ### Moved code, shared with second-look
@@ -168,16 +171,18 @@ second-look's `internal/diff` already finds moved runs of lines, reindented line
 - Function-level matching from tree-sitter: a function that moved files, or changed only its name or indentation, pairs with its old self ([GumTree](https://github.com/GumTreeDiff/gumtree) and [RefDiff](https://arxiv.org/pdf/1704.01544) are the references)
 - Classification per hunk: moved, renamed, reindented, or changed, which second-look draws on the review screen and slop-strata uses to exclude moves from churn
 
+Shipped in part: `lineage` matches moved lines with aragonite's `diff.MatchMoves`, and a moved line keeps its birth day. Function-level matching and per-hunk classification are not built yet.
+
 ### Polish
 
 What a mature product does that v1 will not, measured against CodeScene and SonarQube:
 
-- Precision first: each rule ships only with a measured false-positive rate on the corpus below a set bar, and a rule that drifts above it is turned off by default
-- Every finding explains itself in one screen: the rule, the line that triggered it, a minimal before and after, and how to suppress it inline with a reason
-- Stable output: a JSON schema version, finding IDs that survive line moves (keyed by function and rule, not line number), and a changelog entry for every change to a threshold
-- Fast first run: a full history of a 3,000-commit repository in minutes on a laptop, with progress and a resumable cache
-- Zero-config start: language detection, vendored and generated file detection, and author classes guessed from known bot logins, with `init` writing what it guessed for review
-- Trends people trust: a noise floor and minimum counts shown on every chart, so a jump is never a measurement artifact
+- Precision first: each rule ships only with a measured false-positive rate on the corpus below a set bar, and a rule that drifts above it is turned off by default. Not built yet, beyond the gate itself
+- Every finding explains itself in one screen: the rule, the line that triggered it, a minimal before and after, and how to suppress it inline with a reason. Not built yet
+- Stable output: a JSON schema version (shipped, `docs/schema.json`), finding IDs that survive line moves (keyed by function and rule, not line number, not built yet), and a changelog entry for every change to a threshold
+- Fast first run: a full history of a 3,000-commit repository in minutes on a laptop, with progress and a resumable cache. Parsing is parallel. Progress and resume are not built yet
+- Zero-config start: language detection, vendored and generated file detection, and author classes guessed from known bot logins, with `init` writing what it guessed for review. Shipped
+- Trends people trust: a noise floor and provisional markers on the trend tables. Shipped; the charts are text tables for now
 
 ### Other
 
