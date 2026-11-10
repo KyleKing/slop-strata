@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,11 +25,17 @@ const daysPerWeek = 7
 // weekLayout formats a Monday week bucket.
 const weekLayout = "2006-01-02"
 
+// pairOfMiddles divides the two middle values of an even-length median.
+const pairOfMiddles = 2
+
 // sparkWeeks is the trailing window of the per-directory mass sparkline.
 const sparkWeeks = 8
 
 // provisionalMark follows a rate printed from a thin sample in text output.
 const provisionalMark = "*"
+
+// noiseMark follows a week whose net mass lies within the noise floor.
+const noiseMark = "~"
 
 // provisionalBelow is the commit count under which a pairing cell is too thin
 // to compare.
@@ -35,23 +43,25 @@ const provisionalBelow = 5
 
 // historyResult is the history subcommand's JSON shape.
 type historyResult struct {
-	Lineage  *lineage.Result    `json:"lineage"`
-	Hotspots map[string]float64 `json:"hotspots"`
-	Range    string             `json:"range"`
-	Weeks    []weekRow          `json:"weeks"`
-	Viral    []viralRow         `json:"virality"`
-	Pairs    []pairRow          `json:"pairing"`
-	Changes  int                `json:"changes"`
+	Lineage    *lineage.Result    `json:"lineage"`
+	Hotspots   map[string]float64 `json:"hotspots"`
+	Range      string             `json:"range"`
+	Weeks      []weekRow          `json:"weeks"`
+	Viral      []viralRow         `json:"virality"`
+	Pairs      []pairRow          `json:"pairing"`
+	Changes    int                `json:"changes"`
+	NoiseFloor float64            `json:"noise_floor"`
 }
 
 // weekRow is one week of first-parent activity.
 type weekRow struct {
-	Kinds   map[string]int `json:"kinds"`
-	Week    string         `json:"week"`
-	Commits int            `json:"commits"`
-	Added   int            `json:"added"`
-	Removed int            `json:"removed"`
-	MassNet float64        `json:"mass_net"`
+	Kinds       map[string]int `json:"kinds"`
+	Week        string         `json:"week"`
+	Commits     int            `json:"commits"`
+	Added       int            `json:"added"`
+	Removed     int            `json:"removed"`
+	MassNet     float64        `json:"mass_net"`
+	WithinNoise bool           `json:"within_noise,omitempty"`
 }
 
 // viralRow tracks one rule's spread after its first hit.
@@ -129,6 +139,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 
 	res := &historyResult{Range: rangeSpec, Lineage: walker.Finish(), Changes: changes}
 	collectRollups(res, weeks, pairs, viral)
+	markNoise(res)
 	res.Hotspots = hotspotScores(res.Lineage, liveMass)
 
 	if a.json {
@@ -204,6 +215,43 @@ func massSeries(res *historyResult) map[string][]float64 {
 	}
 
 	return out
+}
+
+// markNoise sets the noise floor to the median absolute deviation of weekly net
+// mass, and flags each week within one floor of the median week.
+func markNoise(res *historyResult) {
+	if len(res.Weeks) == 0 {
+		return
+	}
+	mass := make([]float64, len(res.Weeks))
+	for i := range res.Weeks {
+		mass[i] = res.Weeks[i].MassNet
+	}
+	center := median(mass)
+	dev := make([]float64, len(mass))
+	for i, m := range mass {
+		dev[i] = math.Abs(m - center)
+	}
+	res.NoiseFloor = median(dev)
+	for i := range res.Weeks {
+		res.Weeks[i].WithinNoise = dev[i] <= res.NoiseFloor
+	}
+}
+
+// median answers the middle of values, the mean of the two middle values when
+// there is an even count, and 0 when empty.
+func median(values []float64) float64 {
+	sorted := slices.Clone(values)
+	slices.Sort(sorted)
+	n := len(sorted)
+	switch {
+	case n == 0:
+		return 0
+	case n%2 == 1:
+		return sorted[n/2]
+	default:
+		return (sorted[n/2-1] + sorted[n/2]) / pairOfMiddles
+	}
 }
 
 // hotspotScores is churn × live complexity mass per directory: directories
@@ -386,13 +434,22 @@ func printHistory(w io.Writer, res *historyResult) {
 
 	if len(res.Weeks) > 0 {
 		rows := make([][]string, 0, len(res.Weeks))
+		noisy := false
 		for _, wk := range res.Weeks {
+			mass := fmt.Sprintf("%+.0f", wk.MassNet)
+			if wk.WithinNoise {
+				mass += noiseMark
+				noisy = true
+			}
 			rows = append(rows, []string{
 				wk.Week, strconv.Itoa(wk.Commits), fmt.Sprintf("+%d", wk.Added),
-				fmt.Sprintf("-%d", wk.Removed), fmt.Sprintf("%+.0f", wk.MassNet),
+				fmt.Sprintf("-%d", wk.Removed), mass,
 			})
 		}
 		report.Table(w, []string{"week", "commits", colAdded, "removed", "mass"}, rows)
+		if noisy {
+			report.Fprintf(w, "%s within one noise floor (%.0f) of the median week\n", noiseMark, res.NoiseFloor)
+		}
 	}
 
 	if len(res.Lineage.Survival) > 0 {

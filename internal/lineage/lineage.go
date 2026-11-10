@@ -5,6 +5,7 @@ package lineage
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -32,6 +33,8 @@ const (
 	// Lines that must reach a survival horizon before its estimate is reported;
 	// fewer leave the curve resting on a handful of lines.
 	minAtRisk = 30
+	// Two-sided 95% normal quantile for the Greenwood interval.
+	zNormal95 = 1.959963984540054
 )
 
 // Sample counts under which a survival cohort or a test class is marked
@@ -85,12 +88,14 @@ type death struct {
 // months are the pinned unit: at-risk is approximated at month granularity,
 // which the cohort docs should name before quoting.
 type Survival struct {
-	S30         *float64 `json:"s_30d"`
-	S90         *float64 `json:"s_90d"`
-	Cohort      string   `json:"cohort"`
-	Added       int      `json:"added"`
-	Surviving   int      `json:"surviving"`
-	Provisional bool     `json:"provisional,omitempty"`
+	S30         *float64    `json:"s_30d"`
+	S90         *float64    `json:"s_90d"`
+	S30CI       *[2]float64 `json:"s30_ci,omitempty"`
+	S90CI       *[2]float64 `json:"s90_ci,omitempty"`
+	Cohort      string      `json:"cohort"`
+	Added       int         `json:"added"`
+	Surviving   int         `json:"surviving"`
+	Provisional bool        `json:"provisional,omitempty"`
 }
 
 // DirStats is a directory's aggregate over the range.
@@ -525,8 +530,8 @@ func (w *Walker) survival() []Survival {
 		s := Survival{Cohort: cohortLabel(c), Added: w.births[c], Surviving: survivingByCohort[c]}
 		ages := obsByCohort[c]
 		sort.Slice(ages, func(i, j int) bool { return ages[i].age < ages[j].age })
-		s.S30 = km(ages, horizon30Days)
-		s.S90 = km(ages, horizon90Days)
+		s.S30, s.S30CI = km(ages, horizon30Days)
+		s.S90, s.S90CI = km(ages, horizon90Days)
 		s.Provisional = s.Added < ProvisionalLines
 		out = append(out, s)
 	}
@@ -648,9 +653,10 @@ func (w *Walker) totalAdded() int {
 // km is the Kaplan-Meier product-limit estimate at horizon: at each distinct
 // death age the at-risk set is every observation that reached it, dead or
 // still alive (censored observations drop out as their exposure ends). The
-// ages slice arrives sorted ascending. It answers nil when fewer than minAtRisk
-// observations reached the horizon.
-func km(ages []obs, horizon int) *float64 {
+// ages slice arrives sorted ascending. Its 95% interval is Greenwood's, on the
+// survival scale and clipped to [0, 1]. It answers nil for both when fewer than
+// minAtRisk observations reached the horizon.
+func km(ages []obs, horizon int) (*float64, *[2]float64) {
 	reached := 0
 	for _, o := range ages {
 		if o.age >= horizon {
@@ -658,9 +664,9 @@ func km(ages []obs, horizon int) *float64 {
 		}
 	}
 	if reached < minAtRisk {
-		return nil
+		return nil, nil
 	}
-	surv := 1.0
+	surv, greenwood := 1.0, 0.0
 	for i := 0; i < len(ages); {
 		age := ages[i].age
 		if age > horizon {
@@ -676,8 +682,13 @@ func km(ages []obs, horizon int) *float64 {
 		}
 		if died > 0 {
 			surv *= 1 - float64(died)/float64(risk)
+			if risk > died {
+				greenwood += float64(died) / float64(risk*(risk-died))
+			}
 		}
 	}
+	se := surv * math.Sqrt(greenwood)
+	ci := [2]float64{max(surv-zNormal95*se, 0), min(surv+zNormal95*se, 1)}
 
-	return &surv
+	return &surv, &ci
 }

@@ -2,6 +2,7 @@ package lineage_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -333,5 +334,30 @@ func TestThinSamplesAreProvisional(t *testing.T) {
 				t.Fatalf("test survival of one file must be provisional: %+v", res.TestSurvival)
 			}
 		})
+	}
+}
+
+func TestGreenwoodIntervalAroundHalfSurviving(t *testing.T) {
+	t.Parallel()
+	w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+	w.Commit(commitOn(0, addedFile("dies.go", 40), addedFile("stays.go", 40)), false, false)
+	w.Commit(commitOn(10, vcs.CommitFile{Path: "dies.go", Status: vcs.StatusDeleted}), false, false)
+	w.Commit(commitOn(100, addedFile("late.go", 1)), false, false)
+
+	var cohort lineage.Survival
+	for _, s := range w.Finish().Survival {
+		if s.Cohort == "2025-03" {
+			cohort = s
+		}
+	}
+	// Half of 80 lines die at day 10: S = 0.5 and Greenwood's sum is 40/(80*40),
+	// so the 95% interval is 0.5 +/- 1.96 * 0.5 * sqrt(0.0125).
+	const want = 0.1095653
+	if cohort.S30 == nil || cohort.S30CI == nil {
+		t.Fatalf("s30 and its interval are reported: s30 = %v, ci = %v", fmtShare(cohort.S30), cohort.S30CI)
+	}
+	if math.Abs(*cohort.S30-0.5) > 1e-9 || math.Abs(cohort.S30CI[0]-(0.5-want)) > 1e-6 ||
+		math.Abs(cohort.S30CI[1]-(0.5+want)) > 1e-6 {
+		t.Fatalf("s30 = %v, ci = %v; want 0.5 with interval 0.5 +/- %.6f", *cohort.S30, *cohort.S30CI, want)
 	}
 }

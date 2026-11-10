@@ -129,6 +129,13 @@ var Docs = map[string]string{
 	"churn_30d": "Lines added in the range that were modified or deleted within 30 days.",
 	"rework":    "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
 	"reverts":   "Commits in the range that revert another change.",
+	"survival_ci": "Greenwood 95% confidence interval for a cohort's survival at 30 and 90 days, " +
+		"as [low, high] clipped to 0 and 1. It widens when few lines reach the horizon, so read " +
+		"a wide interval as a weak estimate.",
+	"noise_floor": "Median absolute deviation of weekly net mass across the history window. A week " +
+		"whose net sits within one floor of the median week shows no measurable change, so each " +
+		"is marked within_noise and printed with a ~.",
+	"within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week.",
 	"survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, " +
 		"per monthly cohort. At-risk is approximated at month granularity. Null when too few lines " +
 		"in the cohort have run as long as the horizon.",

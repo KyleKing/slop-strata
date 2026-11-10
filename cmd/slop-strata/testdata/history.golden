@@ -24,6 +24,7 @@
     "max_len": "Longest function in lines.",
     "max_nesting": "Deepest control nesting in any function.",
     "max_params": "Largest parameter count on any function.",
+    "noise_floor": "Median absolute deviation of weekly net mass across the history window. A week whose net sits within one floor of the median week shows no measurable change, so each is marked within_noise and printed with a ~.",
     "over_50": "Functions longer than 50 lines. Each is a candidate to split, not a violation.",
     "over_limit": "The share of mass_grown sitting in functions whose cyclomatic complexity exceeds 10. A change that concentrates its growth in already-complex functions is the shape erosion measures.",
     "p90_cognitive": "90th percentile cognitive complexity (nesting-weighted decision count, approximating the SonarSource definition).",
@@ -37,8 +38,10 @@
     "rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted. Experimental rules report only with --experimental.",
     "skipped": "Files excluded by config, size, binary content, minified shape, or generated code, each named with its reason. Generated means a generator marker in the first five lines, or linguist-generated in the working tree's root .gitattributes.",
     "survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity. Null when too few lines in the cohort have run as long as the horizon.",
+    "survival_ci": "Greenwood 95% confidence interval for a cohort's survival at 30 and 90 days, as [low, high] clipped to 0 and 1. It widens when few lines reach the horizon, so read a wide interval as a weak estimate.",
     "test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count. Live files younger than a horizon are left out, and the share is null when none is old enough.",
-    "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands."
+    "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands.",
+    "within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week."
   },
   "repo": "\u003crepo\u003e",
   "result": {
@@ -76,6 +79,7 @@
       ],
       "test_survival": []
     },
+    "noise_floor": 4.602838434726355,
     "pairing": [
       {
         "class_churn": {},
@@ -144,7 +148,8 @@
         },
         "mass_net": 4.47213595499958,
         "removed": 0,
-        "week": "2026-01-12"
+        "week": "2026-01-12",
+        "within_noise": true
       },
       {
         "added": 12,
@@ -154,7 +159,8 @@
         },
         "mass_net": -0.13070247972677507,
         "removed": 5,
-        "week": "2026-01-19"
+        "week": "2026-01-19",
+        "within_noise": true
       }
     ]
   },
