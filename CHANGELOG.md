@@ -1,3 +1,9 @@
+## v0.11.4 (2026-11-10)
+
+### Fix
+
+- **deps**: bump aragonite to v1.13.1 for correct log record and binary path parsing
+
 ## v0.11.3 (2026-11-10)
 
 ### Perf
