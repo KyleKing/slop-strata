@@ -189,6 +189,8 @@ func run(ctx context.Context, argv []string, stdout io.Writer) error {
 		return s.snapshotCmd(ctx, a, stdout)
 	case "history":
 		return s.historyCmd(ctx, a, stdout)
+	case "init":
+		return s.initCmd(ctx, a, stdout)
 	default:
 		return fmt.Errorf("%q: %w", a.cmd, errUnknownCmd)
 	}
@@ -203,6 +205,7 @@ Commands:
   change     score the change at hand against its merge base
   snapshot   score the whole tree at a revision
   history    walk first-parent merges over a range and report trends
+  init       write .slop-strata.toml and record the current baseline
 
 Flags:
   --rev R          end revision (change/snapshot; default HEAD or worktree)

@@ -18,6 +18,8 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
   1. `change`: lines added by `@` (jj) or `HEAD` against its merge base
   2. `snapshot`: the whole tree at a revision
   3. `history`: first-parent merges over a range, as trends
+  4. `init`: write `.slop-strata.toml` with bot author classes detected from
+     recent history, then record the current baseline
 - Every number is a guardrail with no target and no gate. Components stay visible and never blend into one score
 
 ## Engine
