@@ -234,11 +234,13 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	}
 	var before, after []structure.FileMetrics
 	old := map[string]bool{}
+	scored := make([]scoredFile, 0, len(files))
 	for _, f := range files {
 		sf, err := s.scoreFile(ctx, f, oldBlobs, committed, baseline, res, old)
 		if err != nil {
 			return nil, err
 		}
+		scored = append(scored, sf)
 		if sf.before != nil {
 			before = append(before, *sf.before)
 		}
@@ -246,6 +248,25 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 			after = append(after, *sf.after)
 		}
 		res.Files = append(res.Files, sf.delta)
+	}
+	// A function absent from its own file's before side falls back to an
+	// exact (name, complexity, size) match anywhere on the old side, so code
+	// moved between files does not read as fresh mass.
+	moved := map[funcKey]float64{}
+	for _, sf := range scored {
+		if sf.before == nil {
+			continue
+		}
+		for _, fn := range sf.before.Funcs {
+			moved[funcKey{fn.Name, fn.CC, fn.SLOC}] = structure.Mass(fn)
+		}
+	}
+	for i := range scored {
+		grown, over := funcGrowth(scored[i].before, scored[i].after, moved)
+		res.Files[i].MassGrown = grown
+		res.Files[i].OverLimit = over
+		res.Delta.MassGrown += grown
+		res.Delta.OverLimit += over
 	}
 
 	aggBefore := structure.Aggregate(before)
@@ -326,9 +347,6 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	res.Delta.MassAdded += sf.delta.MassAfter
-	sf.delta.MassGrown, sf.delta.OverLimit = funcGrowth(sf.before, sf.after)
-	res.Delta.MassGrown += sf.delta.MassGrown
-	res.Delta.OverLimit += sf.delta.OverLimit
 	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
 		res.Findings = append(res.Findings, findingRow{
 			Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
@@ -338,11 +356,20 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 	return sf, nil
 }
 
+// funcKey identifies a moved function exactly: a move keeps its name and
+// shape, so (name, complexity, size) matches it on the other side.
+type funcKey struct {
+	name string
+	cc   int
+	sloc int
+}
+
 // funcGrowth matches functions by name between the two sides of one file and
 // returns the mass the change grew (per-function positive deltas summed) and
-// the part of that growth sitting in functions over the CC limit. New and
-// renamed functions count in full; a nil before side counts every function.
-func funcGrowth(before, after *structure.FileMetrics) (float64, float64) {
+// the part of that growth sitting in functions over the CC limit. A function
+// missing from its own file's before side falls back to an exact moved-code
+// match; a nil before side counts every function not matched elsewhere.
+func funcGrowth(before, after *structure.FileMetrics, moved map[funcKey]float64) (float64, float64) {
 	if after == nil {
 		return 0, 0
 	}
@@ -354,7 +381,11 @@ func funcGrowth(before, after *structure.FileMetrics) (float64, float64) {
 		}
 	}
 	for _, fn := range after.Funcs {
-		g := structure.Mass(fn) - prev[fn.Name]
+		matched := prev[fn.Name]
+		if _, ok := prev[fn.Name]; !ok {
+			matched = moved[funcKey{fn.Name, fn.CC, fn.SLOC}]
+		}
+		g := structure.Mass(fn) - matched
 		if g <= 0 {
 			continue
 		}
