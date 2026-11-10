@@ -156,6 +156,50 @@ func TestChangeWorktree(t *testing.T) {
 	}
 }
 
+// changeEnvelope is the part of a change envelope the pairs test reads.
+type changeEnvelope struct {
+	Result *struct {
+		Files []struct {
+			Path string `json:"path"`
+		} `json:"files"`
+	} `json:"result"`
+	Error string `json:"error"`
+}
+
+func TestChangePairsEmitsOneEnvelopePerPair(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	pairs := filepath.Join(t.TempDir(), "pairs.txt")
+	lines := "HEAD~1 HEAD\nno-such-rev HEAD\n# comment\n\nHEAD~0 HEAD\n"
+	if err := os.WriteFile(pairs, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLI(t, repo, "change", "--json", "--pairs", pairs)
+	if err == nil {
+		t.Fatal("want an error for the failed pair")
+	}
+	envs := make([]changeEnvelope, 0, 3)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var env changeEnvelope
+		if err := json.Unmarshal([]byte(line), &env); err != nil {
+			t.Fatalf("line is not one envelope: %v\n%s", err, line)
+		}
+		envs = append(envs, env)
+	}
+	if len(envs) != 3 {
+		t.Fatalf("want 3 envelopes, got %d:\n%s", len(envs), out)
+	}
+	if envs[0].Result == nil || len(envs[0].Result.Files) != 1 || envs[0].Result.Files[0].Path != "helper.py" {
+		t.Errorf("first pair should change helper.py only: %+v", envs[0])
+	}
+	if envs[1].Error == "" || envs[1].Result != nil {
+		t.Errorf("second pair should carry an error and no result: %+v", envs[1])
+	}
+	if envs[2].Error != "" || envs[2].Result == nil {
+		t.Errorf("third pair should score cleanly: %+v", envs[2])
+	}
+}
+
 func TestHistoryWalk(t *testing.T) {
 	t.Parallel()
 	repo := fixtureRepo(t)

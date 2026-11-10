@@ -86,7 +86,7 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 - `change` prints a short block: the reading, then a table of deltas, then findings by rule. It shows only what moved, and `--all` shows the rest
 - `snapshot` prints a per-directory table, ranked by hotspot score
 - `history` prints trends per directory as a table with sparklines
-- `--json` on every subcommand is the integration surface. The tool renders no HTML
+- `--json` on every subcommand is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML
 - second-look calls `change` behind the first frame and shows the reading and deltas on the review screen
 - Every number is documented where it is printed: `--help` and `--explain <metric>` say what it counts, its threshold, and the behavior it should change, and the JSON carries the same text per field. There is no separate glossary to drift from the code
 - Comparisons are paired with confidence intervals and a noise floor from repeat runs. A figure reads provisional below a minimum count, and team figures need at least 5 people

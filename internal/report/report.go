@@ -23,6 +23,7 @@ type Envelope struct {
 	Tool     string            `json:"tool"`
 	Command  string            `json:"command"`
 	Repo     string            `json:"repo"`
+	Error    string            `json:"error,omitempty"`
 	At       string            `json:"at"`
 	Warnings []string          `json:"warnings,omitempty"`
 	Schema   int               `json:"schema"`
@@ -43,20 +44,32 @@ func Fprintf(w io.Writer, format string, args ...any) {
 	fmt.Fprintf(w, format, args...)
 }
 
-// WriteJSON emits the envelope for a command's result.
-func WriteJSON(w io.Writer, command, repo string, result any, warnings []string) error {
-	env := Envelope{
+// NewEnvelope stamps a command's result with the tool, schema version, and time.
+func NewEnvelope(command, repo string, result any, warnings []string) Envelope {
+	return Envelope{
 		Schema: Version, Tool: "slop-strata", Command: command, Repo: repo,
 		At: time.Now().UTC().Format(time.RFC3339), Result: result,
 		Docs: Docs, Warnings: warnings,
 	}
+}
+
+// Encode writes one envelope, indented for a person or on a single line for
+// JSON Lines.
+func Encode(w io.Writer, env Envelope, indent bool) error {
 	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
+	if indent {
+		enc.SetIndent("", "  ")
+	}
 	if err := enc.Encode(env); err != nil {
 		return fmt.Errorf("encoding envelope: %w", err)
 	}
 
 	return nil
+}
+
+// WriteJSON emits the envelope for a command's result.
+func WriteJSON(w io.Writer, command, repo string, result any, warnings []string) error {
+	return Encode(w, NewEnvelope(command, repo, result, warnings), true)
 }
 
 // Docs is the per-metric reference, the same text --explain prints and the

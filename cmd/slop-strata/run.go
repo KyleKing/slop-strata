@@ -42,6 +42,7 @@ type args struct {
 	base          string
 	since         string
 	explain       string
+	pairs         string
 	json          bool
 	ctx           bool
 	all           bool
@@ -75,7 +76,7 @@ func parseArgs(argv []string) (*args, error) {
 	}
 	strFlags := map[string]*string{
 		"--rev": &a.rev, "--base": &a.base, "--since": &a.since,
-		"--repo": &a.repo, "--explain": &a.explain,
+		"--repo": &a.repo, "--explain": &a.explain, "--pairs": &a.pairs,
 	}
 	rest := argv
 	for len(rest) > 0 {
@@ -216,6 +217,9 @@ Flags:
   --since S        history window, e.g. "180 days ago"
   --repo PATH      repository root (default .)
   --json           emit JSON (the integration surface)
+  --pairs FILE     change: score each "<base> <rev>" line of FILE (- for stdin)
+                   and emit one JSON envelope per line, with --json. A pair that
+                   fails carries its error and the rest still run
   --context        include the diff hunks, source lines, and messages a model
                    would need to explain the result (JSON mode)
   --all            show every number, not only what moved

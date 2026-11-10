@@ -134,6 +134,9 @@ type crossedFunc struct {
 }
 
 func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
+	if a.pairs != "" {
+		return s.changePairs(ctx, a, w)
+	}
 	end := a.rev
 	if end == "" {
 		end = defaultRev
@@ -143,21 +146,19 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		return err
 	}
 
-	var files []vcs.CommitFile
+	var (
+		res   *changeResult
+		files []vcs.CommitFile
+	)
 	if a.rev != "" {
-		d, err := s.ops.DiffRefs(ctx, s.root, base, a.rev)
-		if err != nil {
-			return fmt.Errorf("diff %s..%s: %w", base, a.rev, err)
-		}
-		files = d
+		res, files, err = s.scoreCommits(ctx, base, a.rev)
 	} else {
 		files, err = s.worktreeFiles(ctx, base)
 		if err != nil {
 			return err
 		}
+		res, err = s.scoreChange(ctx, base, end, files, false)
 	}
-
-	res, err := s.scoreChange(ctx, base, end, files, a.rev != "")
 	if err != nil {
 		return err
 	}
@@ -179,6 +180,20 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	printChange(w, res, a.all)
 
 	return nil
+}
+
+// scoreCommits scores the change from base to rev, two committed revisions.
+func (s *session) scoreCommits(ctx context.Context, base, rev string) (*changeResult, []vcs.CommitFile, error) {
+	files, err := s.ops.DiffRefs(ctx, s.root, base, rev)
+	if err != nil {
+		return nil, nil, fmt.Errorf("diff %s..%s: %w", base, rev, err)
+	}
+	res, err := s.scoreChange(ctx, base, rev, files, true)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return res, files, nil
 }
 
 // changeBase names the commit a change diffs from. A root commit has no parent
