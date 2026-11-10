@@ -83,6 +83,11 @@ func (a *Analyzer) Close() {
 	}
 }
 
+// ReasonUnsupported is the skip reason for a path no grammar or text kind covers.
+// Such files are listed as skipped but not counted, since they are never meant
+// to be scored.
+const ReasonUnsupported = "unsupported"
+
 // Skip reports whether a path is excluded by config or unsupported.
 func (a *Analyzer) skip(path string) string {
 	for _, glob := range a.cfg.Skip {
@@ -91,7 +96,7 @@ func (a *Analyzer) skip(path string) string {
 		}
 	}
 	if lang.ByPath(path) == nil {
-		return "unsupported"
+		return ReasonUnsupported
 	}
 
 	return ""

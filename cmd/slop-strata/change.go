@@ -167,7 +167,8 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		if a.ctx {
 			res.Context = s.buildContext(ctx, base, end, files, res)
 		}
-		if err := report.WriteJSON(w, "change", s.root, res, warnings(res)); err != nil {
+		counts := countRows(res.Skipped, res.Errors)
+		if err := report.WriteJSON(w, "change", s.root, res, counts, warnings(res)); err != nil {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
@@ -178,6 +179,7 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 
 	printChange(w, res, a.all)
+	report.WarnCounts(s.stderr, countRows(res.Skipped, res.Errors))
 
 	return nil
 }

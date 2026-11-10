@@ -28,7 +28,7 @@ func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
+	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "slop-strata:", err)
 		if errors.Is(err, errUsage) {
 			fmt.Fprintln(os.Stderr, `Run "slop-strata --help" for usage.`)

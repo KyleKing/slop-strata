@@ -253,7 +253,7 @@ func printVersion(argv []string, w io.Writer) error {
 
 // run dispatches argv: global flags first, then one subcommand. Usage errors are
 // all checked before the repository is opened.
-func run(ctx context.Context, argv []string, stdout io.Writer) error {
+func run(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 	if len(argv) == 0 {
 		printHelp(stdout)
 
@@ -287,7 +287,7 @@ func run(ctx context.Context, argv []string, stdout io.Writer) error {
 		return nil
 	}
 
-	s, err := newSession(ctx, a.repo, a.experimental)
+	s, err := newSession(ctx, a.repo, a.experimental, stderr)
 	if err != nil {
 		return err
 	}

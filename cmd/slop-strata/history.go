@@ -80,6 +80,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	viral := map[string]*viralRow{}
 	ruleFirst := map[string]string{}
 	liveMass := map[string]float64{} // path -> mass of its latest after-blob
+	gaps := newScoreGaps()
 	changes := 0
 
 	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
@@ -112,7 +113,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 		// Score this commit's new blobs for mass delta and rule hits.
 		s.scoreCommit(ctx, rec, &commitScore{
 			wk: wk, pairs: pairs, viral: viral, ruleFirst: ruleFirst,
-			liveMass: liveMass, klass: klass, week: week,
+			liveMass: liveMass, klass: klass, week: week, gaps: gaps,
 		})
 	}
 
@@ -121,7 +122,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	res.Hotspots = hotspotScores(res.Lineage, liveMass)
 
 	if a.json {
-		if err := report.WriteJSON(w, "history", s.root, res, nil); err != nil {
+		if err := report.WriteJSON(w, "history", s.root, res, gaps.counts(), nil); err != nil {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
@@ -129,6 +130,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 
 	printHistory(w, res)
+	report.WarnCounts(s.stderr, gaps.counts())
 
 	return nil
 }
@@ -188,8 +190,34 @@ type commitScore struct {
 	viral     map[string]*viralRow
 	ruleFirst map[string]string
 	liveMass  map[string]float64
+	gaps      *scoreGaps
 	klass     string
 	week      string
+}
+
+// scoreGaps records the distinct blobs a walk could not score, keyed by path and
+// blob id, so a blob that several commits touch counts once.
+type scoreGaps struct {
+	skipped map[string]bool
+	errors  map[string]bool
+}
+
+func newScoreGaps() *scoreGaps {
+	return &scoreGaps{skipped: map[string]bool{}, errors: map[string]bool{}}
+}
+
+func (g *scoreGaps) note(path, sha string, rep *engine.FileReport) {
+	key := path + "\x00" + sha
+	switch {
+	case rep.Skipped != "" && rep.Skipped != engine.ReasonUnsupported:
+		g.skipped[key] = true
+	case rep.Metrics.ParseError:
+		g.errors[key] = true
+	}
+}
+
+func (g *scoreGaps) counts() report.Counts {
+	return report.Counts{Errors: len(g.errors), Skipped: len(g.skipped)}
 }
 
 // scoreCommit analyzes both sides of a commit's changed blobs for mass
@@ -225,7 +253,7 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 
 			continue
 		}
-		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs))
+		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs, cs.gaps))
 	}
 }
 
@@ -265,12 +293,14 @@ func pairCell(pairs map[string]*pairRow, week, d string) *pairRow {
 
 // oldMass is a file's before-side function mass, zero when no before blob
 // exists or it does not analyze.
-func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs map[string][]byte) float64 {
+func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs map[string][]byte, gaps *scoreGaps,
+) float64 {
 	old, ok := blobs[f.OldSHA]
 	if f.OldSHA == "" || !ok {
 		return 0
 	}
 	rep := s.eng.Analyze(ctx, oldPathOf(f), f.OldSHA, old)
+	gaps.note(oldPathOf(f), f.OldSHA, rep)
 	if rep.Skipped != "" {
 		return 0
 	}
@@ -284,6 +314,7 @@ func (s *session) scoreBlob(
 	ctx context.Context, cs *commitScore, f vcs.CommitFile, content []byte, massBefore float64,
 ) {
 	rep := s.eng.Analyze(ctx, f.Path, f.NewSHA, content)
+	cs.gaps.note(f.Path, f.NewSHA, rep)
 	if rep.Skipped != "" {
 		return
 	}

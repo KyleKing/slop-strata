@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/kyleking/aragonite/vcs"
@@ -11,6 +12,7 @@ import (
 	"github.com/kyleking/slop-strata/internal/cache"
 	"github.com/kyleking/slop-strata/internal/config"
 	"github.com/kyleking/slop-strata/internal/engine"
+	"github.com/kyleking/slop-strata/internal/report"
 )
 
 // errUsage marks a bad command line.
@@ -33,14 +35,28 @@ const (
 
 // session bundles what every subcommand needs.
 type session struct {
-	ops   *vcs.GitOperations
-	cfg   *config.Config
-	eng   *engine.Analyzer
-	store *cache.Store
-	root  string
+	ops    *vcs.GitOperations
+	cfg    *config.Config
+	eng    *engine.Analyzer
+	store  *cache.Store
+	stderr io.Writer
+	root   string
 }
 
-func newSession(ctx context.Context, repoPath string, experimental bool) (*session, error) {
+// countRows tallies skipped and errored files for an envelope. A row whose
+// reason is an unsupported file type is listed but not counted.
+func countRows(skipped, errs []skippedRow) report.Counts {
+	c := report.Counts{Errors: len(errs)}
+	for _, sk := range skipped {
+		if sk.Reason != engine.ReasonUnsupported {
+			c.Skipped++
+		}
+	}
+
+	return c
+}
+
+func newSession(ctx context.Context, repoPath string, experimental bool, stderr io.Writer) (*session, error) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving repo path: %w", err)
@@ -64,7 +80,7 @@ func newSession(ctx context.Context, repoPath string, experimental bool) (*sessi
 
 	return &session{
 		ops: vcs.NewGitOperations(), cfg: cfg,
-		eng: engine.New(cfg, store), store: store, root: abs,
+		eng: engine.New(cfg, store), store: store, stderr: stderr, root: abs,
 	}, nil
 }
 

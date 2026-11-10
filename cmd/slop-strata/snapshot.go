@@ -70,7 +70,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 		if a.ctx {
 			res.Context = s.snapshotContext(res)
 		}
-		if err := report.WriteJSON(w, "snapshot", s.root, res, nil); err != nil {
+		if err := report.WriteJSON(w, "snapshot", s.root, res, countRows(res.Skipped, res.Errors), nil); err != nil {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
@@ -78,6 +78,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 
 	printSnapshot(w, res, a.all)
+	report.WarnCounts(s.stderr, countRows(res.Skipped, res.Errors))
 
 	return nil
 }

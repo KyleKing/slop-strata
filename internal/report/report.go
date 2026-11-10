@@ -14,7 +14,14 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 1
+const Version = 2
+
+// Counts tallies the files a run could not score, so a consumer never reads a
+// file that was not analyzed as zero mass.
+type Counts struct {
+	Errors  int `json:"errors"`
+	Skipped int `json:"skipped"`
+}
 
 // Envelope wraps every subcommand's JSON output.
 type Envelope struct {
@@ -26,6 +33,7 @@ type Envelope struct {
 	Error    string            `json:"error,omitempty"`
 	At       string            `json:"at"`
 	Warnings []string          `json:"warnings,omitempty"`
+	Counts   Counts            `json:"counts"`
 	Schema   int               `json:"schema"`
 }
 
@@ -45,12 +53,21 @@ func Fprintf(w io.Writer, format string, args ...any) {
 }
 
 // NewEnvelope stamps a command's result with the tool, schema version, and time.
-func NewEnvelope(command, repo string, result any, warnings []string) Envelope {
+func NewEnvelope(command, repo string, result any, counts Counts, warnings []string) Envelope {
 	return Envelope{
 		Schema: Version, Tool: "slop-strata", Command: command, Repo: repo,
 		At: time.Now().UTC().Format(time.RFC3339), Result: result,
-		Docs: Docs, Warnings: warnings,
+		Docs: Docs, Warnings: warnings, Counts: counts,
 	}
+}
+
+// WarnCounts prints one line to w when a run skipped or failed to parse any file,
+// so text output says what its numbers leave out.
+func WarnCounts(w io.Writer, c Counts) {
+	if c.Skipped == 0 && c.Errors == 0 {
+		return
+	}
+	Fprintf(w, "slop-strata: %d skipped, %d with parse errors (--json names each)\n", c.Skipped, c.Errors)
 }
 
 // Encode writes one envelope, indented for a person or on a single line for
@@ -68,8 +85,8 @@ func Encode(w io.Writer, env Envelope, indent bool) error {
 }
 
 // WriteJSON emits the envelope for a command's result.
-func WriteJSON(w io.Writer, command, repo string, result any, warnings []string) error {
-	return Encode(w, NewEnvelope(command, repo, result, warnings), true)
+func WriteJSON(w io.Writer, command, repo string, result any, counts Counts, warnings []string) error {
+	return Encode(w, NewEnvelope(command, repo, result, counts, warnings), true)
 }
 
 // Docs is the per-metric reference, the same text --explain prints and the
@@ -138,6 +155,10 @@ var Docs = map[string]string{
 		"Metrics still count what parsed; the row is a warning, not an abort.",
 	"skipped": "Files excluded by config, size, binary content, or minified shape, each named " +
 		"with its reason.",
+	"counts": "Files the run could not score: skipped (excluded by config, size, binary content, " +
+		"minified or generated shape) and errors (a parse that left error nodes). Metrics exclude " +
+		"them, so a non-zero count means the numbers cover less of the tree. Unsupported file " +
+		"types are listed as skipped but not counted.",
 	"intent": "The change's stated purpose read off commit metadata: Conventional Commit type, " +
 		"branch name, then issue keywords, plus revert detection.",
 }

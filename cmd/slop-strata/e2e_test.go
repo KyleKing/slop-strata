@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kyleking/slop-strata/internal/report"
 )
 
 // TestMain points the user cache at a throwaway directory, so a run never reads
@@ -88,12 +91,33 @@ func TestWaits(t *testing.T) { time.Sleep(1) }
 	return dir
 }
 
+// gitIn runs git in dir with a fixed identity.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
 func runCLI(t *testing.T, repo string, argv ...string) (string, error) {
 	t.Helper()
-	var out bytes.Buffer
-	err := run(context.Background(), append(argv, "--repo", repo), &out)
+	out, _, err := runCLIStreams(t, repo, argv...)
 
-	return out.String(), err
+	return out, err
+}
+
+// runCLIStreams runs the CLI against repo and returns what it wrote to stdout
+// and stderr.
+func runCLIStreams(t *testing.T, repo string, argv ...string) (string, string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	err := run(context.Background(), append(argv, "--repo", repo), &out, &errOut)
+
+	return out.String(), errOut.String(), err
 }
 
 func TestSnapshotJSON(t *testing.T) {
@@ -197,6 +221,36 @@ func TestChangePairsEmitsOneEnvelopePerPair(t *testing.T) {
 	}
 	if envs[2].Error != "" || envs[2].Result == nil {
 		t.Errorf("third pair should score cleanly: %+v", envs[2])
+	}
+}
+
+func TestCountsNameUnscoredFiles(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "blob.go"), []byte("package p\x00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "feat: binary blob")
+	out, _, err := runCLIStreams(t, repo, "snapshot", "--json")
+	if err != nil {
+		t.Fatalf("snapshot --json: %v", err)
+	}
+	var env struct {
+		Counts report.Counts `json:"counts"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v", err)
+	}
+	if env.Counts != (report.Counts{Skipped: 1}) {
+		t.Errorf("counts = %+v, want one skipped file", env.Counts)
+	}
+	_, errOut, err := runCLIStreams(t, repo, "snapshot")
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if !strings.Contains(errOut, "1 skipped, 0 with parse errors") {
+		t.Errorf("text mode stderr = %q, want the skipped warning", errOut)
 	}
 }
 
@@ -364,7 +418,7 @@ func TestChangeLastRef(t *testing.T) {
 func TestExplain(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"--explain", "erosion"}, &out); err != nil {
+	if err := run(context.Background(), []string{"--explain", "erosion"}, &out, io.Discard); err != nil {
 		t.Fatalf("explain: %v", err)
 	}
 	if !strings.Contains(out.String(), "complexity mass") {

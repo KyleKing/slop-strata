@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestUsageErrorsAreCheckedBeforeTheRepository(t *testing.T) {
 		name string
 		argv []string
 	}{
-		{name: "unknown subcommand", argv: []string{"change", "--repo", "/no/such/dir"}},
+		{name: "unknown subcommand", argv: []string{"bogus-cmd", "--repo", "/no/such/dir"}},
 		{name: "unknown flag", argv: []string{"change", "--bogus"}},
 		{name: "empty inline value", argv: []string{"change", "--rev=", "HEAD~1"}},
 		{name: "value flag at the end", argv: []string{"change", "--rev"}},
@@ -26,7 +27,7 @@ func TestUsageErrorsAreCheckedBeforeTheRepository(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			err := run(context.Background(), tc.argv, &out)
+			err := run(context.Background(), tc.argv, &out, io.Discard)
 			if !errors.Is(err, errUsage) {
 				t.Fatalf("run(%v) = %v, want a usage error", tc.argv, err)
 			}
@@ -40,7 +41,7 @@ func TestUsageErrorsAreCheckedBeforeTheRepository(t *testing.T) {
 func TestCommandHelpListsOnlyItsFlags(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"history", "--help"}, &out); err != nil {
+	if err := run(context.Background(), []string{"history", "--help"}, &out, io.Discard); err != nil {
 		t.Fatalf("history --help: %v", err)
 	}
 	help := out.String()
@@ -57,7 +58,7 @@ func TestCommandHelpListsOnlyItsFlags(t *testing.T) {
 func TestVersionJSONNamesTheCacheFile(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"--version", "--json"}, &out); err != nil {
+	if err := run(context.Background(), []string{"--version", "--json"}, &out, io.Discard); err != nil {
 		t.Fatalf("--version --json: %v", err)
 	}
 	var got map[string]string

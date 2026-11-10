@@ -66,11 +66,11 @@ func (s *session) pairEnvelope(ctx context.Context, p pair, withContext bool) (r
 	if p.err == nil {
 		res, err := s.scorePair(ctx, p, withContext)
 		if err == nil {
-			return report.NewEnvelope("change", s.root, res, warnings(res)), true
+			return report.NewEnvelope("change", s.root, res, countRows(res.Skipped, res.Errors), warnings(res)), true
 		}
 		p.err = err
 	}
-	env := report.NewEnvelope("change", s.root, nil, nil)
+	env := report.NewEnvelope("change", s.root, nil, report.Counts{}, nil)
 	env.Error = fmt.Sprintf("%s: %v", p.label, p.err)
 
 	return env, false
