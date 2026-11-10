@@ -462,7 +462,7 @@ func printHistory(w io.Writer, res *historyResult) {
 			rows = append(rows, []string{
 				d, strconv.Itoa(ds.Added), strconv.Itoa(ds.Removed), strconv.Itoa(ds.Churn14),
 				strconv.Itoa(ds.Churn30), strconv.Itoa(ds.Rework),
-				fmt.Sprintf("%.2f", res.Lineage.Concentration[d]), report.Sparkline(series[d]),
+				rateCell(res.Lineage.Concentration[d], false), report.Sparkline(series[d]),
 			})
 		}
 		report.Table(w, []string{

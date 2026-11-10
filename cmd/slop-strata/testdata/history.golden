@@ -8,7 +8,7 @@
   "docs": {
     "churn_14d": "Lines added in the range that were modified or deleted within 14 days of landing. High churn reads as work that did not settle.",
     "churn_30d": "Lines added in the range that were modified or deleted within 30 days.",
-    "concentration": "Largest single author's share of each directory's live lines. Reported per directory, never as a person ranking.",
+    "concentration": "Largest single author's share of each directory's live lines. Reported per directory, never as a person ranking. A directory with no live lines reads as a dash in text and null in JSON.",
     "counts": "Files the run could not score: skipped (excluded by config, size, binary content, minified or generated shape) and errors (a parse that left error nodes). Metrics exclude them, so a non-zero count means the numbers cover less of the tree. Unsupported file types are listed as skipped but not counted.",
     "coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files (code-maat's definition of co-change).",
     "erosion": "Share of complexity mass (CC x sqrt(SLOC) per function) held by functions with cyclomatic complexity over 10, per arXiv 2603.24755. No target; watch direction per directory. When it rises on routine work, the complex functions are getting more of them.",

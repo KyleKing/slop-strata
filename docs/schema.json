@@ -225,7 +225,7 @@
             },
             "test_survival": {"type": "array"},
             "coupling": {"type": ["array", "null"]},
-            "concentration": {"type": "object", "additionalProperties": {"type": "number"}}
+            "concentration": {"type": "object", "additionalProperties": {"type": ["number", "null"]}}
           }
         },
         "weeks": {

@@ -144,7 +144,8 @@ var Docs = map[string]string{
 		"per monthly cohort. At-risk is approximated at month granularity. Null when too few lines " +
 		"in the cohort have run as long as the horizon.",
 	"concentration": "Largest single author's share of each directory's live lines. Reported per " +
-		"directory, never as a person ranking.",
+		"directory, never as a person ranking. A directory with no live lines reads as a dash in text " +
+		"and null in JSON.",
 	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
 		"(code-maat's definition of co-change).",
 	"hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",

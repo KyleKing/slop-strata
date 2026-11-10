@@ -125,7 +125,7 @@ type TestSurvival struct {
 // Result is the lineage walk's output.
 type Result struct {
 	Dirs          map[string]*DirStats `json:"dirs"`
-	Concentration map[string]float64   `json:"concentration"`
+	Concentration map[string]*float64  `json:"concentration"`
 	Survival      []Survival           `json:"survival"`
 	TestSurvival  []TestSurvival       `json:"test_survival"`
 	Coupling      [][2]string          `json:"coupling"`
@@ -615,8 +615,8 @@ func testShare(observed []obs, horizon int) *float64 {
 }
 
 // concentration finds each directory's largest single-author share of its
-// live lines.
-func (w *Walker) concentration() map[string]float64 {
+// live lines. A directory with no live lines maps to nil.
+func (w *Walker) concentration() map[string]*float64 {
 	byDir := map[string]map[string]int{}
 	for path, lines := range w.files {
 		d := DirOf(path)
@@ -627,7 +627,10 @@ func (w *Walker) concentration() map[string]float64 {
 			byDir[d][t.author]++
 		}
 	}
-	out := map[string]float64{}
+	out := make(map[string]*float64, len(w.res.Dirs))
+	for d := range w.res.Dirs {
+		out[d] = nil
+	}
 	for d, authors := range byDir {
 		total, top := 0, 0
 		for _, n := range authors {
@@ -635,7 +638,8 @@ func (w *Walker) concentration() map[string]float64 {
 			top = max(top, n)
 		}
 		if total > 0 {
-			out[d] = float64(top) / float64(total)
+			share := float64(top) / float64(total)
+			out[d] = &share
 		}
 	}
 
