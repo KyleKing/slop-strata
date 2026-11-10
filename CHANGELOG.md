@@ -1,3 +1,17 @@
+## v0.11.0 (2026-11-10)
+
+### Feat
+
+- **change**: flag prose that still names a name the change removed
+
+### Fix
+
+- **history**: show a dash for a directory with no live lines
+
+### Refactor
+
+- **lineage**: match moved lines with aragonite's MatchMoves
+
 ## v0.10.0 (2026-11-10)
 
 ### Feat
