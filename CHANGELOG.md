@@ -1,3 +1,9 @@
+## v0.6.0 (2026-11-10)
+
+### Feat
+
+- **change**: flag a symbol whose last use the change removed
+
 ## v0.5.0 (2026-11-10)
 
 ### Feat
