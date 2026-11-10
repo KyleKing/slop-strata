@@ -131,14 +131,8 @@ func TestSurvivalNullBeyondExposure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
-			w.Commit(commitOn(0, vcs.CommitFile{
-				Path: "a.go", Status: vcs.StatusAdded, Added: []string{"func a() {}"},
-				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
-			}), false, false)
-			w.Commit(commitOn(tc.walkDays, vcs.CommitFile{
-				Path: "b.go", Status: vcs.StatusAdded, Added: []string{"func b() {}"},
-				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
-			}), false, false)
+			w.Commit(commitOn(0, addedFile("a.go", 40)), false, false)
+			w.Commit(commitOn(tc.walkDays, addedFile("b.go", 1)), false, false)
 
 			var cohort lineage.Survival
 			for _, s := range w.Finish().Survival {
@@ -251,6 +245,61 @@ func TestCohortFollowsCommitterDateInUTC(t *testing.T) {
 			survival := w.Finish().Survival
 			if len(survival) != 1 || survival[0].Cohort != tc.want {
 				t.Fatalf("cohorts = %+v, want one cohort %q", survival, tc.want)
+			}
+		})
+	}
+}
+
+func addedFile(path string, lines int) vcs.CommitFile {
+	added := make([]string, lines)
+	for i := range added {
+		added[i] = fmt.Sprintf("line %s %d", path, i)
+	}
+
+	return vcs.CommitFile{
+		Path: path, Status: vcs.StatusAdded, Added: added,
+		Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: lines}},
+	}
+}
+
+func TestSurvivalNeedsEnoughLinesAtHorizon(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		build   func(w *lineage.Walker)
+		wantS30 *float64
+		name    string
+	}{
+		{
+			name: "most lines censored young with a few deaths at 30 days",
+			build: func(w *lineage.Walker) {
+				w.Commit(commitOn(0, addedFile("dies.go", 16)), false, false)
+				w.Commit(commitOn(15, addedFile("young.go", 100)), false, false)
+				w.Commit(commitOn(30, vcs.CommitFile{Path: "dies.go", Status: vcs.StatusDeleted}), false, false)
+			},
+		},
+		{
+			name: "enough lines reach 30 days",
+			build: func(w *lineage.Walker) {
+				w.Commit(commitOn(0, addedFile("stays.go", 40), addedFile("dies.go", 4)), false, false)
+				w.Commit(commitOn(30, vcs.CommitFile{Path: "dies.go", Status: vcs.StatusDeleted}), false, false)
+			},
+			wantS30: share(40.0 / 44.0),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			tc.build(w)
+
+			var cohort lineage.Survival
+			for _, s := range w.Finish().Survival {
+				if s.Cohort == "2025-03" {
+					cohort = s
+				}
+			}
+			if !sameShare(cohort.S30, tc.wantS30) {
+				t.Fatalf("s30 = %v, want %v", fmtShare(cohort.S30), fmtShare(tc.wantS30))
 			}
 		})
 	}

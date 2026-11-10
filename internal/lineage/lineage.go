@@ -29,6 +29,9 @@ const (
 	// Survival marks S30 and S90 read, in days.
 	horizon30Days = 30
 	horizon90Days = 90
+	// Lines that must reach a survival horizon before its estimate is reported;
+	// fewer leave the curve resting on a handful of lines.
+	minAtRisk = 30
 )
 
 // tag is one live line's provenance.
@@ -634,10 +637,16 @@ func (w *Walker) totalAdded() int {
 // km is the Kaplan-Meier product-limit estimate at horizon: at each distinct
 // death age the at-risk set is every observation that reached it, dead or
 // still alive (censored observations drop out as their exposure ends). The
-// ages slice arrives sorted ascending. It answers nil when no observation ran
-// as long as the horizon, because the estimate would extrapolate past the data.
+// ages slice arrives sorted ascending. It answers nil when fewer than minAtRisk
+// observations reached the horizon.
 func km(ages []obs, horizon int) *float64 {
-	if len(ages) == 0 || ages[len(ages)-1].age < horizon {
+	reached := 0
+	for _, o := range ages {
+		if o.age >= horizon {
+			reached++
+		}
+	}
+	if reached < minAtRisk {
 		return nil
 	}
 	surv := 1.0

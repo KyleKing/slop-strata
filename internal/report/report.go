@@ -96,8 +96,8 @@ var Docs = map[string]string{
 	"rework":    "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
 	"reverts":   "Commits in the range that revert another change.",
 	"survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, " +
-		"per monthly cohort. At-risk is approximated at month granularity. Null when no line in the " +
-		"cohort has run as long as the horizon.",
+		"per monthly cohort. At-risk is approximated at month granularity. Null when too few lines " +
+		"in the cohort have run as long as the horizon.",
 	"concentration": "Largest single author's share of each directory's live lines. Reported per " +
 		"directory, never as a person ranking.",
 	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
