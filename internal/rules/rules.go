@@ -10,7 +10,7 @@ import (
 )
 
 // Version bumps when a rule's logic changes so cached findings are recomputed.
-const Version = 3
+const Version = 4
 
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.

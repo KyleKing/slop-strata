@@ -157,14 +157,14 @@ func minified(content []byte, avgLine int) bool {
 
 // CrossFile runs the cross-file passes over analyzed reports and merges their
 // findings into each file's report.
-func CrossFile(reports []*FileReport) {
+func CrossFile(reports []*FileReport, cfg *config.Config) {
 	var blobs []rules.BlobPrint
 	for _, r := range reports {
 		if r.Print != nil {
 			blobs = append(blobs, rules.BlobPrint{Path: r.Path, Print: r.Print})
 		}
 	}
-	for path, findings := range rules.CrossFile(blobs) {
+	for path, findings := range rules.CrossFile(blobs, cfg.EntryPoints) {
 		for _, r := range reports {
 			if r.Path == path {
 				r.Findings = append(r.Findings, findings...)

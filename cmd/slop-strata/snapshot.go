@@ -104,7 +104,7 @@ func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*
 		}
 		reports = append(reports, s.eng.Analyze(ctx, e.Path, e.SHA, content))
 	}
-	engine.CrossFile(reports)
+	engine.CrossFile(reports, s.cfg)
 
 	return reports, nil
 }

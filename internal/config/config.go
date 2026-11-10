@@ -74,6 +74,10 @@ type Config struct {
 	// AstGrep lists ast-grep YAML rule files or directories, relative to the
 	// repository root, loaded through `sg` as an optional external rule source.
 	AstGrep []string `toml:"ast_grep"`
+	// EntryPoints lists path globs (filepath.Match syntax) whose exports a
+	// dead-export read never reports: CLI mains, package entry modules,
+	// plugin registrations.
+	EntryPoints []string `toml:"entry_points"`
 	// MaxFileBytes skips blobs above the cap; minified bundles and vendored
 	// output trip it and are reported by name rather than parsed.
 	MaxFileBytes int64 `toml:"max_file_bytes"`

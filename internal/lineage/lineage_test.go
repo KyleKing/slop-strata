@@ -10,6 +10,7 @@ import (
 )
 
 func TestMovedLinesKeepTheirCohort(t *testing.T) {
+	t.Parallel()
 	w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
 	at := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
 	src := []string{

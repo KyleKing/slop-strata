@@ -43,6 +43,7 @@ type Fingerprint struct {
 	MethodImpls map[string][]string `json:"method_impls,omitempty"` // receiver type -> method names
 	Implements  map[string][]int    `json:"implements,omitempty"`   // interface name -> lines (ts)
 	Declared    map[string]int      `json:"declared,omitempty"`     // top-level names -> line
+	Exported    map[string]int      `json:"exported,omitempty"`     // public-API names -> line
 	Options     map[string]int      `json:"options,omitempty"`      // WithX funcs returning an Option -> line
 	Referenced  map[string]bool     `json:"referenced,omitempty"`   // referenced identifiers
 	Clones      []CloneUnit         `json:"clones,omitempty"`
@@ -60,7 +61,8 @@ func Collect(ctx *Ctx) *Fingerprint {
 			collectLiteral(ctx, n, fp)
 		case ctx.Lang.FunctionKinds[kind]:
 			collectClone(ctx, n, fp)
-		case kind == kindIdentifier:
+		case kind == kindIdentifier || kind == "field_identifier" || kind == "property_identifier" ||
+			kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern":
 			if fp.Referenced == nil {
 				fp.Referenced = map[string]bool{}
 			}
@@ -68,6 +70,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 		}
 	})
 	collectDecls(ctx, fp)
+	collectExports(ctx, fp)
 	collectIfaces(ctx, fp)
 
 	return fp
@@ -141,21 +144,15 @@ func collectDecls(ctx *Ctx, fp *Fingerprint) {
 		if !declKinds[n.Kind()] || !isTopLevel(n) {
 			return
 		}
+		text := declName(ctx, n)
+		if text == "" {
+			return
+		}
 		if fp.Declared == nil {
 			fp.Declared = map[string]int{}
 		}
-		name := n.ChildByFieldName("name")
-		if name == nil {
-			name = n.NamedChild(0)
-		}
-		if name == nil {
-			return
-		}
-		text := ctx.Text(name)
-		if !identifierShape(text) {
-			return
-		}
 		fp.Declared[text] = lineOf(n)
+		recordExport(ctx, fp, n, text)
 		if ctx.Lang == lang.Go && isOptionFunc(ctx, n) {
 			if fp.Options == nil {
 				fp.Options = map[string]int{}
@@ -165,19 +162,84 @@ func collectDecls(ctx *Ctx, fp *Fingerprint) {
 	})
 }
 
+// declName resolves a declaration's name text, empty when it has none.
+func declName(ctx *Ctx, n *ts.Node) string {
+	name := n.ChildByFieldName("name")
+	if name == nil {
+		name = n.NamedChild(0)
+	}
+	if name == nil {
+		return ""
+	}
+	text := ctx.Text(name)
+	if !identifierShape(text) {
+		return ""
+	}
+
+	return text
+}
+
+// recordExport marks a declared name exported per its language's rule.
+func recordExport(ctx *Ctx, fp *Fingerprint, n *ts.Node, text string) {
+	if !exportedByLang(ctx, n, text) {
+		return
+	}
+	if fp.Exported == nil {
+		fp.Exported = map[string]int{}
+	}
+	fp.Exported[text] = lineOf(n)
+}
+
 // isTopLevel reports whether a declaration sits at file scope: its parent is
-// the root or a declaration_list/module wrapper.
+// the root or a declaration_list/module/export wrapper.
 func isTopLevel(n *ts.Node) bool {
 	p := n.Parent()
 	if p == nil {
 		return true
 	}
 	switch p.Kind() {
-	case "source_file", "program", "module", "declaration_list", "statement_block":
+	case "source_file", "program", "module", "declaration_list", "statement_block",
+		"export_statement", "ambient_declaration":
 		return isTopLevel(p)
 	default:
 		return false
 	}
+}
+
+// exportedByLang reports whether a top-level declaration is part of the
+// file's public API: Go exports by case, Python by leading underscore, and
+// TypeScript by the export keyword.
+func exportedByLang(ctx *Ctx, n *ts.Node, name string) bool {
+	switch ctx.Lang {
+	case lang.Go:
+		return name != "" && name[0] >= 'A' && name[0] <= 'Z'
+	case lang.Python:
+		return !strings.HasPrefix(name, "_")
+	default:
+		p := n.Parent()
+		return p != nil && p.Kind() == "export_statement"
+	}
+}
+
+// collectExports records the names an `export { a, b as c }` clause offers:
+// the alias is the public name when present.
+func collectExports(ctx *Ctx, fp *Fingerprint) {
+	lang.EachNamed(ctx.Root, func(n *ts.Node) {
+		if n.Kind() != "export_specifier" {
+			return
+		}
+		name := n.ChildByFieldName("alias")
+		if name == nil {
+			name = n.ChildByFieldName("name")
+		}
+		if name == nil {
+			return
+		}
+		if fp.Exported == nil {
+			fp.Exported = map[string]int{}
+		}
+		fp.Exported[ctx.Text(name)] = lineOf(n)
+	})
 }
 
 // identifierShape reports whether text is a plain identifier.

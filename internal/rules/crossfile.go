@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,12 +18,13 @@ type BlobPrint struct {
 
 // CrossFile runs the passes that join fingerprints across the tree, returning
 // findings per path. These never re-parse; they only read what Collect stored.
-func CrossFile(blobs []BlobPrint) map[string][]Finding {
+func CrossFile(blobs []BlobPrint, entryPoints []string) map[string][]Finding {
 	out := map[string][]Finding{}
 	dupLiterals(blobs, out)
 	clones(blobs, out)
 	singleImplIfaces(blobs, out)
 	unusedOptions(blobs, out)
+	deadExports(blobs, out, entryPoints)
 
 	return out
 }
@@ -51,6 +53,46 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 			})
 		}
 	}
+}
+
+// deadExports flags an exported name no other file references: the export is
+// part of the file's public surface with no consumer. Entry-point globs and
+// test files are exempt — their exports answer a caller outside the tree.
+func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string) {
+	refCount := map[string]int{}
+	for _, b := range blobs {
+		for name := range b.Print.Referenced {
+			refCount[name]++
+		}
+	}
+	for _, b := range blobs {
+		if lang.IsTestPath(b.Path) || matchAny(entryPoints, b.Path) {
+			continue
+		}
+		for name, line := range b.Print.Exported {
+			refs := refCount[name]
+			if b.Print.Referenced[name] {
+				refs--
+			}
+			if refs == 0 {
+				out[b.Path] = append(out[b.Path], Finding{
+					Rule: "x/dead-export", Line: line, Match: name,
+					Note: "exported, referenced nowhere else",
+				})
+			}
+		}
+	}
+}
+
+// matchAny reports whether path matches any glob in the list.
+func matchAny(globs []string, path string) bool {
+	for _, g := range globs {
+		if ok, err := filepath.Match(g, path); err == nil && ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // minCloneFiles is how many files must share a function body hash before the
