@@ -371,11 +371,12 @@ type funcKey struct {
 	sloc int
 }
 
-// funcGrowth matches functions by name between the two sides of one file and
-// returns the mass the change grew (per-function positive deltas summed) and
-// the part of that growth sitting in functions over the CC limit. A function
-// missing from its own file's before side falls back to an exact moved-code
-// match; a nil before side counts every function not matched elsewhere.
+// funcGrowth matches functions between the two sides of one file by funcKeys
+// and returns the mass the change grew (per-function positive deltas summed)
+// and the part of that growth sitting in functions over the CC limit. A
+// function missing from its own file's before side falls back to an exact
+// moved-code match; a nil before side counts every function not matched
+// elsewhere.
 func funcGrowth(before, after *structure.FileMetrics, moved map[funcKey]float64) (float64, float64) {
 	if after == nil {
 		return 0, 0
@@ -383,13 +384,14 @@ func funcGrowth(before, after *structure.FileMetrics, moved map[funcKey]float64)
 	var grown, overLimit float64
 	prev := map[string]float64{}
 	if before != nil {
-		for _, fn := range before.Funcs {
-			prev[fn.Name] = structure.Mass(fn)
+		for i, key := range funcKeys(before.Funcs) {
+			prev[key] = structure.Mass(before.Funcs[i])
 		}
 	}
-	for _, fn := range after.Funcs {
-		matched := prev[fn.Name]
-		if _, ok := prev[fn.Name]; !ok {
+	for i, key := range funcKeys(after.Funcs) {
+		fn := after.Funcs[i]
+		matched, ok := prev[key]
+		if !ok {
 			matched = moved[funcKey{fn.Name, fn.CC, fn.SLOC}]
 		}
 		g := structure.Mass(fn) - matched
@@ -403,6 +405,36 @@ func funcGrowth(before, after *structure.FileMetrics, moved map[funcKey]float64)
 	}
 
 	return grown, overLimit
+}
+
+// funcKeys names each function of one file side for matching. A function
+// nested in another is keyed under its enclosing function, and an anonymous one
+// by its order among the anonymous functions of that enclosing function.
+func funcKeys(fns []structure.FuncMetrics) []string {
+	keys := make([]string, len(fns))
+	var open []int
+	anonymous := map[string]int{}
+	for i, fn := range fns {
+		for len(open) > 0 && fn.EndLine > fns[open[len(open)-1]].EndLine {
+			open = open[:len(open)-1]
+		}
+		parent := ""
+		if len(open) > 0 {
+			parent = keys[open[len(open)-1]]
+		}
+		name := fn.Name
+		if name == lang.AnonymousName {
+			anonymous[parent]++
+			name = fmt.Sprintf("%s#%d", lang.AnonymousName, anonymous[parent])
+		}
+		keys[i] = name
+		if parent != "" {
+			keys[i] = parent + "/" + name
+		}
+		open = append(open, i)
+	}
+
+	return keys
 }
 
 // oldReport analyzes a file's before-side blob, when it has one.

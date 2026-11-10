@@ -15,7 +15,7 @@ import (
 
 // GrammarVersion bumps when a grammar or the queries over it change, so a blob
 // cached under a stale grammar is recomputed.
-const GrammarVersion = 3
+const GrammarVersion = 4
 
 // Tree-sitter node kinds shared across the language vocabularies.
 const (
@@ -30,6 +30,8 @@ const (
 type Language struct {
 	// CallKinds are node types for a function or method call.
 	CallKinds map[string]bool
+	// ClassKinds are node types whose name qualifies the methods they hold.
+	ClassKinds map[string]bool
 	// OpContainerKinds are expression node types whose operator child may be a
 	// counted decision operator (and/or/&&/||/??).
 	OpContainerKinds map[string]bool
@@ -113,6 +115,7 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 	},
 	CommentKinds: map[string]bool{kindComment: true},
 	CallKinds:    map[string]bool{"call": true},
+	ClassKinds:   map[string]bool{"class_definition": true},
 	ParamSkipKinds: map[string]bool{
 		kindComment:            true,
 		"keyword_separator":    true,
@@ -169,6 +172,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	MethodKinds:    map[string]bool{kindMethodDefinition: true},
 	CommentKinds:   map[string]bool{kindComment: true},
 	CallKinds:      map[string]bool{"call_expression": true},
+	ClassKinds:     map[string]bool{"class_declaration": true, "class": true, "abstract_class_declaration": true},
 	ParamSkipKinds: map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"string":          true,
@@ -218,6 +222,7 @@ var TSX = &Language{ //nolint:gochecknoglobals // language vocabularies are cons
 	CommentKinds:     TypeScript.CommentKinds,
 	LiteralKinds:     TypeScript.LiteralKinds,
 	CallKinds:        TypeScript.CallKinds,
+	ClassKinds:       TypeScript.ClassKinds,
 	ParamSkipKinds:   TypeScript.ParamSkipKinds,
 	DecisionKinds:    TypeScript.DecisionKinds,
 	OpContainerKinds: TypeScript.OpContainerKinds,

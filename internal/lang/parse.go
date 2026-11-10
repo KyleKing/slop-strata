@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"strings"
 	"sync"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -73,20 +74,65 @@ func EachNamed(node *ts.Node, fn func(*ts.Node)) {
 	}
 }
 
-// FunctionName best-effort names a function node: its "name" field when the
-// grammar has one, else the receiver-qualified form for Go methods, else
-// "<anonymous>" for literals and arrows.
+// AnonymousName is what FunctionName reads for a literal or arrow with no name.
+const AnonymousName = "<anonymous>"
+
+// FunctionName best-effort names a function node, qualified by the Go receiver
+// type or the class that holds it ("Session.run"). Literals and arrows without
+// a name read AnonymousName.
 func FunctionName(l *Language, node *ts.Node, src []byte) string {
-	if name := node.ChildByFieldName("name"); name != nil {
-		return Text(name, src)
+	name := ""
+	if n := node.ChildByFieldName("name"); n != nil {
+		name = Text(n, src)
 	}
-	if l.ID == "go" && l.MethodKinds[node.Kind()] {
-		if recv := node.ChildByFieldName("receiver"); recv != nil {
-			return Text(recv, src) + "." + "<method>"
+	if name == "" {
+		return AnonymousName
+	}
+	var owner string
+	if recv := node.ChildByFieldName("receiver"); recv != nil && l.MethodKinds[node.Kind()] {
+		owner = receiverType(Text(recv, src))
+	} else {
+		owner = enclosingClass(l, node, src)
+	}
+	if owner == "" {
+		return name
+	}
+
+	return owner + "." + name
+}
+
+// receiverType reads the type name out of a Go receiver such as "(s *Session)"
+// or "(Stack[T])".
+func receiverType(receiver string) string {
+	fields := strings.Fields(strings.Trim(receiver, "()"))
+	if len(fields) == 0 {
+		return ""
+	}
+	typ := strings.TrimLeft(fields[len(fields)-1], "*")
+	if i := strings.IndexByte(typ, '['); i >= 0 {
+		typ = typ[:i]
+	}
+
+	return typ
+}
+
+// enclosingClass names the class a function is a method of, or "" when a
+// function or the file's top level comes first.
+func enclosingClass(l *Language, node *ts.Node, src []byte) string {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if l.FunctionKinds[p.Kind()] {
+			return ""
+		}
+		if l.ClassKinds[p.Kind()] {
+			if n := p.ChildByFieldName("name"); n != nil {
+				return Text(n, src)
+			}
+
+			return ""
 		}
 	}
 
-	return "<anonymous>"
+	return ""
 }
 
 // ParamCount counts a function node's declared parameters: named children of
