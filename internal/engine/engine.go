@@ -41,11 +41,20 @@ type cached struct {
 // Analyzer scores blobs through the cache. Prefetch scores a batch of blobs in
 // parallel and holds the results until Analyze or AnalyzeText asks for them.
 type Analyzer struct {
-	memo     map[string]*FileReport
-	parser   *lang.Parser
-	store    *cache.Store
-	cfg      *config.Config
-	analysis string
+	memo      map[string]*FileReport
+	parser    *lang.Parser
+	store     *cache.Store
+	cfg       *config.Config
+	generated func(path string) bool
+	analysis  string
+}
+
+// Option configures an Analyzer.
+type Option func(*Analyzer)
+
+// WithGenerated skips code paths for which isGenerated reports true, as generated.
+func WithGenerated(isGenerated func(path string) bool) Option {
+	return func(a *Analyzer) { a.generated = isGenerated }
 }
 
 // Request is one blob for Prefetch. Text marks a prose or config blob, which
@@ -68,11 +77,16 @@ type job struct {
 }
 
 // New builds an Analyzer. Store may be a no-op store.
-func New(cfg *config.Config, store *cache.Store) *Analyzer {
-	return &Analyzer{
+func New(cfg *config.Config, store *cache.Store, opts ...Option) *Analyzer {
+	a := &Analyzer{
 		memo: map[string]*FileReport{}, store: store, cfg: cfg,
 		analysis: analysisKey(cfg.Experimental),
 	}
+	for _, opt := range opts {
+		opt(a)
+	}
+
+	return a
 }
 
 // Close releases the parser Analyze reuses between calls.
@@ -82,6 +96,10 @@ func (a *Analyzer) Close() {
 		a.parser = nil
 	}
 }
+
+// ReasonGenerated is the skip reason for a file a generator wrote, by its
+// .gitattributes mark or a marker in its first lines.
+const ReasonGenerated = "generated"
 
 // ReasonUnsupported is the skip reason for a path no grammar or text kind covers.
 // Such files are listed as skipped but not counted, since they are never meant
@@ -254,6 +272,11 @@ func (a *Analyzer) begin(ctx context.Context, path, sha string, content []byte) 
 		return rep, nil
 	}
 	l := lang.ByPath(path)
+	if a.generated != nil && a.generated(path) {
+		rep.Skipped = ReasonGenerated
+
+		return rep, nil
+	}
 	if int64(len(content)) > a.cfg.MaxFileBytes {
 		rep.Skipped = "oversize"
 
@@ -266,6 +289,11 @@ func (a *Analyzer) begin(ctx context.Context, path, sha string, content []byte) 
 	}
 	if minified(content, a.cfg.MinifiedAvgLine) {
 		rep.Skipped = "minified"
+
+		return rep, nil
+	}
+	if generatedMarker(content) {
+		rep.Skipped = ReasonGenerated
 
 		return rep, nil
 	}
@@ -367,6 +395,25 @@ func (a *Analyzer) record(ctx context.Context, j *job, payload []byte) {
 func (a *Analyzer) addPathFindings(rep *FileReport) {
 	test := lang.IsTestPath(rep.Path)
 	rep.Findings = append(rep.Findings, rules.PathFindings(rep.Path, test, a.cfg.Experimental)...)
+}
+
+// markerLines is how far down a file a generated-code marker may sit.
+const markerLines = 5
+
+// generatedMarker reports whether a file's first lines carry a code generator's
+// marker, such as "@generated" or "Code generated ... DO NOT EDIT".
+func generatedMarker(content []byte) bool {
+	head := bytes.SplitN(content, []byte{'\n'}, markerLines+1)
+	if len(head) > markerLines {
+		head = head[:markerLines]
+	}
+	for _, line := range head {
+		if bytes.Contains(line, []byte("@generated")) || bytes.Contains(line, []byte("DO NOT EDIT")) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // minified reports whether content looks machine-packed: very long average

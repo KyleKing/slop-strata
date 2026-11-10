@@ -12,6 +12,7 @@ import (
 	"github.com/kyleking/slop-strata/internal/cache"
 	"github.com/kyleking/slop-strata/internal/config"
 	"github.com/kyleking/slop-strata/internal/engine"
+	"github.com/kyleking/slop-strata/internal/gitattr"
 	"github.com/kyleking/slop-strata/internal/report"
 )
 
@@ -69,6 +70,10 @@ func newSession(ctx context.Context, repoPath string, experimental bool, stderr 
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 	cfg.Experimental = cfg.Experimental || experimental
+	attrs, err := gitattr.Load(abs)
+	if err != nil {
+		return nil, fmt.Errorf("loading attributes: %w", err)
+	}
 	cachePath, err := cache.Path(version)
 	if err != nil {
 		cachePath = ""
@@ -80,7 +85,7 @@ func newSession(ctx context.Context, repoPath string, experimental bool, stderr 
 
 	return &session{
 		ops: vcs.NewGitOperations(), cfg: cfg,
-		eng: engine.New(cfg, store), store: store, stderr: stderr, root: abs,
+		eng: engine.New(cfg, store, engine.WithGenerated(attrs.Generated)), store: store, stderr: stderr, root: abs,
 	}, nil
 }
 

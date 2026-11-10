@@ -153,8 +153,9 @@ var Docs = map[string]string{
 		"commits each. A cell is provisional under 5 commits.",
 	"errors": "Files the parser could not fully read, with the byte share under error nodes. " +
 		"Metrics still count what parsed; the row is a warning, not an abort.",
-	"skipped": "Files excluded by config, size, binary content, or minified shape, each named " +
-		"with its reason.",
+	"skipped": "Files excluded by config, size, binary content, minified shape, or generated code, " +
+		"each named with its reason. Generated means a generator marker in the first five lines, or " +
+		"linguist-generated in the working tree's root .gitattributes.",
 	"counts": "Files the run could not score: skipped (excluded by config, size, binary content, " +
 		"minified or generated shape) and errors (a parse that left error nodes). Metrics exclude " +
 		"them, so a non-zero count means the numbers cover less of the tree. Unsupported file " +
