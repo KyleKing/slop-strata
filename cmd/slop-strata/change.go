@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kyleking/aragonite/vcs"
@@ -51,6 +52,8 @@ type deltaSummary struct {
 	MassAdded     float64 `json:"mass_added"`
 	MassRemoved   float64 `json:"mass_removed"`
 	MassNet       float64 `json:"mass_net"`
+	MassGrown     float64 `json:"mass_grown"`
+	OverLimit     float64 `json:"over_limit"`
 	ErosionBefore float64 `json:"erosion_before"`
 	ErosionAfter  float64 `json:"erosion_after"`
 	LinesAdded    int     `json:"lines_added"`
@@ -78,6 +81,8 @@ type fileDelta struct {
 	Lang       string  `json:"lang,omitempty"`
 	MassBefore float64 `json:"mass_before"`
 	MassAfter  float64 `json:"mass_after"`
+	MassGrown  float64 `json:"mass_grown"`
+	OverLimit  float64 `json:"over_limit"`
 	Added      int     `json:"added"`
 	Deleted    int     `json:"deleted"`
 }
@@ -321,6 +326,9 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	res.Delta.MassAdded += sf.delta.MassAfter
+	sf.delta.MassGrown, sf.delta.OverLimit = funcGrowth(sf.before, sf.after)
+	res.Delta.MassGrown += sf.delta.MassGrown
+	res.Delta.OverLimit += sf.delta.OverLimit
 	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
 		res.Findings = append(res.Findings, findingRow{
 			Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
@@ -328,6 +336,35 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 	}
 
 	return sf, nil
+}
+
+// funcGrowth matches functions by name between the two sides of one file and
+// returns the mass the change grew (per-function positive deltas summed) and
+// the part of that growth sitting in functions over the CC limit. New and
+// renamed functions count in full; a nil before side counts every function.
+func funcGrowth(before, after *structure.FileMetrics) (float64, float64) {
+	if after == nil {
+		return 0, 0
+	}
+	var grown, overLimit float64
+	prev := map[string]float64{}
+	if before != nil {
+		for _, fn := range before.Funcs {
+			prev[fn.Name] = structure.Mass(fn)
+		}
+	}
+	for _, fn := range after.Funcs {
+		g := structure.Mass(fn) - prev[fn.Name]
+		if g <= 0 {
+			continue
+		}
+		grown += g
+		if fn.CC > structure.CCLimit {
+			overLimit += g
+		}
+	}
+
+	return grown, overLimit
 }
 
 // oldReport analyzes a file's before-side blob, when it has one.
@@ -596,6 +633,8 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 		{"mass added", fmt.Sprintf("%.1f", res.Delta.MassAdded)},
 		{"mass removed", fmt.Sprintf("%.1f", res.Delta.MassRemoved)},
 		{"mass net", fmt.Sprintf("%+.1f", res.Delta.MassNet)},
+		{"mass grown", fmt.Sprintf("%.1f", res.Delta.MassGrown)},
+		{"grown over CC " + strconv.Itoa(structure.CCLimit), fmt.Sprintf("%.1f", res.Delta.OverLimit)},
 		{"erosion", fmt.Sprintf("%.2f → %.2f", res.Delta.ErosionBefore, res.Delta.ErosionAfter)},
 		{"lines", fmt.Sprintf("+%d −%d", res.Delta.LinesAdded, res.Delta.LinesDeleted)},
 	}

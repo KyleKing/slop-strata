@@ -70,6 +70,13 @@ var Docs = map[string]string{
 	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). " +
 		"Gross added/removed/net are reported separately; a refactor that removes mass differs " +
 		"from one that adds it.",
+	"mass_grown": "Function-matched growth: for each function present after the change, " +
+		"max(0, mass_after - mass_before) summed, matched by name within the same file. New " +
+		"functions count in full. This is the mass a change actually adds, as distinct from " +
+		"mass_added which totals the after-side mass of every touched file.",
+	"over_limit": "The share of mass_grown sitting in functions whose cyclomatic complexity " +
+		"exceeds 10. A change that concentrates its growth in already-complex functions is " +
+		"the shape erosion measures.",
 	"p90_len": "90th percentile function length in lines. Long functions carry context a reader " +
 		"must hold; watch the max, not the mean.",
 	"max_len": "Longest function in lines.",
