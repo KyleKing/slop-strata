@@ -25,6 +25,9 @@ import (
 // defaultRev is the revision change and snapshot default to.
 const defaultRev = "HEAD"
 
+// emptyTree is git's well-known empty tree, the base a root commit diffs from.
+const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 // side is one version of a changed file.
 type side struct {
 	err     error
@@ -130,16 +133,9 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	if end == "" {
 		end = defaultRev
 	}
-	base := a.base
-	if base == "" {
-		branch, err := s.defaultBranch(ctx)
-		if err != nil {
-			return err
-		}
-		base, err = s.ops.MergeBase(ctx, s.root, end, branch)
-		if err != nil {
-			return fmt.Errorf("merge-base %s..%s: %w", end, branch, err)
-		}
+	base, err := s.changeBase(ctx, a.base, end)
+	if err != nil {
+		return err
 	}
 
 	var files []vcs.CommitFile
@@ -184,6 +180,52 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	printChange(w, res, a.all)
 
 	return nil
+}
+
+// changeBase names the commit a change diffs from. A root commit has no parent
+// to diff from, so its base is git's empty tree.
+func (s *session) changeBase(ctx context.Context, base, end string) (string, error) {
+	if base != "" {
+		_, err := s.ops.ResolveRef(ctx, s.root, base)
+		switch {
+		case err == nil:
+			return base, nil
+		case s.isRootParent(ctx, base):
+			return emptyTree, nil
+		default:
+			return "", fmt.Errorf("base %s: %w", base, err)
+		}
+	}
+	branch, err := s.defaultBranch(ctx)
+	if err != nil {
+		return "", err
+	}
+	merged, err := s.ops.MergeBase(ctx, s.root, end, branch)
+	switch {
+	case err == nil:
+		return merged, nil
+	case s.isRoot(ctx, end):
+		return emptyTree, nil
+	default:
+		return "", fmt.Errorf("merge-base %s..%s: %w", end, branch, err)
+	}
+}
+
+// isRootParent reports whether base names the parent of a root commit.
+func (s *session) isRootParent(ctx context.Context, base string) bool {
+	root, ok := strings.CutSuffix(base, "^")
+
+	return ok && s.isRoot(ctx, root)
+}
+
+// isRoot reports whether rev names a commit with no parent.
+func (s *session) isRoot(ctx context.Context, rev string) bool {
+	if _, err := s.ops.ResolveRef(ctx, s.root, rev); err != nil {
+		return false
+	}
+	_, err := s.ops.ResolveRef(ctx, s.root, rev+"^")
+
+	return err != nil
 }
 
 // defaultBranch resolves the branch the change diffs against.

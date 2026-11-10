@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -213,5 +214,42 @@ func TestChangeFindingsAreNewOnlyOnAddedLines(t *testing.T) {
 		if got[line] != isNew {
 			t.Fatalf("line %d new = %t, want %t (all: %v)", line, got[line], isNew, got)
 		}
+	}
+}
+
+func TestChangeRootCommitDiffsFromEmptyTree(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--initial-branch=main")
+	body := "package main\n\nfunc run(x int) int {\n\tif x > 0 {\n\t\treturn x\n\t}\n\treturn 0\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: init")
+	head := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD")
+	head.Dir = dir
+	raw, err := head.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.TrimSpace(string(raw))
+
+	out, err := runCLI(t, dir, "change", "--base", sha+"^", "--rev", sha, "--json")
+	if err != nil {
+		t.Fatalf("change from a root commit: %v\n%s", err, out)
+	}
+	var env struct {
+		Result struct {
+			Delta struct {
+				MassAdded float64 `json:"mass_added"`
+			} `json:"delta"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	if env.Result.Delta.MassAdded == 0 {
+		t.Fatalf("root commit's function counted no mass: %s", out)
 	}
 }
