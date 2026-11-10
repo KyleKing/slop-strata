@@ -432,25 +432,7 @@ func (s *session) scoreBlob(
 func printHistory(w io.Writer, res *historyResult) {
 	report.Fprintf(w, "%d first-parent commits · %d reverts\n\n", res.Changes, res.Lineage.Reverts)
 
-	if len(res.Weeks) > 0 {
-		rows := make([][]string, 0, len(res.Weeks))
-		noisy := false
-		for _, wk := range res.Weeks {
-			mass := fmt.Sprintf("%+.0f", wk.MassNet)
-			if wk.WithinNoise {
-				mass += noiseMark
-				noisy = true
-			}
-			rows = append(rows, []string{
-				wk.Week, strconv.Itoa(wk.Commits), fmt.Sprintf("+%d", wk.Added),
-				fmt.Sprintf("-%d", wk.Removed), mass,
-			})
-		}
-		report.Table(w, []string{"week", "commits", colAdded, "removed", "mass"}, rows)
-		if noisy {
-			report.Fprintf(w, "%s within one noise floor (%.0f) of the median week\n", noiseMark, res.NoiseFloor)
-		}
-	}
+	printWeeks(w, res)
 
 	if len(res.Lineage.Survival) > 0 {
 		report.Fprintln(w)
@@ -500,6 +482,29 @@ func printHistory(w io.Writer, res *historyResult) {
 			rows = append(rows, []string{v.Rule, v.FirstWeek, strings.Join(parts, " ")})
 		}
 		report.Table(w, []string{"rule", "first hit", "spread by class"}, rows)
+	}
+}
+
+// printWeeks renders the first-parent week table with its noise footnote.
+func printWeeks(w io.Writer, res *historyResult) {
+	if len(res.Weeks) > 0 {
+		rows := make([][]string, 0, len(res.Weeks))
+		noisy := false
+		for _, wk := range res.Weeks {
+			mass := fmt.Sprintf("%+.0f", wk.MassNet)
+			if wk.WithinNoise {
+				mass += noiseMark
+				noisy = true
+			}
+			rows = append(rows, []string{
+				wk.Week, strconv.Itoa(wk.Commits), fmt.Sprintf("+%d", wk.Added),
+				fmt.Sprintf("-%d", wk.Removed), mass,
+			})
+		}
+		report.Table(w, []string{"week", "commits", colAdded, "removed", "mass"}, rows)
+		if noisy {
+			report.Fprintf(w, "%s within one noise floor (%.0f) of the median week\n", noiseMark, res.NoiseFloor)
+		}
 	}
 }
 
