@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -101,6 +102,8 @@ var Docs = map[string]string{
 	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). " +
 		"Gross added/removed/net are reported separately; a refactor that removes mass differs " +
 		"from one that adds it.",
+	"mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row " +
+		"scales to its own minimum and maximum, so it shows shape, not sign or size.",
 	"mass_grown": "Function-matched growth: for each function present after the change, " +
 		"max(0, mass_after - mass_before) summed, matched by name within the same file. New " +
 		"functions count in full. This is the mass a change actually adds, as distinct from " +
@@ -209,23 +212,23 @@ func Table(w io.Writer, header []string, rows [][]string) {
 // spark ticks for trend sparklines.
 var spark = []rune("▁▂▃▄▅▆▇█")
 
-// Sparkline renders values as a bar sparkline.
+// Sparkline renders values as ticks scaled between their own minimum and maximum,
+// so it shows the shape of a series and not its sign or size.
 func Sparkline(values []float64) string {
 	if len(values) == 0 {
 		return ""
 	}
-	hi := 0.0
-	for _, v := range values {
-		if v > hi {
-			hi = v
-		}
-	}
-	if hi == 0 {
-		return strings.Repeat(string(spark[0]), len(values))
+	lo, hi := values[0], values[0]
+	for _, v := range values[1:] {
+		lo = min(lo, v)
+		hi = max(hi, v)
 	}
 	var b strings.Builder
 	for _, v := range values {
-		idx := int(v / hi * float64(len(spark)-1))
+		idx := 0
+		if hi > lo {
+			idx = int(math.Round((v - lo) / (hi - lo) * float64(len(spark)-1)))
+		}
 		b.WriteRune(spark[idx])
 	}
 

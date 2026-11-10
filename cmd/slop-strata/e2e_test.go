@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -277,6 +278,31 @@ func TestHistoryWalk(t *testing.T) {
 	}
 	if env.Result.Changes != 2 || len(env.Result.Lineage.Survival) == 0 {
 		t.Fatalf("unexpected history: %s", out)
+	}
+}
+
+func TestHistoryTextTrendColumns(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	out, err := runCLI(t, repo, "history")
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	header := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, colDir+" ") {
+			header = line
+
+			break
+		}
+	}
+	for _, col := range []string{"churn_14d", "churn_30d", "mass_8w"} {
+		if !strings.Contains(header, col) {
+			t.Errorf("dir table header %q lacks %s", header, col)
+		}
+	}
+	if !regexp.MustCompile("[▁▂▃▄▅▆▇█]{8}").MatchString(out) {
+		t.Errorf("history text has no 8-tick mass sparkline:\n%s", out)
 	}
 }
 

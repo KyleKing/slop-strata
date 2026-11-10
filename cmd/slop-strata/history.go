@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kyleking/aragonite/vcs"
 
@@ -18,6 +19,12 @@ import (
 
 // daysPerWeek buckets author dates into Monday weeks.
 const daysPerWeek = 7
+
+// weekLayout formats a Monday week bucket.
+const weekLayout = "2006-01-02"
+
+// sparkWeeks is the trailing window of the per-directory mass sparkline.
+const sparkWeeks = 8
 
 // provisionalBelow is the commit count under which a pairing cell is too thin
 // to compare.
@@ -95,7 +102,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 			rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
 		// Week buckets by Monday: truncate to weekday.
 		monday := rec.AuthorTime.AddDate(0, 0, -int((rec.AuthorTime.Weekday()+daysPerWeek-1)%daysPerWeek))
-		week := monday.Format("2006-01-02")
+		week := monday.Format(weekLayout)
 
 		walker.Commit(rec, in.Kind == intent.Fix, in.Revert)
 
@@ -162,6 +169,38 @@ func collectRollups(res *historyResult, weeks map[string]*weekRow,
 		res.Viral = append(res.Viral, *v)
 	}
 	sort.Slice(res.Viral, func(i, j int) bool { return res.Viral[i].Rule < res.Viral[j].Rule })
+}
+
+// massSeries answers each directory's net mass per week over the last sparkWeeks
+// weeks of the range, oldest first. A directory with no change in that window has
+// no entry.
+func massSeries(res *historyResult) map[string][]float64 {
+	if len(res.Weeks) == 0 {
+		return nil
+	}
+	last, err := time.Parse(weekLayout, res.Weeks[len(res.Weeks)-1].Week)
+	if err != nil {
+		return nil
+	}
+	index := map[string]int{}
+	for i := range sparkWeeks {
+		index[last.AddDate(0, 0, -daysPerWeek*(sparkWeeks-1-i)).Format(weekLayout)] = i
+	}
+	out := map[string][]float64{}
+	for _, p := range res.Pairs {
+		i, ok := index[p.Week]
+		if !ok {
+			continue
+		}
+		if out[p.Dir] == nil {
+			out[p.Dir] = make([]float64, sparkWeeks)
+		}
+		for _, m := range p.ClassMass {
+			out[p.Dir][i] += m
+		}
+	}
+
+	return out
 }
 
 // hotspotScores is churn × live complexity mass per directory: directories
@@ -371,15 +410,20 @@ func printHistory(w io.Writer, res *historyResult) {
 
 	if len(res.Lineage.Dirs) > 0 {
 		report.Fprintln(w)
+		series := massSeries(res)
 		rows := make([][]string, 0, len(res.Lineage.Dirs))
 		for _, d := range report.SortedKeys(res.Lineage.Dirs) {
 			ds := res.Lineage.Dirs[d]
 			rows = append(rows, []string{
-				d, strconv.Itoa(ds.Added), strconv.Itoa(ds.Removed), strconv.Itoa(ds.Churn30),
-				strconv.Itoa(ds.Rework), fmt.Sprintf("%.2f", res.Lineage.Concentration[d]),
+				d, strconv.Itoa(ds.Added), strconv.Itoa(ds.Removed), strconv.Itoa(ds.Churn14),
+				strconv.Itoa(ds.Churn30), strconv.Itoa(ds.Rework),
+				fmt.Sprintf("%.2f", res.Lineage.Concentration[d]), report.Sparkline(series[d]),
 			})
 		}
-		report.Table(w, []string{colDir, colAdded, "removed", "churn30", "rework", "concentr."}, rows)
+		report.Table(w, []string{
+			colDir, colAdded, "removed", "churn_14d", "churn_30d", "rework",
+			"concentration", "mass_8w",
+		}, rows)
 	}
 
 	if len(res.Viral) > 0 {

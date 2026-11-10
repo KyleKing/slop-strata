@@ -18,6 +18,7 @@
     "hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
     "intent": "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection.",
     "mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). Gross added/removed/net are reported separately; a refactor that removes mass differs from one that adds it.",
+    "mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row scales to its own minimum and maximum, so it shows shape, not sign or size.",
     "mass_grown": "Function-matched growth: for each function present after the change, max(0, mass_after - mass_before) summed, matched by name within the same file. New functions count in full. This is the mass a change actually adds, as distinct from mass_added which totals the after-side mass of every touched file.",
     "max_cognitive": "Highest cognitive complexity in any function.",
     "max_len": "Longest function in lines.",

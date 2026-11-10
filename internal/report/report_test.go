@@ -8,6 +8,13 @@ import (
 	"github.com/kyleking/slop-strata/internal/report"
 )
 
+func TestSparklineSpansItsOwnRange(t *testing.T) {
+	t.Parallel()
+	if got := report.Sparkline([]float64{-4, 0, 4}); got != "▁▅█" {
+		t.Errorf("Sparkline with negatives = %q, want %q", got, "▁▅█")
+	}
+}
+
 func TestTableAlignsMultibyteCells(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
