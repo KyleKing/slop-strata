@@ -1,3 +1,23 @@
+## v0.8.0 (2026-11-10)
+
+### Feat
+
+- **rules**: run rules below the precision bar only with --experimental
+
+### Fix
+
+- **rules**: report a Go registry declaration once
+- **rules**: judge mock-only asserts per it or test body
+- **rules**: match only patch entry points for py mock-patch
+- **rules**: narrow narrating-comment to change-narration phrases
+- **rules**: require six statements or eight lines for clone reports
+- **rules**: split could-be-private, honor manifest and interface refs
+- **rules**: skip history files, link targets, and domains in stale-prose
+- **rules**: flag Python or-defaults only for empty fallbacks on parameters
+- **rules**: flag test file reads only for repository source, config, and docs
+- **rules**: narrow repeated-literal findings to shared strings across files
+- **rules**: flag silent Go errors only for a discarded last result
+
 ## v0.7.0 (2026-11-10)
 
 ### Feat
