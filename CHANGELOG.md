@@ -1,3 +1,18 @@
+## v0.5.0 (2026-11-10)
+
+### Feat
+
+- **rules**: flag stale prose and unread config keys
+- **history**: count the directories a rule's hits spread across
+- **rules**: track exports per blob and flag dead exports
+- **lineage**: carry line tags across same-commit moves
+- **change**: match moved functions exactly so moves don't read as growth
+- **lineage**: censor surviving lines at their real exposure in survival estimates
+
+### Fix
+
+- **init**: write top-level keys ahead of the author-class table
+
 ## v0.4.0 (2026-11-10)
 
 ### Feat
