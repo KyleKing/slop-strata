@@ -10,7 +10,11 @@ import (
 )
 
 // Version bumps when a rule's logic changes so cached findings are recomputed.
-const Version = 5
+const Version = 6
+
+// experimentalCacheSlot offsets the cache key of an experimental run, so a
+// default run never reads a payload scored without the experimental rules.
+const experimentalCacheSlot = 1 << 16
 
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.
@@ -39,49 +43,60 @@ type Finding struct {
 	Line  int    `json:"line"`
 }
 
+// CacheVersion is the rule-set number a blob's payload is stored under.
+func CacheVersion(experimental bool) int {
+	if experimental {
+		return Version + experimentalCacheSlot
+	}
+
+	return Version
+}
+
 // Ctx is what a per-blob rule sees.
 type Ctx struct {
-	Lang *lang.Language
-	Root *ts.Node
-	Path string
-	Src  []byte
-	Test bool
+	Lang         *lang.Language
+	Root         *ts.Node
+	Path         string
+	Src          []byte
+	Test         bool
+	Experimental bool
 }
 
 // Rule is a per-blob check.
 type Rule struct {
-	Apply    func(*Ctx, *[]Finding)
-	ID       string
-	TestOnly bool // only fires where Lang.IsTestFile(path)
+	Apply        func(*Ctx, *[]Finding)
+	ID           string
+	TestOnly     bool // only fires where Lang.IsTestFile(path)
+	Experimental bool // below the precision bar; runs only when Ctx.Experimental is set
 }
 
 // all is the registry: every rule that ships, in id order.
 var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile time
-	{ID: "go/silent-error", Apply: goSilentError},
-	{ID: ruleGoTypeAny, Apply: goTypeAny},
-	{ID: "go/test-reads-source", TestOnly: true, Apply: goTestReadsSource},
+	{ID: "go/silent-error", Apply: goSilentError, Experimental: true},
+	{ID: ruleGoTypeAny, Apply: goTypeAny, Experimental: true},
+	{ID: "go/test-reads-source", TestOnly: true, Apply: goTestReadsSource, Experimental: true},
 	{ID: "go/timing-hack", TestOnly: true, Apply: goTimingHack},
 	{ID: "py/silent-except", Apply: pySilentExcept},
-	{ID: "py/or-default", Apply: pyOrDefault},
-	{ID: "py/type-any", Apply: pyTypeAny},
-	{ID: "py/mock-patch", TestOnly: true, Apply: pyMockPatch},
-	{ID: rulePyTestReadsSource, TestOnly: true, Apply: pyTestReadsSource},
+	{ID: "py/or-default", Apply: pyOrDefault, Experimental: true},
+	{ID: "py/type-any", Apply: pyTypeAny, Experimental: true},
+	{ID: "py/mock-patch", TestOnly: true, Apply: pyMockPatch, Experimental: true},
+	{ID: rulePyTestReadsSource, TestOnly: true, Apply: pyTestReadsSource, Experimental: true},
 	{ID: "py/mock-only-assert", TestOnly: true, Apply: pyMockOnlyAssert},
-	{ID: "py/constant-echo", TestOnly: true, Apply: pyConstantEcho},
+	{ID: "py/constant-echo", TestOnly: true, Apply: pyConstantEcho, Experimental: true},
 	{ID: rulePyTimingHack, TestOnly: true, Apply: pyTimingHack},
 	{ID: "ts/silent-catch", Apply: tsSilentCatch},
 	{ID: ruleTSAsUnknownAs, Apply: tsAsUnknownAs},
 	{ID: "ts/record-unknown", Apply: tsRecordUnknown},
-	{ID: "ts/type-any", Apply: tsTypeAny},
+	{ID: "ts/type-any", Apply: tsTypeAny, Experimental: true},
 	{ID: "ts/module-mock", Apply: tsModuleMock},
-	{ID: "ts/test-reads-source", TestOnly: true, Apply: tsTestReadsSource},
-	{ID: "ts/mock-only-assert", TestOnly: true, Apply: tsMockOnlyAssert},
+	{ID: "ts/test-reads-source", TestOnly: true, Apply: tsTestReadsSource, Experimental: true},
+	{ID: "ts/mock-only-assert", TestOnly: true, Apply: tsMockOnlyAssert, Experimental: true},
 	{ID: "ts/constant-echo", TestOnly: true, Apply: tsConstantEcho},
 	{ID: "ts/timing-hack", TestOnly: true, Apply: tsTimingHack},
-	{ID: "x/single-entry-registry", Apply: singleEntryRegistry},
-	{ID: ruleXNarratingComment, Apply: narratingComment},
-	{ID: "x/comment-density", Apply: commentDensity},
-	{ID: "x/spent-test", TestOnly: true, Apply: spentTest},
+	{ID: "x/single-entry-registry", Apply: singleEntryRegistry, Experimental: true},
+	{ID: ruleXNarratingComment, Apply: narratingComment, Experimental: true},
+	{ID: "x/comment-density", Apply: commentDensity, Experimental: true},
+	{ID: "x/spent-test", TestOnly: true, Apply: spentTest, Experimental: true},
 }
 
 // Run applies every rule appropriate for the blob.
@@ -90,6 +105,9 @@ func Run(ctx *Ctx) []Finding {
 	for i := range all {
 		rule := &all[i]
 		if rule.TestOnly && !ctx.Test {
+			continue
+		}
+		if rule.Experimental && !ctx.Experimental {
 			continue
 		}
 		rule.Apply(ctx, &findings)

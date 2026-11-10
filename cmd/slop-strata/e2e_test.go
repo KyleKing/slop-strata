@@ -79,7 +79,7 @@ func runCLI(t *testing.T, repo string, argv ...string) (string, error) {
 func TestSnapshotJSON(t *testing.T) {
 	t.Parallel()
 	repo := fixtureRepo(t)
-	out, err := runCLI(t, repo, "snapshot", "--json")
+	out, err := runCLI(t, repo, "snapshot", "--json", "--experimental")
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestChangeWorktree(t *testing.T) {
 		[]byte("package main\n\nfunc sneaky() { _ = g() }\n\nfunc g() error { return nil }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runCLI(t, repo, "change", "--json")
+	out, err := runCLI(t, repo, "change", "--json", "--experimental")
 	if err != nil {
 		t.Fatalf("change: %v", err)
 	}
@@ -197,7 +197,7 @@ func main() { fmt.Println(usedFn, "timeout") }
 	run("add", "-A")
 	run("commit", "-m", "feat: init")
 
-	out, err := runCLI(t, dir, "snapshot", "--json")
+	out, err := runCLI(t, dir, "snapshot", "--json", "--experimental")
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}

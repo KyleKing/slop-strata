@@ -38,14 +38,15 @@ type cached struct {
 
 // Analyzer scores blobs through the cache.
 type Analyzer struct {
-	pool  *lang.Pool
-	store *cache.Store
-	cfg   *config.Config
+	pool    *lang.Pool
+	store   *cache.Store
+	cfg     *config.Config
+	ruleSet int
 }
 
 // New builds an Analyzer. Store may be a no-op store.
 func New(cfg *config.Config, store *cache.Store) *Analyzer {
-	return &Analyzer{pool: lang.NewPool(), store: store, cfg: cfg}
+	return &Analyzer{pool: lang.NewPool(), store: store, cfg: cfg, ruleSet: rules.CacheVersion(cfg.Experimental)}
 }
 
 // Skip reports whether a path is excluded by config or unsupported.
@@ -112,7 +113,7 @@ func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte
 		return rep
 	}
 
-	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, rules.Version); ok {
+	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, a.ruleSet); ok {
 		var c cached
 		if err := json.Unmarshal(payload, &c); err == nil {
 			rep.Metrics = c.Metrics
@@ -129,13 +130,16 @@ func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte
 	defer tree.Close()
 
 	rep.Metrics = structure.Analyze(l, tree, content)
-	rctx := &rules.Ctx{Lang: l, Root: tree.RootNode(), Src: content, Path: path, Test: l.IsTestFile(path)}
+	rctx := &rules.Ctx{
+		Lang: l, Root: tree.RootNode(), Src: content, Path: path,
+		Test: l.IsTestFile(path), Experimental: a.cfg.Experimental,
+	}
 	rep.Findings = rules.Run(rctx)
 	rep.Print = rules.Collect(rctx)
 
 	payload, err := json.Marshal(cached{Metrics: rep.Metrics, Findings: rep.Findings, Print: rep.Print})
 	if err == nil {
-		a.store.Put(ctx, sha, lang.GrammarVersion, rules.Version, payload)
+		a.store.Put(ctx, sha, lang.GrammarVersion, a.ruleSet, payload)
 	}
 
 	return rep
@@ -176,7 +180,7 @@ func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []
 
 		return rep
 	}
-	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, rules.Version); ok {
+	if payload, ok := a.store.Get(ctx, sha, lang.GrammarVersion, a.ruleSet); ok {
 		var c cached
 		if err := json.Unmarshal(payload, &c); err == nil {
 			rep.Print = c.Print
@@ -187,7 +191,7 @@ func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []
 	rep.Print = rules.CollectText(path, content)
 	payload, err := json.Marshal(cached{Print: rep.Print})
 	if err == nil {
-		a.store.Put(ctx, sha, lang.GrammarVersion, rules.Version, payload)
+		a.store.Put(ctx, sha, lang.GrammarVersion, a.ruleSet, payload)
 	}
 
 	return rep
@@ -202,7 +206,7 @@ func CrossFile(reports []*FileReport, treePaths []string, cfg *config.Config) {
 			blobs = append(blobs, rules.BlobPrint{Path: r.Path, Print: r.Print})
 		}
 	}
-	for path, findings := range rules.CrossFile(blobs, treePaths, cfg.EntryPoints, cfg.ConfigPaths) {
+	for path, findings := range rules.CrossFile(blobs, treePaths, cfg.EntryPoints, cfg.ConfigPaths, cfg.Experimental) {
 		for _, r := range reports {
 			if r.Path == path {
 				r.Findings = append(r.Findings, findings...)

@@ -46,6 +46,7 @@ type args struct {
 	ctx           bool
 	all           bool
 	writeBaseline bool
+	experimental  bool
 	help          bool
 }
 
@@ -70,7 +71,7 @@ func parseArgs(argv []string) (*args, error) {
 	a := &args{cmd: "", repo: "."}
 	boolFlags := map[string]*bool{
 		"--json": &a.json, "--context": &a.ctx, "--all": &a.all,
-		"--write-baseline": &a.writeBaseline,
+		"--write-baseline": &a.writeBaseline, "--experimental": &a.experimental,
 	}
 	strFlags := map[string]*string{
 		"--rev": &a.rev, "--base": &a.base, "--since": &a.since,
@@ -121,7 +122,7 @@ type session struct {
 	root  string
 }
 
-func newSession(ctx context.Context, repoPath string) (*session, error) {
+func newSession(ctx context.Context, repoPath string, experimental bool) (*session, error) {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving repo path: %w", err)
@@ -133,6 +134,7 @@ func newSession(ctx context.Context, repoPath string) (*session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
+	cfg.Experimental = cfg.Experimental || experimental
 	cachePath, err := cache.Path(version)
 	if err != nil {
 		cachePath = ""
@@ -176,7 +178,7 @@ func run(ctx context.Context, argv []string, stdout io.Writer) error {
 		return nil
 	}
 
-	s, err := newSession(ctx, a.repo)
+	s, err := newSession(ctx, a.repo, a.experimental)
 	if err != nil {
 		return err
 	}
@@ -217,6 +219,7 @@ Flags:
                    would need to explain the result (JSON mode)
   --all            show every number, not only what moved
   --write-baseline record current findings as the baseline (snapshot)
+  --experimental   also run rules below the 80% precision bar (see --explain experimental)
   --explain NAME   print a metric's doc: erosion, mass, churn_30d, survival, ...
   -h, --help       this text
   -v, --version    version

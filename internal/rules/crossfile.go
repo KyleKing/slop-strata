@@ -20,15 +20,20 @@ type BlobPrint struct {
 // CrossFile runs the passes that join fingerprints across the tree, returning
 // findings per path. These never re-parse; they only read what Collect stored.
 // TreePaths is every path in the tree, so prose file references resolve even
-// for files no pass fingerprints.
-func CrossFile(blobs []BlobPrint, treePaths, entryPoints, configPaths []string) map[string][]Finding {
+// for files no pass fingerprints. Passes whose rules are experimental run only
+// when experimental is set.
+func CrossFile(
+	blobs []BlobPrint, treePaths, entryPoints, configPaths []string, experimental bool,
+) map[string][]Finding {
 	out := map[string][]Finding{}
-	dupLiterals(blobs, out)
-	clones(blobs, out)
+	if experimental {
+		dupLiterals(blobs, out)
+		deadExports(blobs, out, entryPoints)
+		staleProse(blobs, out, treePaths)
+	}
+	clones(blobs, out, experimental)
 	singleImplIfaces(blobs, out)
 	unusedOptions(blobs, out)
-	deadExports(blobs, out, entryPoints)
-	staleProse(blobs, out, treePaths)
 	staleConfig(blobs, out, configPaths)
 
 	return out
@@ -276,8 +281,9 @@ type cloneOwner struct {
 	unit CloneUnit
 }
 
-// clones flags normalized-identical function bodies living in different files.
-func clones(blobs []BlobPrint, out map[string][]Finding) {
+// clones flags normalized-identical function bodies living in different files
+// when experimental is set; same-file test duplicates are always reported.
+func clones(blobs []BlobPrint, out map[string][]Finding, experimental bool) {
 	byHash := map[string][]cloneOwner{}
 	for _, b := range blobs {
 		for _, u := range b.Print.Clones {
@@ -292,6 +298,9 @@ func clones(blobs []BlobPrint, out map[string][]Finding) {
 		if len(files) < minCloneFiles {
 			dupTestCases(hash, owners, out)
 
+			continue
+		}
+		if !experimental {
 			continue
 		}
 		for _, o := range owners {

@@ -111,6 +111,9 @@ type Config struct {
 	// MinifiedAvgLine marks a blob minified when its average line length
 	// passes this; those are skipped with the same warning as oversize files.
 	MinifiedAvgLine int `toml:"minified_avg_line"`
+	// Experimental enables the rules still below the precision bar, which are
+	// otherwise not run. The --experimental flag sets it for one run.
+	Experimental bool `toml:"experimental"`
 }
 
 // Default returns the configuration a repository gets with no file.
