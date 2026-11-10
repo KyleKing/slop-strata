@@ -200,7 +200,7 @@ func (s *session) changeBase(ctx context.Context, base, end string) (string, err
 	if err != nil {
 		return "", err
 	}
-	merged, err := s.ops.MergeBase(ctx, s.root, end, branch)
+	merged, err := s.ops.MergeBase(ctx, s.root, end, s.upstreamOf(ctx, branch))
 	switch {
 	case err == nil:
 		return merged, nil
@@ -209,6 +209,17 @@ func (s *session) changeBase(ctx context.Context, base, end string) (string, err
 	default:
 		return "", fmt.Errorf("merge-base %s..%s: %w", end, branch, err)
 	}
+}
+
+// upstreamOf names the remote-tracking branch behind a local default branch,
+// so commits made locally and not yet pushed count as the change. It falls
+// back to the local branch when none is set.
+func (s *session) upstreamOf(ctx context.Context, branch string) string {
+	if up, err := s.ops.ResolveRef(ctx, s.root, branch+"@{upstream}"); err == nil {
+		return up
+	}
+
+	return branch
 }
 
 // isRootParent reports whether base names the parent of a root commit.

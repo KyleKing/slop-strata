@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -251,5 +252,53 @@ func TestChangeRootCommitDiffsFromEmptyTree(t *testing.T) {
 	}
 	if env.Result.Delta.MassAdded == 0 {
 		t.Fatalf("root commit's function counted no mass: %s", out)
+	}
+}
+
+func TestChangeDefaultBaseFollowsUpstream(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	remote := filepath.Join(t.TempDir(), "origin.git")
+	gitRun(t, dir, "init", "--initial-branch=main")
+	gitRun(t, dir, "init", "--bare", "--initial-branch=main", remote)
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc a() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: init")
+	gitRun(t, dir, "remote", "add", "origin", remote)
+	gitRun(t, dir, "push", "-u", "origin", "main")
+
+	lib := "package main\n\nfunc b(x int) int {\n\tif x > 0 {\n\t\treturn x\n\t}\n\treturn 0\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "lib.go"), []byte(lib), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: unpushed")
+	edited := "package main\n\nfunc a() {}\n\nfunc c() {}\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCLI(t, dir, "change", "--json")
+	if err != nil {
+		t.Fatalf("change: %v\n%s", err, out)
+	}
+	var env struct {
+		Result struct {
+			Files []struct {
+				Path string `json:"path"`
+			} `json:"files"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	paths := make([]string, 0, len(env.Result.Files))
+	for _, f := range env.Result.Files {
+		paths = append(paths, f.Path)
+	}
+	if !slices.Contains(paths, "lib.go") {
+		t.Fatalf("unpushed commit left out of the change: files = %v", paths)
 	}
 }
