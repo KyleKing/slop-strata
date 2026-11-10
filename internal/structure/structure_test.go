@@ -2,6 +2,7 @@ package structure_test
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -18,14 +19,15 @@ type funcWant struct {
 	params    int
 }
 
-func TestAnalyzeFunctions(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name string
-		path string
-		src  string
-		want []funcWant
-	}{
+type funcCase struct {
+	name string
+	path string
+	src  string
+	want []funcWant
+}
+
+func pythonFuncCases() []funcCase {
+	return []funcCase{
 		{
 			name: "python nested def scores alone",
 			path: "outer.py",
@@ -38,6 +40,23 @@ func TestAnalyzeFunctions(t *testing.T) {
 				{name: "inner", cc: 2, sloc: 2, nesting: 1, cognitive: 1, params: 1},
 			},
 		},
+		{
+			name: "python else clause counts cognitive",
+			path: "sign.py",
+			src: "def sign(x):\n" +
+				"    if x > 0:\n" +
+				"        return 1\n" +
+				"    else:\n" +
+				"        return 0\n",
+			want: []funcWant{
+				{name: "sign", cc: 2, sloc: 5, nesting: 1, cognitive: 2, params: 1},
+			},
+		},
+	}
+}
+
+func goFuncCases() []funcCase {
+	return []funcCase{
 		{
 			name: "go closure scores alone",
 			path: "outer.go",
@@ -77,6 +96,29 @@ func TestAnalyzeFunctions(t *testing.T) {
 			},
 		},
 		{
+			name: "go else if and else count cognitive",
+			path: "sign.go",
+			src: "package p\n" +
+				"\n" +
+				"func sign(x int) int {\n" +
+				"\tif x > 0 {\n" +
+				"\t\treturn 1\n" +
+				"\t} else if x < 0 {\n" +
+				"\t\treturn -1\n" +
+				"\t} else {\n" +
+				"\t\treturn 0\n" +
+				"\t}\n" +
+				"}\n",
+			want: []funcWant{
+				{name: "sign", cc: 3, sloc: 9, nesting: 2, cognitive: 5, params: 1},
+			},
+		},
+	}
+}
+
+func tsFuncCases() []funcCase {
+	return []funcCase{
+		{
 			name: "typescript nested declaration scores alone",
 			path: "outer.ts",
 			src: "function outer(): number {\n" +
@@ -91,7 +133,26 @@ func TestAnalyzeFunctions(t *testing.T) {
 				{name: "inner", cc: 2, sloc: 4, nesting: 1, cognitive: 1, params: 1},
 			},
 		},
+		{
+			name: "typescript else clause counts cognitive",
+			path: "sign.ts",
+			src: "function sign(x: number): number {\n" +
+				"  if (x > 0) {\n" +
+				"    return 1;\n" +
+				"  } else {\n" +
+				"    return 0;\n" +
+				"  }\n" +
+				"}\n",
+			want: []funcWant{
+				{name: "sign", cc: 2, sloc: 7, nesting: 1, cognitive: 2, params: 1},
+			},
+		},
 	}
+}
+
+func TestAnalyzeFunctions(t *testing.T) {
+	t.Parallel()
+	cases := slices.Concat(pythonFuncCases(), goFuncCases(), tsFuncCases())
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

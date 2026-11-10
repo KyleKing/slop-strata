@@ -204,7 +204,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		"catch_clause":       true,
 		"ternary_expression": true,
 	},
-	FlatKinds: map[string]bool{"else": true},
+	FlatKinds: map[string]bool{"else_clause": true},
 	newLanguage: func() *ts.Language {
 		return ts.NewLanguage(tests.LanguageTypescript())
 	},

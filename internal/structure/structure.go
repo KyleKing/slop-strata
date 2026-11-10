@@ -171,8 +171,14 @@ func (c *complexity) walk(node *ts.Node, level int) {
 		c.cognitive++
 	}
 
-	for i := range node.NamedChildCount() {
-		c.walk(node.NamedChild(i), level)
+	for i := range node.ChildCount() {
+		child := node.Child(i)
+		switch {
+		case child.IsNamed():
+			c.walk(child, level)
+		case c.l.FlatKinds[child.Kind()]:
+			c.cognitive++
+		}
 	}
 }
 
