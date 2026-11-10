@@ -44,6 +44,8 @@ type fileLines []tag
 
 // cohortOf buckets a date by month so survival curves line up by age.
 func cohortOf(t time.Time) int {
+	t = t.UTC()
+
 	return t.Year()*12 + int(t.Month())
 }
 
@@ -52,7 +54,13 @@ func cohortLabel(c int) string {
 }
 
 func days(t time.Time) int {
-	return int(t.Unix() / 86400) //nolint:mnd // seconds per day
+	return int(t.UTC().Unix() / 86400) //nolint:mnd // seconds per day
+}
+
+// ageDays is the days from a birth to a death or a walk's end. Committer dates
+// can run backwards across a rebase, so a negative span reads as age zero.
+func ageDays(birthDay, endDay int) int {
+	return max(endDay-birthDay, 0)
 }
 
 // death is a removed line's record: when it died and how old it was.
@@ -232,8 +240,8 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 		w.res.Reverts++
 	}
 	klass := w.class(rec.AuthorName+" <"+rec.AuthorEmail+">", rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
-	cohort := cohortOf(rec.AuthorTime)
-	birth := days(rec.AuthorTime)
+	cohort := cohortOf(rec.CommitTime)
+	birth := days(rec.CommitTime)
 	if birth > w.lastDay {
 		w.lastDay = birth
 	}
@@ -299,7 +307,7 @@ func (w *Walker) addFile(f *vcs.CommitFile, klass string, cohort, birth int,
 // tracked, plus every live line killed.
 func (w *Walker) removeFile(path string, birth int, ds *DirStats, rec vcs.CommitRecord, fix bool, mv *moves) {
 	if tb, ok := w.testBirths[path]; ok {
-		w.testDeaths = append(w.testDeaths, testDeath{age: birth - tb.day, klass: tb.klass})
+		w.testDeaths = append(w.testDeaths, testDeath{age: ageDays(tb.day, birth), klass: tb.klass})
 		delete(w.testBirths, path)
 	}
 	w.killAll(path, ds, rec, birth, fix, mv)
@@ -427,7 +435,7 @@ func insertTags(edit hunkEdit, cohort, birth int, klass string,
 // recordDeath logs one line's removal with its provenance.
 func (w *Walker) recordDeath(t tag, ds *DirStats, deathDay int, fix bool) {
 	ds.Removed++
-	age := deathDay - t.birthDays
+	age := ageDays(t.birthDays, deathDay)
 	w.deaths = append(w.deaths, death{cohort: t.cohort, age: age, klass: t.class, fix: fix})
 	if age <= churn14Days {
 		ds.Churn14++
@@ -490,7 +498,7 @@ func (w *Walker) survival() []Survival {
 		for _, t := range lines {
 			survivingByCohort[t.cohort]++
 			if t.cohort >= 0 {
-				obsByCohort[t.cohort] = append(obsByCohort[t.cohort], obs{age: w.lastDay - t.birthDays})
+				obsByCohort[t.cohort] = append(obsByCohort[t.cohort], obs{age: ageDays(t.birthDays, w.lastDay)})
 			}
 		}
 	}
@@ -523,7 +531,7 @@ func (w *Walker) testSurvival() []TestSurvival {
 			byClass[tb.klass] = &TestSurvival{Class: tb.klass}
 		}
 		byClass[tb.klass].Added++
-		obsByClass[tb.klass] = append(obsByClass[tb.klass], obs{age: w.lastDay - tb.day})
+		obsByClass[tb.klass] = append(obsByClass[tb.klass], obs{age: ageDays(tb.day, w.lastDay)})
 	}
 	for _, td := range w.testDeaths {
 		if byClass[td.klass] == nil {

@@ -22,7 +22,7 @@ func TestMovedLinesKeepTheirCohort(t *testing.T) {
 		"}",
 	}
 	w.Commit(vcs.CommitRecord{
-		AuthorTime: at, AuthorName: "Dev", AuthorEmail: "dev@x",
+		AuthorTime: at, CommitTime: at, AuthorName: "Dev", AuthorEmail: "dev@x",
 		CommitterName: "Dev", CommitterEmail: "dev@x",
 		Files: []vcs.CommitFile{{
 			Path: "a.go", Status: vcs.StatusAdded, Added: src,
@@ -32,7 +32,7 @@ func TestMovedLinesKeepTheirCohort(t *testing.T) {
 
 	moved := src[1:4]
 	w.Commit(vcs.CommitRecord{
-		AuthorTime: at.Add(24 * time.Hour), AuthorName: "Dev", AuthorEmail: "dev@x",
+		AuthorTime: at.Add(24 * time.Hour), CommitTime: at.Add(24 * time.Hour), AuthorName: "Dev", AuthorEmail: "dev@x",
 		CommitterName: "Dev", CommitterEmail: "dev@x",
 		Files: []vcs.CommitFile{
 			{
@@ -74,7 +74,7 @@ func TestPureInsertionHunkLandsAfterAnchor(t *testing.T) {
 	}
 	signature := func(when time.Time, files ...vcs.CommitFile) vcs.CommitRecord {
 		return vcs.CommitRecord{
-			AuthorTime: when, AuthorName: "Dev", AuthorEmail: "dev@x",
+			AuthorTime: when, CommitTime: when, AuthorName: "Dev", AuthorEmail: "dev@x",
 			CommitterName: "Dev", CommitterEmail: "dev@x", Files: files,
 		}
 	}
@@ -106,8 +106,10 @@ func TestPureInsertionHunkLandsAfterAnchor(t *testing.T) {
 var walkEpoch = time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
 
 func commitOn(day int, files ...vcs.CommitFile) vcs.CommitRecord {
+	at := walkEpoch.Add(time.Duration(day) * 24 * time.Hour)
+
 	return vcs.CommitRecord{
-		AuthorTime: walkEpoch.Add(time.Duration(day) * 24 * time.Hour), AuthorName: "Dev", AuthorEmail: "dev@x",
+		AuthorTime: at, CommitTime: at, AuthorName: "Dev", AuthorEmail: "dev@x",
 		CommitterName: "Dev", CommitterEmail: "dev@x", Files: files,
 	}
 }
@@ -212,4 +214,44 @@ func fmtShare(v *float64) string {
 	}
 
 	return fmt.Sprintf("%.2f", *v)
+}
+
+func TestCohortFollowsCommitterDateInUTC(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		authorTime time.Time
+		commitTime time.Time
+		want       string
+	}{
+		{
+			name:       "committer date picks the month, not the author date",
+			authorTime: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+			commitTime: time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC),
+			want:       "2025-03",
+		},
+		{
+			name:       "month is taken in UTC",
+			authorTime: time.Date(2025, 1, 31, 23, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
+			commitTime: time.Date(2025, 1, 31, 23, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
+			want:       "2025-02",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			rec := commitOn(0, vcs.CommitFile{
+				Path: "a.go", Status: vcs.StatusAdded, Added: []string{"func a() {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			})
+			rec.AuthorTime, rec.CommitTime = tc.authorTime, tc.commitTime
+			w.Commit(rec, false, false)
+
+			survival := w.Finish().Survival
+			if len(survival) != 1 || survival[0].Cohort != tc.want {
+				t.Fatalf("cohorts = %+v, want one cohort %q", survival, tc.want)
+			}
+		})
+	}
 }
