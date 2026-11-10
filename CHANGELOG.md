@@ -1,3 +1,14 @@
+## v0.11.1 (2026-11-10)
+
+### Fix
+
+- **change**: key the tree memo on the commit a revision resolves to
+- **change**: read pure renames from their trees, not the worktree
+
+### Perf
+
+- **change**: batch changed-file blob reads and memoize tree fingerprints
+
 ## v0.11.0 (2026-11-10)
 
 ### Feat
