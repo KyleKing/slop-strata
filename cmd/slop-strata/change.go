@@ -14,6 +14,7 @@ import (
 
 	"github.com/kyleking/slop-strata/internal/engine"
 	"github.com/kyleking/slop-strata/internal/intent"
+	"github.com/kyleking/slop-strata/internal/lang"
 	"github.com/kyleking/slop-strata/internal/lineage"
 	"github.com/kyleking/slop-strata/internal/reading"
 	"github.com/kyleking/slop-strata/internal/report"
@@ -210,9 +211,11 @@ func untrackedAsAdds(paths []string) []vcs.CommitFile {
 
 // scoredFile is one changed file's delta plus the metrics each side yielded.
 type scoredFile struct {
-	before *structure.FileMetrics
-	after  *structure.FileMetrics
-	delta  fileDelta
+	before      *structure.FileMetrics
+	after       *structure.FileMetrics
+	beforePrint *rules.Fingerprint
+	afterPrint  *rules.Fingerprint
+	delta       fileDelta
 }
 
 // scoreChange analyzes both sides of every changed file.
@@ -253,11 +256,11 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	// exact (name, complexity, size) match anywhere on the old side, so code
 	// moved between files does not read as fresh mass.
 	moved := map[funcKey]float64{}
-	for _, sf := range scored {
-		if sf.before == nil {
+	for i := range scored {
+		if scored[i].before == nil {
 			continue
 		}
-		for _, fn := range sf.before.Funcs {
+		for _, fn := range scored[i].before.Funcs {
 			moved[funcKey{fn.Name, fn.CC, fn.SLOC}] = structure.Mass(fn)
 		}
 	}
@@ -268,6 +271,8 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		res.Delta.MassGrown += grown
 		res.Delta.OverLimit += over
 	}
+
+	s.lastRefs(ctx, base, end, files, scored, res)
 
 	aggBefore := structure.Aggregate(before)
 	aggAfter := structure.Aggregate(after)
@@ -314,6 +319,7 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 
 	if rep := s.oldReport(ctx, *f, oldBlobs); rep != nil && rep.Skipped == "" {
 		sf.before = &rep.Metrics
+		sf.beforePrint = rep.Print
 		res.beforeByPath[oldPathOf(*f)] = rep.Metrics
 		sf.delta.MassBefore = fileMass(rep.Metrics)
 		res.Delta.MassRemoved += sf.delta.MassBefore
@@ -343,6 +349,7 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 		res.Errors = append(res.Errors, parseErrorRow(f.Path, rep.Metrics))
 	}
 	sf.after = &rep.Metrics
+	sf.afterPrint = rep.Print
 	res.afterByPath[f.Path] = rep.Metrics
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
@@ -713,4 +720,128 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 	for _, er := range res.Errors {
 		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
 	}
+}
+
+// lastRefs flags a symbol whose last live reference this change removed: its
+// declaration still stands at the end of the change, but nothing uses it now.
+// The pass is observational — a failed tree read skips it, never fails the run.
+func (s *session) lastRefs(ctx context.Context, base, end string,
+	files []vcs.CommitFile, scored []scoredFile, res *changeResult,
+) {
+	basePrints, err := s.treePrints(ctx, base)
+	if err != nil {
+		return
+	}
+	endPrints, err := s.treePrints(ctx, end)
+	if err != nil {
+		return
+	}
+	for i := range scored {
+		if scored[i].afterPrint != nil {
+			endPrints[scored[i].delta.Path] = scored[i].afterPrint
+		}
+	}
+	usesBase := useCounts(basePrints)
+	usesEnd := useCounts(endPrints)
+	declared := declNames(endPrints)
+	for i := range scored {
+		bp := scored[i].beforePrint
+		if bp == nil {
+			continue
+		}
+		ap := scored[i].afterPrint
+		for name := range bp.Referenced {
+			if ap != nil && ap.Referenced[name] {
+				continue
+			}
+			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] {
+				res.Findings = append(res.Findings, findingRow{
+					Path: scored[i].delta.Path, Rule: "x/last-ref",
+					Line: removedLine(&files[i], name), Match: name, New: true,
+				})
+			}
+		}
+	}
+}
+
+// treePrints fingerprints every code blob in a revision's tree.
+func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules.Fingerprint, error) {
+	entries, err := s.ops.TreeEntries(ctx, s.root, rev)
+	if err != nil {
+		return nil, fmt.Errorf("listing tree at %s: %w", rev, err)
+	}
+	var want []string
+	for _, e := range entries {
+		if lang.ByPath(e.Path) != nil {
+			want = append(want, e.SHA)
+		}
+	}
+	blobs, err := s.ops.BlobContents(ctx, s.root, want)
+	if err != nil {
+		return nil, fmt.Errorf("reading blobs: %w", err)
+	}
+	prints := map[string]*rules.Fingerprint{}
+	for _, e := range entries {
+		if lang.ByPath(e.Path) == nil {
+			continue
+		}
+		if rep := s.eng.Analyze(ctx, e.Path, e.SHA, blobs[e.SHA]); rep.Print != nil {
+			prints[e.Path] = rep.Print
+		}
+	}
+
+	return prints, nil
+}
+
+// useCounts tallies how many files use each name, discounting a file's own
+// declaration of it: a name with zero uses is dead even where it is declared.
+func useCounts(prints map[string]*rules.Fingerprint) map[string]int {
+	uses := map[string]int{}
+	for _, fp := range prints {
+		for n := range fp.Referenced {
+			uses[n]++
+		}
+		for n := range fp.Declared {
+			if fp.Referenced[n] {
+				uses[n]--
+			}
+		}
+		for n := range fp.Exported {
+			if fp.Referenced[n] {
+				uses[n]--
+			}
+		}
+	}
+
+	return uses
+}
+
+// declNames unions every declared or exported name across the prints.
+func declNames(prints map[string]*rules.Fingerprint) map[string]bool {
+	declared := map[string]bool{}
+	for _, fp := range prints {
+		for n := range fp.Declared {
+			declared[n] = true
+		}
+		for n := range fp.Exported {
+			declared[n] = true
+		}
+	}
+
+	return declared
+}
+
+// removedLine locates the hunk line where a name's reference was deleted.
+func removedLine(f *vcs.CommitFile, name string) int {
+	pos := 0
+	for _, h := range f.Hunks {
+		for j := range h.OldLines {
+			if pos+j < len(f.Removed) && strings.Contains(f.Removed[pos+j], name) {
+				return h.OldStart + j
+			}
+		}
+		pos += h.OldLines
+	}
+
+	return 0
 }

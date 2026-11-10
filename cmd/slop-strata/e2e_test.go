@@ -241,6 +241,62 @@ func main() { fmt.Println(usedFn, "timeout") }
 	}
 }
 
+func TestChangeLastRef(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run("init", "--initial-branch=main")
+	write("a.go", "package main\n\nfunc helper() {}\n\nfunc main() { helper() }\n")
+	write("b.go", "package main\n\nfunc other() { helper() }\n")
+	run("add", "-A")
+	run("commit", "-m", "feat: init")
+	write("b.go", "package main\n\nfunc other() {}\n")
+	run("add", "-A")
+	run("commit", "-m", "fix: drop the call")
+
+	out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
+	if err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Findings []struct {
+				Path  string `json:"path"`
+				Rule  string `json:"rule"`
+				Match string `json:"match"`
+			} `json:"findings"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	found := false
+	for _, f := range env.Result.Findings {
+		if f.Rule == "x/last-ref" && f.Path == "b.go" && f.Match == "helper" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("last use of helper not flagged: %s", out)
+	}
+}
+
 func TestExplain(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
