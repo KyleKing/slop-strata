@@ -137,6 +137,9 @@ var Docs = map[string]string{
 	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
 		"(code-maat's definition of co-change).",
 	"hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
+	"provisional": "Set on a survival cohort, test class, or directory whose rate rests on too few " +
+		"samples: under 30 lines for a cohort, under 5 test files for a test class, under 5 functions " +
+		"for a directory's erosion. The rate still prints, marked * in text output.",
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +

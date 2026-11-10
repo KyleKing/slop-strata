@@ -304,3 +304,34 @@ func TestSurvivalNeedsEnoughLinesAtHorizon(t *testing.T) {
 		})
 	}
 }
+
+func TestThinSamplesAreProvisional(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name            string
+		cohortLines     int
+		wantProvisional bool
+	}{
+		{name: "cohort under the line floor", cohortLines: lineage.ProvisionalLines - 1, wantProvisional: true},
+		{name: "cohort at the line floor", cohortLines: lineage.ProvisionalLines, wantProvisional: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			// The test file's own line is one of the cohort's births.
+			w.Commit(commitOn(0, addedFile("pkg/a.go", tc.cohortLines-1), vcs.CommitFile{
+				Path: "pkg/a_test.go", Status: vcs.StatusAdded, Added: []string{"func TestA(t *testing.T) {}"},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+			res := w.Finish()
+
+			if len(res.Survival) != 1 || res.Survival[0].Provisional != tc.wantProvisional {
+				t.Fatalf("survival provisional = %+v, want %v", res.Survival, tc.wantProvisional)
+			}
+			if len(res.TestSurvival) != 1 || !res.TestSurvival[0].Provisional {
+				t.Fatalf("test survival of one file must be provisional: %+v", res.TestSurvival)
+			}
+		})
+	}
+}

@@ -32,14 +32,15 @@ type snapshotResult struct {
 
 // dirSnapshot is one directory's rollup.
 type dirSnapshot struct {
-	Dir      string  `json:"dir"`
-	Files    int     `json:"files"`
-	Erosion  float64 `json:"erosion"`
-	Mass     float64 `json:"mass"`
-	Funcs    int     `json:"funcs"`
-	Over50   int     `json:"over_50"`
-	Hotspot  float64 `json:"hotspot"`
-	Findings int     `json:"findings"`
+	Dir         string  `json:"dir"`
+	Files       int     `json:"files"`
+	Erosion     float64 `json:"erosion"`
+	Mass        float64 `json:"mass"`
+	Funcs       int     `json:"funcs"`
+	Over50      int     `json:"over_50"`
+	Hotspot     float64 `json:"hotspot"`
+	Findings    int     `json:"findings"`
+	Provisional bool    `json:"provisional,omitempty"`
 }
 
 func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
@@ -173,7 +174,8 @@ func (s *session) snapshotRollup(
 		res.Dirs = append(res.Dirs, dirSnapshot{
 			Dir: d, Files: agg.Files, Erosion: agg.Erosion, Mass: agg.Mass,
 			Funcs: agg.FuncCount, Over50: agg.Over50, Findings: findings,
-			Hotspot: agg.Mass * float64(findings+1),
+			Hotspot:     agg.Mass * float64(findings+1),
+			Provisional: agg.FuncCount < structure.ProvisionalFuncs,
 		})
 	}
 	sort.Slice(res.Dirs, func(i, j int) bool { return res.Dirs[i].Hotspot > res.Dirs[j].Hotspot })
@@ -242,11 +244,12 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	rows := make([][]string, 0, len(res.Dirs))
 	for _, d := range res.Dirs {
 		rows = append(rows, []string{
-			d.Dir, strconv.Itoa(d.Files), fmt.Sprintf("%.2f", d.Erosion),
+			d.Dir, strconv.Itoa(d.Files), provisionalMarked(fmt.Sprintf("%.2f", d.Erosion), d.Provisional),
 			fmt.Sprintf("%.0f", d.Mass), strconv.Itoa(d.Over50), strconv.Itoa(d.Findings),
 		})
 	}
 	report.Table(w, []string{colDir, "files", "erosion", "mass", ">50", "hits"}, rows)
+	provisionalNote(w, res.Dirs, func(d dirSnapshot) bool { return d.Provisional }, structure.ProvisionalFuncs)
 
 	if all && len(res.Findings) > 0 {
 		report.Fprintln(w)

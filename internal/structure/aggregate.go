@@ -5,6 +5,10 @@ import (
 	"slices"
 )
 
+// ProvisionalFuncs is the function count under which a directory's erosion is
+// marked provisional.
+const ProvisionalFuncs = 5
+
 // CCLimit is the complexity a function crosses for its mass to count as
 // eroded, per the paper's definition.
 const CCLimit = 10

@@ -26,6 +26,9 @@ const weekLayout = "2006-01-02"
 // sparkWeeks is the trailing window of the per-directory mass sparkline.
 const sparkWeeks = 8
 
+// provisionalMark follows a rate printed from a thin sample in text output.
+const provisionalMark = "*"
+
 // provisionalBelow is the commit count under which a pairing cell is too thin
 // to compare.
 const provisionalBelow = 5
@@ -398,10 +401,12 @@ func printHistory(w io.Writer, res *historyResult) {
 		for _, sv := range res.Lineage.Survival {
 			rows = append(rows, []string{
 				sv.Cohort, strconv.Itoa(sv.Added), strconv.Itoa(sv.Surviving),
-				shareCell(sv.S30), shareCell(sv.S90),
+				rateCell(sv.S30, sv.Provisional), rateCell(sv.S90, sv.Provisional),
 			})
 		}
 		report.Table(w, []string{"cohort", colAdded, "alive", "s30", "s90"}, rows)
+		provisionalNote(w, res.Lineage.Survival, func(s lineage.Survival) bool { return s.Provisional },
+			lineage.ProvisionalLines)
 	}
 
 	printTestSurvival(w, res)
@@ -450,19 +455,42 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 	for _, ts := range res.Lineage.TestSurvival {
 		rows = append(rows, []string{
 			ts.Class, strconv.Itoa(ts.Added), strconv.Itoa(ts.Dead30), strconv.Itoa(ts.Dead90),
-			shareCell(ts.S30), shareCell(ts.S90),
+			rateCell(ts.S30, ts.Provisional), rateCell(ts.S90, ts.Provisional),
 		})
 	}
 	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s30", "s90"}, rows)
+	provisionalNote(w, res.Lineage.TestSurvival, func(t lineage.TestSurvival) bool { return t.Provisional },
+		lineage.ProvisionalTests)
 }
 
-// shareCell formats a survival share, or an em dash when the horizon runs past the data.
-func shareCell(share *float64) string {
+// rateCell formats a survival share, or an em dash when the horizon runs past the data.
+func rateCell(share *float64, provisional bool) string {
 	if share == nil {
 		return "—"
 	}
 
-	return fmt.Sprintf("%.2f", *share)
+	return provisionalMarked(fmt.Sprintf("%.2f", *share), provisional)
+}
+
+// provisionalMarked appends the provisional mark to a formatted rate.
+func provisionalMarked(cell string, provisional bool) string {
+	if provisional {
+		return cell + provisionalMark
+	}
+
+	return cell
+}
+
+// provisionalNote prints the footnote a table's marks refer to, once, when any
+// of its rows is provisional.
+func provisionalNote[T any](w io.Writer, rows []T, provisional func(T) bool, samples int) {
+	for _, r := range rows {
+		if provisional(r) {
+			report.Fprintf(w, "%s fewer than %d samples\n", provisionalMark, samples)
+
+			return
+		}
+	}
 }
 
 // printHotspots renders the churn-weighted directory mass table.

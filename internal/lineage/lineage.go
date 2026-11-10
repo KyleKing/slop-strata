@@ -34,6 +34,13 @@ const (
 	minAtRisk = 30
 )
 
+// Sample counts under which a survival cohort or a test class is marked
+// provisional: its rate rests on too few lines or test files to read.
+const (
+	ProvisionalLines = 30
+	ProvisionalTests = 5
+)
+
 // tag is one live line's provenance.
 type tag struct {
 	class     string
@@ -78,11 +85,12 @@ type death struct {
 // months are the pinned unit: at-risk is approximated at month granularity,
 // which the cohort docs should name before quoting.
 type Survival struct {
-	S30       *float64 `json:"s_30d"`
-	S90       *float64 `json:"s_90d"`
-	Cohort    string   `json:"cohort"`
-	Added     int      `json:"added"`
-	Surviving int      `json:"surviving"`
+	S30         *float64 `json:"s_30d"`
+	S90         *float64 `json:"s_90d"`
+	Cohort      string   `json:"cohort"`
+	Added       int      `json:"added"`
+	Surviving   int      `json:"surviving"`
+	Provisional bool     `json:"provisional,omitempty"`
 }
 
 // DirStats is a directory's aggregate over the range.
@@ -99,12 +107,13 @@ type DirStats struct {
 // and 90 days of being added. Only adds observed inside the walked range
 // count; a test file older than the range has no measurable birth.
 type TestSurvival struct {
-	S30    *float64 `json:"s_30d"`
-	S90    *float64 `json:"s_90d"`
-	Class  string   `json:"class"`
-	Added  int      `json:"added"`
-	Dead30 int      `json:"dead_30d"`
-	Dead90 int      `json:"dead_90d"`
+	S30         *float64 `json:"s_30d"`
+	S90         *float64 `json:"s_90d"`
+	Class       string   `json:"class"`
+	Added       int      `json:"added"`
+	Dead30      int      `json:"dead_30d"`
+	Dead90      int      `json:"dead_90d"`
+	Provisional bool     `json:"provisional,omitempty"`
 }
 
 // Result is the lineage walk's output.
@@ -518,6 +527,7 @@ func (w *Walker) survival() []Survival {
 		sort.Slice(ages, func(i, j int) bool { return ages[i].age < ages[j].age })
 		s.S30 = km(ages, horizon30Days)
 		s.S90 = km(ages, horizon90Days)
+		s.Provisional = s.Added < ProvisionalLines
 		out = append(out, s)
 	}
 
@@ -554,6 +564,7 @@ func (w *Walker) testSurvival() []TestSurvival {
 	for _, c := range byClass {
 		c.S30 = testShare(obsByClass[c.Class], horizon30Days)
 		c.S90 = testShare(obsByClass[c.Class], horizon90Days)
+		c.Provisional = c.Added < ProvisionalTests
 		out = append(out, *c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Class < out[j].Class })

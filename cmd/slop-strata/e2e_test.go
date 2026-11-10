@@ -281,6 +281,36 @@ func TestHistoryWalk(t *testing.T) {
 	}
 }
 
+func TestSnapshotMarksThinDirsProvisional(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	out, err := runCLI(t, repo, "snapshot", "--json")
+	if err != nil {
+		t.Fatalf("snapshot --json: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Dirs []struct {
+				Dir         string `json:"dir"`
+				Provisional bool   `json:"provisional"`
+			} `json:"dirs"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	if len(env.Result.Dirs) == 0 || !env.Result.Dirs[0].Provisional {
+		t.Errorf("fixture directories under the function floor are not provisional: %s", out)
+	}
+	text, err := runCLI(t, repo, "snapshot")
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if !strings.Contains(text, "* fewer than 5 samples") || !strings.Contains(text, "0.00*") {
+		t.Errorf("snapshot text lacks the provisional mark and footnote:\n%s", text)
+	}
+}
+
 func TestHistoryTextTrendColumns(t *testing.T) {
 	t.Parallel()
 	repo := fixtureRepo(t)

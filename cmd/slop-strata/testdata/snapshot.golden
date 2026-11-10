@@ -31,6 +31,7 @@
     "p90_nesting": "90th percentile control-nesting depth. Deep nesting is the shape refactors actually need to fix.",
     "p90_params": "90th percentile parameter count. Many parameters signal a missing abstraction or a config object.",
     "pairing": "Author classes compared on the same week and directory: net mass moved and commits each. A cell is provisional under 5 commits.",
+    "provisional": "Set on a survival cohort, test class, or directory whose rate rests on too few samples: under 30 lines for a cohort, under 5 test files for a test class, under 5 functions for a directory's erosion. The rate still prints, marked * in text output.",
     "reverts": "Commits in the range that revert another change.",
     "rework": "Young lines (\u003c=30 days) removed by fix commits: fixes to things just built.",
     "rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted. Experimental rules report only with --experimental.",
@@ -50,7 +51,8 @@
         "funcs": 3,
         "hotspot": 93.8181928856438,
         "mass": 18.76363857712876,
-        "over_50": 0
+        "over_50": 0,
+        "provisional": true
       }
     ],
     "findings": {
