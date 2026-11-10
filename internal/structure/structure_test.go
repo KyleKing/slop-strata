@@ -113,6 +113,18 @@ func goFuncCases() []funcCase {
 				{name: "sign", cc: 3, sloc: 9, nesting: 2, cognitive: 5, params: 1},
 			},
 		},
+		{
+			name: "go params ignore the result list",
+			path: "pair.go",
+			src: "package p\n" +
+				"\n" +
+				"func pair(x int) (int, error) {\n" +
+				"\treturn x, nil\n" +
+				"}\n",
+			want: []funcWant{
+				{name: "pair", cc: 1, sloc: 3, nesting: 0, cognitive: 0, params: 1},
+			},
+		},
 	}
 }
 

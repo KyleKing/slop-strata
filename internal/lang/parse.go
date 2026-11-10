@@ -93,13 +93,7 @@ func FunctionName(l *Language, node *ts.Node, src []byte) string {
 // the parameter container, except Go, where one declaration can name several
 // (`a, b int`), so identifiers inside each declaration are counted.
 func (l *Language) ParamCount(fnNode *ts.Node) int {
-	var container *ts.Node
-	for i := range fnNode.NamedChildCount() {
-		child := fnNode.NamedChild(i)
-		if child.Kind() == l.ParamContainerKind {
-			container = child
-		}
-	}
+	container := fnNode.ChildByFieldName("parameters")
 	if container == nil {
 		return 0
 	}

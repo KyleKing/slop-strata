@@ -58,10 +58,8 @@ type Language struct {
 	NestKinds map[string]bool
 	// DecisionOps are operator spellings that each add one complexity point.
 	DecisionOps map[string]bool
-	// ParamContainerKind holds a function's parameters.
-	ParamContainerKind string
-	ID                 string
-	Extensions         []string
+	ID          string
+	Extensions  []string
 }
 
 // Go is the spec for *.go.
@@ -73,11 +71,10 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 		"method_declaration":   true,
 		"func_literal":         true,
 	},
-	MethodKinds:        map[string]bool{"method_declaration": true},
-	CommentKinds:       map[string]bool{kindComment: true},
-	CallKinds:          map[string]bool{"call_expression": true},
-	ParamContainerKind: "parameter_list",
-	ParamSkipKinds:     map[string]bool{kindComment: true},
+	MethodKinds:    map[string]bool{"method_declaration": true},
+	CommentKinds:   map[string]bool{kindComment: true},
+	CallKinds:      map[string]bool{"call_expression": true},
+	ParamSkipKinds: map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"interpreted_string_literal": true,
 		"raw_string_literal":         true,
@@ -114,9 +111,8 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"function_definition": true,
 		"lambda":              true,
 	},
-	CommentKinds:       map[string]bool{kindComment: true},
-	CallKinds:          map[string]bool{"call": true},
-	ParamContainerKind: "parameters",
+	CommentKinds: map[string]bool{kindComment: true},
+	CallKinds:    map[string]bool{"call": true},
 	ParamSkipKinds: map[string]bool{
 		kindComment:            true,
 		"keyword_separator":    true,
@@ -168,11 +164,10 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		kindMethodDefinition:             true,
 		"generator_function_declaration": true,
 	},
-	MethodKinds:        map[string]bool{kindMethodDefinition: true},
-	CommentKinds:       map[string]bool{kindComment: true},
-	CallKinds:          map[string]bool{"call_expression": true},
-	ParamContainerKind: "formal_parameters",
-	ParamSkipKinds:     map[string]bool{kindComment: true},
+	MethodKinds:    map[string]bool{kindMethodDefinition: true},
+	CommentKinds:   map[string]bool{kindComment: true},
+	CallKinds:      map[string]bool{"call_expression": true},
+	ParamSkipKinds: map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"string":          true,
 		"number":          true,
@@ -212,21 +207,20 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 
 // TSX shares TypeScript's vocabulary under the TSX grammar for *.tsx files.
 var TSX = &Language{ //nolint:gochecknoglobals // language vocabularies are constants a map must hold
-	ID:                 "tsx",
-	Extensions:         []string{".tsx", ".jsx"},
-	FunctionKinds:      TypeScript.FunctionKinds,
-	MethodKinds:        TypeScript.MethodKinds,
-	CommentKinds:       TypeScript.CommentKinds,
-	LiteralKinds:       TypeScript.LiteralKinds,
-	CallKinds:          TypeScript.CallKinds,
-	ParamContainerKind: TypeScript.ParamContainerKind,
-	ParamSkipKinds:     TypeScript.ParamSkipKinds,
-	DecisionKinds:      TypeScript.DecisionKinds,
-	OpContainerKinds:   TypeScript.OpContainerKinds,
-	DecisionOps:        TypeScript.DecisionOps,
-	NestKinds:          TypeScript.NestKinds,
-	FlatKinds:          TypeScript.FlatKinds,
-	newLanguage:        func() *ts.Language { return ts.NewLanguage(tests.LanguageTSX()) },
+	ID:               "tsx",
+	Extensions:       []string{".tsx", ".jsx"},
+	FunctionKinds:    TypeScript.FunctionKinds,
+	MethodKinds:      TypeScript.MethodKinds,
+	CommentKinds:     TypeScript.CommentKinds,
+	LiteralKinds:     TypeScript.LiteralKinds,
+	CallKinds:        TypeScript.CallKinds,
+	ParamSkipKinds:   TypeScript.ParamSkipKinds,
+	DecisionKinds:    TypeScript.DecisionKinds,
+	OpContainerKinds: TypeScript.OpContainerKinds,
+	DecisionOps:      TypeScript.DecisionOps,
+	NestKinds:        TypeScript.NestKinds,
+	FlatKinds:        TypeScript.FlatKinds,
+	newLanguage:      func() *ts.Language { return ts.NewLanguage(tests.LanguageTSX()) },
 }
 
 // All lists the supported languages.
