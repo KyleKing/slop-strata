@@ -192,7 +192,7 @@ func TestAnalyzeFunctions(t *testing.T) {
 			t.Parallel()
 			l := lang.ByPath(tc.path)
 			src := []byte(tc.src)
-			tree := lang.NewPool().Parse(l, src)
+			tree := lang.Parse(l, src)
 			defer tree.Close()
 
 			fm := structure.Analyze(l, tree, src)
@@ -225,7 +225,7 @@ func TestAnalyzeLineClasses(t *testing.T) {
 			t.Parallel()
 			l := lang.ByPath("ok.py")
 			src := []byte(tc.src)
-			tree := lang.NewPool().Parse(l, src)
+			tree := lang.Parse(l, src)
 			defer tree.Close()
 
 			fm := structure.Analyze(l, tree, src)
@@ -253,7 +253,7 @@ func TestAnalyzeParseError(t *testing.T) {
 			t.Parallel()
 			l := lang.ByPath(tc.path)
 			src := []byte(tc.src)
-			tree := lang.NewPool().Parse(l, src)
+			tree := lang.Parse(l, src)
 			defer tree.Close()
 
 			if got := structure.Analyze(l, tree, src).ParseError; got != tc.want {

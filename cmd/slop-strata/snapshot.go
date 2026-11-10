@@ -97,7 +97,7 @@ func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*
 		return nil, fmt.Errorf("reading blobs: %w", err)
 	}
 
-	var reports []*engine.FileReport
+	var reqs []engine.Request
 	for _, e := range entries {
 		content, ok := blobs[e.SHA]
 		if !ok {
@@ -105,9 +105,18 @@ func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*
 		}
 		switch {
 		case lang.ByPath(e.Path) != nil:
-			reports = append(reports, s.eng.Analyze(ctx, e.Path, e.SHA, content))
+			reqs = append(reqs, engine.Request{Path: e.Path, SHA: e.SHA, Content: content})
 		case lang.TextKind(e.Path) != "":
-			reports = append(reports, s.eng.AnalyzeText(ctx, e.Path, e.SHA, content))
+			reqs = append(reqs, engine.Request{Path: e.Path, SHA: e.SHA, Content: content, Text: true})
+		}
+	}
+	s.eng.Prefetch(ctx, reqs)
+	reports := make([]*engine.FileReport, 0, len(reqs))
+	for _, r := range reqs {
+		if r.Text {
+			reports = append(reports, s.eng.AnalyzeText(ctx, r.Path, r.SHA, r.Content))
+		} else {
+			reports = append(reports, s.eng.Analyze(ctx, r.Path, r.SHA, r.Content))
 		}
 	}
 	paths := make([]string, 0, len(entries))

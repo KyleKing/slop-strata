@@ -10,6 +10,7 @@ import (
 
 	"github.com/kyleking/aragonite/vcs"
 
+	"github.com/kyleking/slop-strata/internal/engine"
 	"github.com/kyleking/slop-strata/internal/intent"
 	"github.com/kyleking/slop-strata/internal/lineage"
 	"github.com/kyleking/slop-strata/internal/report"
@@ -208,6 +209,7 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 	if err != nil {
 		return
 	}
+	s.eng.Prefetch(ctx, commitRequests(rec.Files, blobs))
 	for i := range rec.Files {
 		f := &rec.Files[i]
 		d := lineage.DirOf(f.Path)
@@ -225,6 +227,26 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 		}
 		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs))
 	}
+}
+
+// commitRequests lists the blobs scoreCommit will analyze: each changed file's
+// new side, and its old side when the new side is present, matching the reads
+// scoreCommit makes.
+func commitRequests(files []vcs.CommitFile, blobs map[string][]byte) []engine.Request {
+	var reqs []engine.Request
+	for i := range files {
+		f := &files[i]
+		content, ok := blobs[f.NewSHA]
+		if !ok {
+			continue
+		}
+		reqs = append(reqs, engine.Request{Path: f.Path, SHA: f.NewSHA, Content: content})
+		if old, ok := blobs[f.OldSHA]; ok && f.OldSHA != "" {
+			reqs = append(reqs, engine.Request{Path: oldPathOf(*f), SHA: f.OldSHA, Content: old})
+		}
+	}
+
+	return reqs
 }
 
 // pairCell returns the week's pairing row for a directory, creating it on

@@ -18,7 +18,7 @@ func findingsOf(t *testing.T, path, src string, experimental bool) []rules.Findi
 		t.Fatalf("no grammar for %s", path)
 	}
 	content := []byte(src)
-	tree := lang.NewPool().Parse(l, content)
+	tree := lang.Parse(l, content)
 	defer tree.Close()
 
 	return rules.Run(&rules.Ctx{
@@ -35,7 +35,7 @@ func printOf(t *testing.T, path, src string) *rules.Fingerprint {
 		return rules.CollectText(path, []byte(src))
 	}
 	content := []byte(src)
-	tree := lang.NewPool().Parse(l, content)
+	tree := lang.Parse(l, content)
 	defer tree.Close()
 
 	return rules.Collect(&rules.Ctx{

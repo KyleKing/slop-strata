@@ -71,7 +71,7 @@ const pyClosureChanged = `def f(xs):
 
 func analyzePython(t *testing.T, src string) structure.FileMetrics {
 	t.Helper()
-	tree := lang.NewPool().Parse(lang.Python, []byte(src))
+	tree := lang.Parse(lang.Python, []byte(src))
 	t.Cleanup(tree.Close)
 
 	return structure.Analyze(lang.Python, tree, []byte(src))

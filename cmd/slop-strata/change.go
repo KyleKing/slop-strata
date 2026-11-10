@@ -319,11 +319,13 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		Base: base, End: end, Dirs: map[string]dirDelta{},
 		beforeByPath: map[string]structure.FileMetrics{}, afterByPath: map[string]structure.FileMetrics{},
 	}
+	newSides := s.prefetchChange(ctx, files, oldBlobs, committed)
+
 	var before, after []structure.FileMetrics
 	old := map[string]bool{}
 	scored := make([]scoredFile, 0, len(files))
 	for i := range files {
-		sf, err := s.scoreFile(ctx, &files[i], oldBlobs, committed, baseline, res, old)
+		sf, err := s.scoreFile(ctx, &files[i], oldBlobs, newSides[i], baseline, res, old)
 		if err != nil {
 			return nil, err
 		}
@@ -374,6 +376,29 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	return res, nil
 }
 
+// prefetchChange reads each changed file's after side and analyzes both sides
+// of every file in parallel, so scoreFile reads the results back in order.
+func (s *session) prefetchChange(ctx context.Context, files []vcs.CommitFile,
+	oldBlobs map[string][]byte, committed bool,
+) []side {
+	newSides := make([]side, len(files))
+	var reqs []engine.Request
+	for i := range files {
+		if req, ok := oldRequest(files[i], oldBlobs); ok {
+			reqs = append(reqs, req)
+		}
+		newSides[i] = s.newContent(ctx, files[i], committed)
+		if newSides[i].err == nil && newSides[i].content != nil {
+			reqs = append(reqs, engine.Request{
+				Path: files[i].Path, SHA: newBlobSHA(files[i], newSides[i].content), Content: newSides[i].content,
+			})
+		}
+	}
+	s.eng.Prefetch(ctx, reqs)
+
+	return newSides
+}
+
 // oldBlobs batch-reads every old-side blob in the diff.
 func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[string][]byte, error) {
 	var shas []string
@@ -394,7 +419,7 @@ func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[str
 // old collects the old side's (rule, match) pairs for markFindingsOld. A hit
 // is new only when its line was added by the change.
 func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map[string][]byte,
-	committed bool, baseline rules.Baseline, res *changeResult, old map[string]bool,
+	newSide side, baseline rules.Baseline, res *changeResult, old map[string]bool,
 ) (scoredFile, error) {
 	sf := scoredFile{delta: fileDelta{
 		Path: f.Path, Status: f.Status.String(),
@@ -416,18 +441,13 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 		}
 	}
 
-	newSide := s.newContent(ctx, *f, committed)
 	if newSide.err != nil {
 		return sf, newSide.err
 	}
 	if newSide.content == nil {
 		return sf, nil
 	}
-	sha := f.NewSHA
-	if sha == "" || strings.Trim(sha, "0") == "" {
-		sha = vcs.BlobSHA(newSide.content)
-	}
-	rep := s.eng.Analyze(ctx, f.Path, sha, newSide.content)
+	rep := s.eng.Analyze(ctx, f.Path, newBlobSHA(*f, newSide.content), newSide.content)
 	if rep.Skipped != "" {
 		res.Skipped = append(res.Skipped, skippedRow{f.Path, rep.Skipped})
 
@@ -452,6 +472,26 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	}
 
 	return sf, nil
+}
+
+// newBlobSHA names a changed file's after-side blob. A worktree diff carries no
+// object name for it, so the content hash stands in.
+func newBlobSHA(f vcs.CommitFile, content []byte) string {
+	if f.NewSHA == "" || strings.Trim(f.NewSHA, "0") == "" {
+		return vcs.BlobSHA(content)
+	}
+
+	return f.NewSHA
+}
+
+// oldRequest is the before-side blob oldReport will analyze, when it has one.
+func oldRequest(f vcs.CommitFile, oldBlobs map[string][]byte) (engine.Request, bool) {
+	if f.OldSHA == "" || f.Binary {
+		return engine.Request{}, false
+	}
+	content, ok := oldBlobs[f.OldSHA]
+
+	return engine.Request{Path: oldPathOf(f), SHA: f.OldSHA, Content: content}, ok
 }
 
 // addedLines maps each line a file's hunks add to the old line it replaced, or
@@ -976,13 +1016,17 @@ func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules
 	if err != nil {
 		return nil, fmt.Errorf("reading blobs: %w", err)
 	}
-	prints := map[string]*rules.Fingerprint{}
+	var reqs []engine.Request
 	for _, e := range entries {
-		if lang.ByPath(e.Path) == nil {
-			continue
+		if lang.ByPath(e.Path) != nil {
+			reqs = append(reqs, engine.Request{Path: e.Path, SHA: e.SHA, Content: blobs[e.SHA]})
 		}
-		if rep := s.eng.Analyze(ctx, e.Path, e.SHA, blobs[e.SHA]); rep.Print != nil {
-			prints[e.Path] = rep.Print
+	}
+	s.eng.Prefetch(ctx, reqs)
+	prints := map[string]*rules.Fingerprint{}
+	for _, r := range reqs {
+		if rep := s.eng.Analyze(ctx, r.Path, r.SHA, r.Content); rep.Print != nil {
+			prints[r.Path] = rep.Print
 		}
 	}
 

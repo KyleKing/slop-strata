@@ -1,54 +1,53 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
-	"sync"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 )
 
-// Pool hands out one parser per language, because a parser can only ever carry
-// the language it was configured with and parsers are not safe to share
-// between goroutines.
-type Pool struct {
-	parsers map[*Language]*sync.Pool
+// Parser holds one tree-sitter parser per language. A parser is not safe for
+// concurrent use, so each worker owns its own and closes it when done.
+type Parser struct {
+	parsers map[*Language]*ts.Parser
 }
 
-// NewPool prepares a parser pool covering every registered language.
-func NewPool() *Pool {
-	p := &Pool{parsers: make(map[*Language]*sync.Pool, len(All))}
-	for _, l := range All {
-		lang := l
-		p.parsers[lang] = &sync.Pool{
-			New: func() any {
-				parser := ts.NewParser()
-				// SetLanguage only fails on ABI mismatch with a stale grammar;
-				// the pinned modules always match the binding.
-				if err := parser.SetLanguage(lang.Language()); err != nil {
-					parser.Close()
+// NewParser returns a parser with no grammars loaded; each language's parser is
+// created on first use.
+func NewParser() *Parser {
+	return &Parser{parsers: map[*Language]*ts.Parser{}}
+}
 
-					return nil
-				}
-
-				return parser
-			},
+// Parse parses content with l's grammar. The caller must Close the tree.
+func (p *Parser) Parse(l *Language, content []byte) *ts.Tree {
+	parser, ok := p.parsers[l]
+	if !ok {
+		parser = ts.NewParser()
+		if err := parser.SetLanguage(l.Language()); err != nil {
+			panic(fmt.Sprintf("loading %s grammar: %v", l.ID, err))
 		}
+		p.parsers[l] = parser
 	}
-
-	return p
-}
-
-// Parse parses content with lang's grammar. A returned tree is owned by the
-// caller, which must Close it; the parser returns to the pool on the next call.
-func (p *Pool) Parse(l *Language, content []byte) *ts.Tree {
-	v := p.parsers[l].Get()
-	parser, ok := v.(*ts.Parser)
-	if !ok || parser == nil {
-		return (&ts.Parser{}).Parse(content, nil)
-	}
-	defer p.parsers[l].Put(parser)
 
 	return parser.Parse(content, nil)
+}
+
+// Close releases every parser the Parser created.
+func (p *Parser) Close() {
+	for _, parser := range p.parsers {
+		parser.Close()
+	}
+	p.parsers = map[*Language]*ts.Parser{}
+}
+
+// Parse parses content once with a parser of its own, for callers outside a
+// worker pool.
+func Parse(l *Language, content []byte) *ts.Tree {
+	p := NewParser()
+	defer p.Close()
+
+	return p.Parse(l, content)
 }
 
 // Text returns the source a node spans.

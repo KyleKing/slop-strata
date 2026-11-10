@@ -151,6 +151,7 @@ func newSession(ctx context.Context, repoPath string, experimental bool) (*sessi
 }
 
 func (s *session) close() {
+	s.eng.Close()
 	if s.store == nil {
 		return
 	}

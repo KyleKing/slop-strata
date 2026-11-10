@@ -1,7 +1,9 @@
 package engine_test
 
 import (
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/cache"
@@ -35,6 +37,34 @@ func TestSameBlobUnderOtherPathClassKeepsItsFindings(t *testing.T) {
 	}
 	if got := countRule(source.Findings, "go/timing-hack"); got != 0 {
 		t.Errorf("source path go/timing-hack = %d, want 0", got)
+	}
+}
+
+func TestPrefetchMatchesSerialAnalysis(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store, err := cache.Open(ctx, "")
+	if err != nil {
+		t.Fatalf("opening cache: %v", err)
+	}
+	reqs := make([]engine.Request, 0, 40)
+	for i := range 40 {
+		src := fmt.Sprintf("package p\n\nimport \"time\"\n\nfunc f%d(a int) int {\n\tif a > %d {\n"+
+			"\t\ttime.Sleep(1)\n\t\treturn a\n\t}\n\treturn 0\n}\n", i, i)
+		reqs = append(reqs, engine.Request{
+			Path: fmt.Sprintf("pkg/f%d_test.go", i), SHA: fmt.Sprintf("%040d", i), Content: []byte(src),
+		})
+	}
+
+	parallel := engine.New(config.Default(), store)
+	parallel.Prefetch(ctx, reqs)
+	serial := engine.New(config.Default(), store)
+	for _, r := range reqs {
+		got := parallel.Analyze(ctx, r.Path, r.SHA, r.Content)
+		want := serial.Analyze(ctx, r.Path, r.SHA, r.Content)
+		if !reflect.DeepEqual(got.Findings, want.Findings) || !reflect.DeepEqual(got.Metrics, want.Metrics) {
+			t.Fatalf("%s: prefetched report differs from serial analysis", r.Path)
+		}
 	}
 }
 
