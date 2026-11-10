@@ -1,3 +1,9 @@
+## v0.3.0 (2026-11-10)
+
+### Feat
+
+- **change**: report function-matched mass growth and over-limit share
+
 ## v0.2.0 (2026-11-10)
 
 ### Feat
