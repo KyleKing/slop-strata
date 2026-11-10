@@ -1,3 +1,12 @@
+## v0.11.2 (2026-11-10)
+
+### Fix
+
+- **history**: sort the hotspot table by score and show survival intervals
+- **explain**: document the survival interval fields s30_ci and s90_ci
+- **lineage**: credit churn to the directory lines were added in
+- **change**: sort last-ref findings so output repeats
+
 ## v0.11.1 (2026-11-10)
 
 ### Fix
