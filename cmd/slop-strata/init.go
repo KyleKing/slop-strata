@@ -58,7 +58,9 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 		}
 	}
 	var b strings.Builder
-	b.WriteString("# slop-strata configuration\n\n[[author_class]]\nname = \"bot\"\n")
+	// Top-level keys must precede [[author_class]] or TOML attaches them to the
+	// last table element.
+	b.WriteString("# slop-strata configuration\n\n# skip = [\"vendor/*\", \"*.min.js\"]\n\n[[author_class]]\nname = \"bot\"\n")
 	if len(logins) > 0 {
 		sorted := make([]string, 0, len(logins))
 		for l := range logins {
@@ -71,7 +73,7 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 		}
 		fmt.Fprintf(&b, "logins = [%s]\n", strings.Join(quoted, ", "))
 	}
-	b.WriteString("trailers = ['(?i)co-authored-by:.*\\[bot\\]']\n\n# skip = [\"vendor/*\", \"*.min.js\"]\n")
+	b.WriteString("trailers = ['(?i)co-authored-by:.*\\[bot\\]']\n")
 
 	if err := os.WriteFile(path, []byte(b.String()), configPerm); err != nil {
 		return fmt.Errorf("writing %s: %w", config.FileName, err)
