@@ -36,13 +36,14 @@ const (
 
 // session bundles what every subcommand needs.
 type session struct {
-	ops    *vcs.GitOperations
-	cfg    *config.Config
-	eng    *engine.Analyzer
-	store  *cache.Store
-	stderr io.Writer
-	root   string
-	trees  []memoTree
+	ops     *vcs.GitOperations
+	cfg     *config.Config
+	eng     *engine.Analyzer
+	store   *cache.Store
+	stderr  io.Writer
+	root    string
+	touches func() (map[string]int, error)
+	trees   []memoTree
 }
 
 // countRows tallies skipped and errored files for an envelope. A row whose

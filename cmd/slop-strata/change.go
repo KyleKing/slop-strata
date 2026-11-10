@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -138,6 +139,7 @@ type crossedFunc struct {
 }
 
 func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
+	s.startDirTouches(ctx)
 	if a.pairs != "" {
 		return s.changePairs(ctx, a, w)
 	}
@@ -400,7 +402,9 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 
 	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // detached HEAD leaves intent to subjects
 	res.Intent = s.changeIntent(ctx, base, end, branch)
-	s.dirDeltas(ctx, res)
+	if err := s.dirDeltas(ctx, res); err != nil {
+		return nil, err
+	}
 	res.Reading = readingFor(res, aggBefore, aggAfter)
 
 	return res, nil
@@ -892,36 +896,32 @@ func markFindingsOld(old map[string]bool, res *changeResult) {
 }
 
 // dirDeltas rolls the change up per directory and flags hotspots.
-func (s *session) dirDeltas(ctx context.Context, res *changeResult) {
+func (s *session) dirDeltas(ctx context.Context, res *changeResult) error {
 	// Roll per-dir mass deltas from the file deltas.
 	massNet := map[string]float64{}
 	for _, fd := range res.Files {
 		d := lineage.DirOf(fd.Path)
 		massNet[d] += fd.MassAfter - fd.MassBefore
 	}
-	hotspots, touches := s.hotspotDirs(ctx, mapKeys(massNet))
+	hotspots, touches, err := s.hotspotDirs(ctx, mapKeys(massNet))
+	if err != nil {
+		return err
+	}
 	res.dirTouches = touches
 	for d, net := range massNet {
 		res.Dirs[d] = dirDelta{MassNet: net, Hotspot: hotspots[d]}
 	}
+
+	return nil
 }
 
 // hotspotDirs names the most-touched directories over the last 90 days among
 // the dirs the change touched, and returns the touch counts behind them.
-func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string]bool, map[string]int) {
-	touches := map[string]int{}
-	for rec, err := range s.ops.LogHistory(ctx, s.root,
-		vcs.LogOptions{FirstParent: true, Since: "90 days ago"}) {
-		if err != nil {
-			break
-		}
-		dirs := map[string]bool{}
-		for i := range rec.Files {
-			dirs[lineage.DirOf(rec.Files[i].Path)] = true
-		}
-		for d := range dirs {
-			touches[d]++
-		}
+func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string]bool, map[string]int, error) {
+	s.startDirTouches(ctx)
+	touches, err := s.touches()
+	if err != nil {
+		return nil, nil, err
 	}
 	hot := map[string]bool{}
 	for _, d := range touched {
@@ -930,7 +930,57 @@ func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string
 		}
 	}
 
-	return hot, touches
+	return hot, touches, nil
+}
+
+// startDirTouches begins the 90-day walk in the background, so it overlaps the
+// tree reads, and the run keeps its answer for every pair it scores.
+func (s *session) startDirTouches(ctx context.Context) {
+	if s.touches != nil {
+		return
+	}
+	var (
+		touches map[string]int
+		err     error
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		touches, err = recentDirTouches(ctx, s.root)
+	}()
+	s.touches = func() (map[string]int, error) {
+		<-done
+
+		return touches, err
+	}
+}
+
+// recentDirTouches reads names only; LogHistory's patch parse is too slow per change.
+func recentDirTouches(ctx context.Context, root string) (map[string]int, error) {
+	args := []string{
+		"-c", "core.quotePath=false", "log", "-m", "--first-parent",
+		"--since=90 days ago", "--name-only", "--format=%x1e",
+	}
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- argv is fixed
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing commits over 90 days: %w", err)
+	}
+	touches := map[string]int{}
+	for _, rec := range strings.Split(string(out), "\x1e") {
+		dirs := map[string]bool{}
+		for _, path := range strings.Split(rec, "\n") {
+			if path != "" {
+				dirs[lineage.DirOf(path)] = true
+			}
+		}
+		for d := range dirs {
+			touches[d]++
+		}
+	}
+
+	return touches, nil
 }
 
 func mapKeys[V any](m map[string]V) []string {
