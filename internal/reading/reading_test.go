@@ -55,12 +55,63 @@ func TestSentenceLeadsWithNetAndCountsFunctionsByHowTheyChanged(t *testing.T) {
 			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Chore}},
 			want:   "Chore: no complexity mass moved",
 		},
+		{
+			name:   "unknown intent reads as a plain change",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Unknown}, MassAdded: 3, MassRemoved: 1},
+			want:   "Change: net +2.0 mass, 0.0 grown",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := tc.fields.Sentence(); got != tc.want {
 				t.Fatalf("Sentence() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDisagreementNamesTheNumbersAgainstTheIntent(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		want   string
+		fields reading.Fields
+	}{
+		{
+			name:   "refactor that adds mass",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Refactor}, MassAdded: 10, MassRemoved: 5},
+			want:   "a refactor that adds mass",
+		},
+		{
+			name: "refactor that raises erosion",
+			fields: reading.Fields{
+				Intent: intent.Intent{Kind: intent.Refactor}, MassAdded: 5, MassRemoved: 5,
+				ErosionBefore: 0.2, ErosionAfter: 0.3,
+			},
+			want: "a refactor that raises erosion",
+		},
+		{
+			name:   "fix that adds far more than it touches",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Fix}, MassAdded: 100, MassRemoved: 20},
+			want:   "a fix that adds far more than it touches",
+		},
+		{
+			name:   "test change that adds production mass",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Test}, MassAdded: 3},
+			want:   "a test change that adds production mass",
+		},
+		{
+			name:   "feature never disagrees with itself",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Feat}, MassAdded: 100},
+			want:   "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.fields.Disagreement(); got != tc.want {
+				t.Fatalf("Disagreement() = %q, want %q", got, tc.want)
 			}
 		})
 	}

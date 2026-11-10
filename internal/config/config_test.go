@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/config"
@@ -87,5 +88,64 @@ func TestClassifyBuiltInAndRepositoryClasses(t *testing.T) {
 				t.Fatalf("Classify(%q) = %q, want %q", tc.author, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestLoadReadsSettingsOverDefaults(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		file     string
+		skip     []string
+		maxBytes int64
+		wantErr  bool
+		expt     bool
+	}{
+		{name: "no file keeps defaults", maxBytes: config.Default().MaxFileBytes},
+		{
+			name:     "settings replace defaults and the rest stay",
+			file:     "max_file_bytes = 4096\nexperimental = true\nskip = [\"vendor/**\"]\n",
+			maxBytes: 4096, expt: true, skip: []string{"vendor/**"},
+		},
+		{name: "unknown key is an error", file: "max_fil_bytes = 4096\n", wantErr: true},
+		{
+			name:    "bad trailer pattern is an error",
+			file:    "[[author_class]]\nname = \"ci\"\ntrailers = [\"(\"]\n",
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			if tc.file != "" {
+				if err := os.WriteFile(filepath.Join(root, config.FileName), []byte(tc.file), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg, err := config.Load(root)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Load() error = %v, want error %t", err, tc.wantErr)
+			}
+			if !tc.wantErr {
+				checkSettings(t, cfg, tc.maxBytes, tc.expt, tc.skip)
+			}
+		})
+	}
+}
+
+// checkSettings asserts the fields a config file sets, and that the minified cap
+// keeps its default.
+func checkSettings(t *testing.T, cfg *config.Config, maxBytes int64, expt bool, skip []string) {
+	t.Helper()
+	if cfg.MaxFileBytes != maxBytes || cfg.Experimental != expt {
+		t.Errorf("max_file_bytes = %d, experimental = %t; want %d, %t",
+			cfg.MaxFileBytes, cfg.Experimental, maxBytes, expt)
+	}
+	if cfg.MinifiedAvgLine != config.Default().MinifiedAvgLine {
+		t.Errorf("minified_avg_line = %d, want the default", cfg.MinifiedAvgLine)
+	}
+	if strings.Join(cfg.Skip, ",") != strings.Join(skip, ",") {
+		t.Errorf("Skip = %v, want %v", cfg.Skip, skip)
 	}
 }
