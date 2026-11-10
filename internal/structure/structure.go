@@ -26,13 +26,13 @@ type FuncMetrics struct {
 type FileMetrics struct {
 	Lang  string        `json:"lang"`
 	Funcs []FuncMetrics `json:"funcs"`
-	// ErrorCoverage is the byte share under ERROR/MISSING nodes; nonzero even
-	// below the failure threshold so small grammar gaps are still visible.
+	// ErrorCoverage is the byte share under ERROR/MISSING nodes.
 	ErrorCoverage float64 `json:"error_coverage,omitempty"`
 	Lines         int     `json:"lines"`
 	SLOC          int     `json:"sloc"`
 	Comments      int     `json:"comments"`
-	ParseError    bool    `json:"parse_error,omitempty"`
+	// ParseError is set for any ERROR or MISSING node, however few bytes it covers.
+	ParseError bool `json:"parse_error,omitempty"`
 }
 
 // lineClass names what a line's content is.
@@ -196,11 +196,6 @@ func (c *complexity) isCountedOp(node *ts.Node) bool {
 	return false
 }
 
-// parseErrorShare is the fraction of source bytes under ERROR/MISSING nodes
-// that marks a file as failed rather than merely imperfect: a grammar edge
-// leaves a tiny broken subtree, while a real syntax failure covers the file.
-const parseErrorShare = 0.01
-
 // Analyze measures one parsed blob.
 func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 	root := tree.RootNode()
@@ -210,7 +205,7 @@ func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 	fm := FileMetrics{
 		Lang:          l.ID,
 		Lines:         len(classes),
-		ParseError:    coverage > parseErrorShare,
+		ParseError:    root.HasError(),
 		ErrorCoverage: coverage,
 	}
 	for _, class := range classes {

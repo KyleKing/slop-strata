@@ -187,3 +187,30 @@ func TestAnalyzeFunctions(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyzeParseError(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		path string
+		src  string
+		want bool
+	}{
+		{name: "python missing close paren", path: "broken.py", src: "def f(:\n    pass\n", want: true},
+		{name: "typescript unclosed block", path: "broken.ts", src: "function a() {\n  if (x) {\n", want: true},
+		{name: "python clean file", path: "ok.py", src: "def f(x):\n    return x\n", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			l := lang.ByPath(tc.path)
+			src := []byte(tc.src)
+			tree := lang.NewPool().Parse(l, src)
+			defer tree.Close()
+
+			if got := structure.Analyze(l, tree, src).ParseError; got != tc.want {
+				t.Errorf("ParseError = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
