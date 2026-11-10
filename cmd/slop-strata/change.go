@@ -947,7 +947,7 @@ func (s *session) lastRefs(ctx context.Context, base, end string,
 		}
 		ap := scored[i].afterPrint
 		for name := range bp.Referenced {
-			if ap != nil && ap.Referenced[name] {
+			if ap != nil && ap.Referenced[name] > 0 {
 				continue
 			}
 			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] {
@@ -998,12 +998,12 @@ func useCounts(prints map[string]*rules.Fingerprint) map[string]int {
 			uses[n]++
 		}
 		for n := range fp.Declared {
-			if fp.Referenced[n] {
+			if fp.Referenced[n] > 0 {
 				uses[n]--
 			}
 		}
 		for n := range fp.Exported {
-			if fp.Referenced[n] {
+			if fp.Referenced[n] > 0 {
 				uses[n]--
 			}
 		}

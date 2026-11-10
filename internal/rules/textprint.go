@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	ts "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -26,8 +27,89 @@ func CollectText(path string, content []byte) *Fingerprint {
 	case lang.TextConfig:
 		fp.ConfigKeys = configKeys(path, content)
 	}
+	fp.EntryRefs = packageEntryRefs(path, content)
 
 	return fp
+}
+
+// packageEntryRefs answers the entry points a package manifest names: console
+// scripts as "module:name" targets, and package.json's main, bin, and exports
+// as file paths.
+func packageEntryRefs(path string, content []byte) []string {
+	switch filepath.Base(path) {
+	case "pyproject.toml":
+		return pyprojectEntries(content)
+	case "package.json":
+		return packageJSONEntries(content)
+	default:
+		return nil
+	}
+}
+
+// pyprojectEntries reads the console-script and entry-point targets in [project].
+func pyprojectEntries(content []byte) []string {
+	var doc struct {
+		Project struct {
+			Scripts     map[string]string            `toml:"scripts"`
+			GUIScripts  map[string]string            `toml:"gui-scripts"`
+			EntryPoints map[string]map[string]string `toml:"entry-points"`
+		} `toml:"project"`
+	}
+	if err := toml.Unmarshal(content, &doc); err != nil {
+		return nil
+	}
+	var out []string
+	for _, target := range doc.Project.Scripts {
+		out = append(out, target)
+	}
+	for _, target := range doc.Project.GUIScripts {
+		out = append(out, target)
+	}
+	for _, group := range doc.Project.EntryPoints {
+		for _, target := range group {
+			out = append(out, target)
+		}
+	}
+
+	return out
+}
+
+// packageJSONEntries reads the file paths package.json names in main, bin, and exports.
+func packageJSONEntries(content []byte) []string {
+	var doc struct {
+		Bin     any    `json:"bin"`
+		Exports any    `json:"exports"`
+		Main    string `json:"main"`
+	}
+	if err := json.Unmarshal(content, &doc); err != nil {
+		return nil
+	}
+	out := stringLeaves(doc.Bin)
+	out = append(out, stringLeaves(doc.Exports)...)
+	if doc.Main != "" {
+		out = append(out, doc.Main)
+	}
+
+	return out
+}
+
+// stringLeaves answers every string inside a decoded JSON value.
+func stringLeaves(v any) []string {
+	var out []string
+	switch t := v.(type) {
+	case string:
+		out = append(out, t)
+	case map[string]any:
+		for _, child := range t {
+			out = append(out, stringLeaves(child)...)
+		}
+	case []any:
+		for _, child := range t {
+			out = append(out, stringLeaves(child)...)
+		}
+	}
+
+	return out
 }
 
 // collectProse pulls code-shaped names out of a comment node's text.

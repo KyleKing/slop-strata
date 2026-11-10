@@ -56,7 +56,8 @@ type Fingerprint struct {
 	Declared    map[string]int        `json:"declared,omitempty"`     // top-level names -> line
 	Exported    map[string]int        `json:"exported,omitempty"`     // public-API names -> line
 	Options     map[string]int        `json:"options,omitempty"`      // WithX funcs returning an Option -> line
-	Referenced  map[string]bool       `json:"referenced,omitempty"`   // referenced identifiers
+	Referenced  map[string]int        `json:"referenced,omitempty"`   // identifier -> occurrences
+	EntryRefs   []string              `json:"entry_refs,omitempty"`   // entry targets a package manifest names
 	Imports     map[string]int        `json:"imports,omitempty"`      // imported module names -> line
 	Strings     map[string]int        `json:"strings,omitempty"`      // short string contents -> first line
 	ProseRefs   map[string]int        `json:"prose_refs,omitempty"`   // code-shaped names in comments -> line
@@ -86,9 +87,9 @@ func Collect(ctx *Ctx) *Fingerprint {
 		case kind == kindIdentifier || kind == "field_identifier" || kind == "property_identifier" ||
 			kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern":
 			if fp.Referenced == nil {
-				fp.Referenced = map[string]bool{}
+				fp.Referenced = map[string]int{}
 			}
-			fp.Referenced[ctx.Text(n)] = true
+			fp.Referenced[ctx.Text(n)]++
 		}
 	})
 	collectDecls(ctx, fp)
@@ -350,25 +351,28 @@ func collectIfaces(ctx *Ctx, fp *Fingerprint) {
 	}
 }
 
-// collectGoIface records a Go interface's method set.
+// collectGoIface records each Go interface's method set. A grouped type block
+// holds one spec per type, so each spec is checked.
 func collectGoIface(ctx *Ctx, decl *ts.Node, fp *Fingerprint) {
-	spec := decl.NamedChild(decl.NamedChildCount() - 1)
-	if spec == nil || spec.Kind() != "interface_type" {
-		return
-	}
-	name := decl.ChildByFieldName("name")
-	if name == nil {
-		return
-	}
-	var methods []string
-	lang.EachNamed(spec, func(n *ts.Node) {
-		if n.Kind() == "method_elem" || n.Kind() == "method_spec" {
-			if m := n.ChildByFieldName("name"); m != nil {
-				methods = append(methods, ctx.Text(m))
-			}
+	for _, spec := range lang.NamedChildren(decl) {
+		if spec.Kind() != "type_spec" {
+			continue
 		}
-	})
-	fp.Ifaces = append(fp.Ifaces, IfaceDecl{Name: ctx.Text(name), Line: lineOf(decl), Methods: methods})
+		name := spec.ChildByFieldName("name")
+		typ := spec.ChildByFieldName("type")
+		if name == nil || typ == nil || typ.Kind() != "interface_type" {
+			continue
+		}
+		var methods []string
+		lang.EachNamed(typ, func(n *ts.Node) {
+			if n.Kind() == "method_elem" || n.Kind() == "method_spec" {
+				if m := n.ChildByFieldName("name"); m != nil {
+					methods = append(methods, ctx.Text(m))
+				}
+			}
+		})
+		fp.Ifaces = append(fp.Ifaces, IfaceDecl{Name: ctx.Text(name), Line: lineOf(spec), Methods: methods})
+	}
 }
 
 // collectGoMethod records which receiver type a method extends.

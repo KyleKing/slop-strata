@@ -258,33 +258,103 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 	}
 }
 
-// deadExports flags an exported name no other file references: the export is
-// part of the file's public surface with no consumer. Entry-point globs and
-// test files are exempt — their exports answer a caller outside the tree.
+// deadExports flags an exported name no other file references, split by
+// whether the declaring file uses it: a name used only in its own file is
+// could-be-private. Names a package manifest names as entry points, and Go
+// methods that satisfy an interface declared in the tree, count as referenced.
+// Entry-point globs and test files are exempt — their exports answer a caller
+// outside the tree.
 func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string) {
+	refCount, ifaceMethods := referenceIndex(blobs)
+	entryNames, entryGlobs := manifestEntries(blobs, entryPoints)
+	for _, b := range blobs {
+		if lang.IsTestPath(b.Path) || matchAny(entryGlobs, b.Path) {
+			continue
+		}
+		for name, line := range b.Print.Exported {
+			if entryNames[name] || (ifaceMethods[name] && isGoMethod(b.Print, name)) {
+				continue
+			}
+			elsewhere := refCount[name]
+			if b.Print.Referenced[name] > 0 {
+				elsewhere--
+			}
+			if elsewhere > 0 {
+				continue
+			}
+			finding := Finding{
+				Rule: "x/dead-export", Line: line, Match: name,
+				Note: "exported, referenced nowhere else",
+			}
+			if selfUses(b.Print, name) > 0 {
+				finding = Finding{
+					Rule: "x/could-be-private", Line: line, Match: name,
+					Note: "exported, used only inside its own file",
+				}
+			}
+			out[b.Path] = append(out[b.Path], finding)
+		}
+	}
+}
+
+// referenceIndex counts the files referencing each identifier and collects the
+// method names every declared Go interface requires.
+func referenceIndex(blobs []BlobPrint) (map[string]int, map[string]bool) {
 	refCount := map[string]int{}
+	ifaceMethods := map[string]bool{}
 	for _, b := range blobs {
 		for name := range b.Print.Referenced {
 			refCount[name]++
 		}
+		for _, iface := range b.Print.Ifaces {
+			for _, m := range iface.Methods {
+				ifaceMethods[m] = true
+			}
+		}
 	}
+
+	return refCount, ifaceMethods
+}
+
+// manifestEntries splits what package manifests name as entry points into
+// "module:name" targets, which mark a name exported, and file paths, which mark
+// a file as an entry module alongside the configured globs.
+func manifestEntries(blobs []BlobPrint, entryPoints []string) (map[string]bool, []string) {
+	names := map[string]bool{}
+	globs := slices.Clone(entryPoints)
 	for _, b := range blobs {
-		if lang.IsTestPath(b.Path) || matchAny(entryPoints, b.Path) {
-			continue
-		}
-		for name, line := range b.Print.Exported {
-			refs := refCount[name]
-			if b.Print.Referenced[name] {
-				refs--
-			}
-			if refs == 0 {
-				out[b.Path] = append(out[b.Path], Finding{
-					Rule: "x/dead-export", Line: line, Match: name,
-					Note: "exported, referenced nowhere else",
-				})
+		for _, ref := range b.Print.EntryRefs {
+			if i := strings.LastIndexByte(ref, ':'); i >= 0 {
+				names[ref[i+1:]] = true
+			} else {
+				globs = append(globs, strings.TrimPrefix(ref, "./"))
 			}
 		}
 	}
+
+	return names, globs
+}
+
+// selfUses counts a file's uses of a name it declares, discounting the
+// declaration itself. A name the file only re-exports has no declaration here,
+// so it has no own uses.
+func selfUses(fp *Fingerprint, name string) int {
+	if _, declared := fp.Declared[name]; !declared {
+		return 0
+	}
+
+	return fp.Referenced[name] - 1
+}
+
+// isGoMethod reports whether a file declares a method with the given name.
+func isGoMethod(fp *Fingerprint, name string) bool {
+	for _, methods := range fp.MethodImpls {
+		if slices.Contains(methods, name) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // matchAny reports whether path matches any glob in the list.
@@ -415,7 +485,7 @@ func unusedOptions(blobs []BlobPrint, out map[string][]Finding) {
 			// second file referencing it means no caller exists.
 			uses := 0
 			for _, other := range blobs {
-				if other.Print.Referenced[name] {
+				if other.Print.Referenced[name] > 0 {
 					uses++
 				}
 			}

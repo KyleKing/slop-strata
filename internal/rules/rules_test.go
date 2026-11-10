@@ -273,7 +273,7 @@ type crossCase struct {
 
 func TestCrossFileHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range slices.Concat(crossHitCases(), staleProseCases()) {
+	for _, tc := range slices.Concat(crossHitCases(), staleProseCases(), deadExportCases()) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(flatten(crossFileOf(t, tc.files, true)), tc.rule)
@@ -557,6 +557,58 @@ func staleProseCases() []crossCase {
 			name:  "research folder stays quiet",
 			files: map[string]string{"storage-research/notes.md": "Tried `fetchRecords()` first.\n"},
 			rule:  stale, want: 0,
+		},
+	}
+}
+
+func deadExportCases() []crossCase {
+	const dead = "x/dead-export"
+	const private = "x/could-be-private"
+
+	return []crossCase{
+		{
+			name:  "exported name nothing references is dead",
+			files: map[string]string{"a.go": "package p\n\nfunc Use() {}\n"},
+			rule:  dead, want: 1,
+		},
+		{
+			name: "name used only inside its own file could be private",
+			files: map[string]string{
+				"a.go": "package p\n\nfunc Helper() int { return 1 }\n\nfunc Use() int { return Helper() }\n",
+			},
+			rule: private, want: 1,
+		},
+		{
+			name: "name referenced from another file stays quiet",
+			files: map[string]string{
+				"a.go": "package p\n\nfunc Util() {}\n",
+				"b.go": "package p\n\nfunc run() { Util() }\n",
+			},
+			rule: dead, want: 0,
+		},
+		{
+			name: "go method satisfying an interface in the same file stays quiet",
+			files: map[string]string{
+				"one.go": "package p\n\ntype closer interface {\n\tClose() error\n}\n\n" +
+					"type f struct{}\n\nfunc (f) Close() error { return nil }\n",
+			},
+			rule: private, want: 0,
+		},
+		{
+			name: "pyproject console script target stays quiet",
+			files: map[string]string{
+				"pyproject.toml": "[project.scripts]\ntool = \"pkg.mod:main\"\n",
+				"pkg/mod.py":     "def main():\n    pass\n",
+			},
+			rule: dead, want: 0,
+		},
+		{
+			name: "package.json main path stays quiet",
+			files: map[string]string{
+				"package.json": "{\"main\": \"src/index.ts\"}\n",
+				"src/index.ts": "export function run() {}\n",
+			},
+			rule: dead, want: 0,
 		},
 	}
 }
