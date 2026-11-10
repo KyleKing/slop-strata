@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -337,7 +339,10 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		Base: base, End: end, Dirs: map[string]dirDelta{},
 		beforeByPath: map[string]structure.FileMetrics{}, afterByPath: map[string]structure.FileMetrics{},
 	}
-	newSides := s.prefetchChange(ctx, files, oldBlobs, committed)
+	newSides, err := s.prefetchChange(ctx, files, oldBlobs, committed)
+	if err != nil {
+		return nil, err
+	}
 
 	var before, after []structure.FileMetrics
 	old := map[string]bool{}
@@ -401,14 +406,18 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 // of every file in parallel, so scoreFile reads the results back in order.
 func (s *session) prefetchChange(ctx context.Context, files []vcs.CommitFile,
 	oldBlobs map[string][]byte, committed bool,
-) []side {
+) ([]side, error) {
 	newSides := make([]side, len(files))
+	newBlobs, err := s.newBlobs(ctx, files, committed)
+	if err != nil {
+		return nil, err
+	}
 	var reqs []engine.Request
 	for i := range files {
 		if req, ok := oldRequest(files[i], oldBlobs); ok {
 			reqs = append(reqs, req)
 		}
-		newSides[i] = s.newContent(ctx, files[i], committed)
+		newSides[i] = s.newContent(files[i], committed, newBlobs)
 		if newSides[i].err == nil && newSides[i].content != nil {
 			reqs = append(reqs, engine.Request{
 				Path: files[i].Path, SHA: newBlobSHA(files[i], newSides[i].content), Content: newSides[i].content,
@@ -417,7 +426,7 @@ func (s *session) prefetchChange(ctx context.Context, files []vcs.CommitFile,
 	}
 	s.eng.Prefetch(ctx, reqs)
 
-	return newSides
+	return newSides, nil
 }
 
 // oldBlobs batch-reads every old-side blob in the diff.
@@ -644,17 +653,41 @@ func fileMass(m structure.FileMetrics) float64 {
 	return total
 }
 
-// newContent reads a changed file's after-side bytes. A committed diff's new
-// sha names a real object; a worktree diff's does not (it is only the hash of
-// dirty content), so worktree files always come off disk.
-func (s *session) newContent(ctx context.Context, f vcs.CommitFile, committed bool) side {
+// hasNewBlob reports whether a changed file's after side is a stored object: a
+// worktree diff's new sha hashes dirty content and names none.
+func hasNewBlob(f vcs.CommitFile, committed bool) bool {
+	return committed && f.Status != vcs.StatusDeleted && f.NewSHA != "" && strings.Trim(f.NewSHA, "0") != ""
+}
+
+func (s *session) newBlobs(ctx context.Context, files []vcs.CommitFile, committed bool) (map[string][]byte, error) {
+	var shas []string
+	for i := range files {
+		if hasNewBlob(files[i], committed) {
+			shas = append(shas, files[i].NewSHA)
+		}
+	}
+	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
+	if err != nil {
+		return nil, fmt.Errorf("reading blobs: %w", err)
+	}
+
+	return blobs, nil
+}
+
+var errBlobMissing = errors.New("blob missing from repository")
+
+// newContent reads a changed file's after-side bytes from blobs newBlobs read.
+func (s *session) newContent(f vcs.CommitFile, committed bool, blobs map[string][]byte) side {
 	if f.Status == vcs.StatusDeleted {
 		return side{}
 	}
-	if committed && f.NewSHA != "" && strings.Trim(f.NewSHA, "0") != "" {
-		content, err := s.ops.BlobContent(ctx, s.root, f.NewSHA)
+	if hasNewBlob(f, committed) {
+		content, ok := blobs[f.NewSHA]
+		if !ok {
+			return side{err: fmt.Errorf("reading blob %s: %w", f.NewSHA, errBlobMissing)}
+		}
 
-		return side{content: content, err: err}
+		return side{content: content}
 	}
 	content, err := os.ReadFile(filepath.Join(s.root, f.Path))
 
@@ -985,10 +1018,11 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 func (s *session) lastRefs(ctx context.Context, end string,
 	files []vcs.CommitFile, scored []scoredFile, basePrints map[string]*rules.Fingerprint, res *changeResult,
 ) {
-	endPrints, err := s.treePrints(ctx, end)
+	tree, err := s.treePrints(ctx, end)
 	if err != nil {
 		return
 	}
+	endPrints := maps.Clone(tree)
 	for i := range scored {
 		if scored[i].afterPrint != nil {
 			endPrints[scored[i].delta.Path] = scored[i].afterPrint
@@ -1017,8 +1051,37 @@ func (s *session) lastRefs(ctx context.Context, end string,
 	}
 }
 
-// treePrints fingerprints every code, prose, and config blob in a revision's tree.
+// treeMemoSize keeps the trees a --pairs run shares: one pair's rev is the next pair's base.
+const treeMemoSize = 3
+
+type memoTree struct {
+	prints map[string]*rules.Fingerprint
+	rev    string
+}
+
+// treePrints returns a revision's tree fingerprints, which callers must not modify.
 func (s *session) treePrints(ctx context.Context, rev string) (map[string]*rules.Fingerprint, error) {
+	for i, m := range s.trees {
+		if m.rev == rev {
+			s.trees = append(slices.Delete(s.trees, i, i+1), m)
+
+			return m.prints, nil
+		}
+	}
+	prints, err := s.readTreePrints(ctx, rev)
+	if err != nil {
+		return nil, err
+	}
+	s.trees = append(s.trees, memoTree{rev: rev, prints: prints})
+	if len(s.trees) > treeMemoSize {
+		s.trees = s.trees[1:]
+	}
+
+	return prints, nil
+}
+
+// readTreePrints fingerprints every code, prose, and config blob in a revision's tree.
+func (s *session) readTreePrints(ctx context.Context, rev string) (map[string]*rules.Fingerprint, error) {
 	entries, err := s.ops.TreeEntries(ctx, s.root, rev)
 	if err != nil {
 		return nil, fmt.Errorf("listing tree at %s: %w", rev, err)

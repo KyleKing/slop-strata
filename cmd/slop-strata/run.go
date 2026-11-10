@@ -42,6 +42,7 @@ type session struct {
 	store  *cache.Store
 	stderr io.Writer
 	root   string
+	trees  []memoTree
 }
 
 // countRows tallies skipped and errored files for an envelope. A row whose
