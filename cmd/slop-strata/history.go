@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -440,7 +441,7 @@ func printHistory(w io.Writer, res *historyResult) {
 		for _, sv := range res.Lineage.Survival {
 			rows = append(rows, []string{
 				sv.Cohort, strconv.Itoa(sv.Added), strconv.Itoa(sv.Surviving),
-				rateCell(sv.S30, sv.Provisional), rateCell(sv.S90, sv.Provisional),
+				rateCell(sv.S30, sv.S30CI, sv.Provisional), rateCell(sv.S90, sv.S90CI, sv.Provisional),
 			})
 		}
 		report.Table(w, []string{"cohort", colAdded, "alive", "s_30d", "s_90d"}, rows)
@@ -462,7 +463,7 @@ func printHistory(w io.Writer, res *historyResult) {
 			rows = append(rows, []string{
 				d, strconv.Itoa(ds.Added), strconv.Itoa(ds.Removed), strconv.Itoa(ds.Churn14),
 				strconv.Itoa(ds.Churn30), strconv.Itoa(ds.Rework),
-				rateCell(res.Lineage.Concentration[d], false), report.Sparkline(series[d]),
+				rateCell(res.Lineage.Concentration[d], nil, false), report.Sparkline(series[d]),
 			})
 		}
 		report.Table(w, []string{
@@ -518,7 +519,7 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 	for _, ts := range res.Lineage.TestSurvival {
 		rows = append(rows, []string{
 			ts.Class, strconv.Itoa(ts.Added), strconv.Itoa(ts.Dead30), strconv.Itoa(ts.Dead90),
-			rateCell(ts.S30, ts.Provisional), rateCell(ts.S90, ts.Provisional),
+			rateCell(ts.S30, nil, ts.Provisional), rateCell(ts.S90, nil, ts.Provisional),
 		})
 	}
 	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s_30d", "s_90d"}, rows)
@@ -527,13 +528,18 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 	}, lineage.ProvisionalTests)
 }
 
-// rateCell formats a survival share, or an em dash when the horizon runs past the data.
-func rateCell(share *float64, provisional bool) string {
+// rateCell formats a survival share with its Greenwood interval when one is
+// given, or an em dash when the horizon runs past the data.
+func rateCell(share *float64, ci *[2]float64, provisional bool) string {
 	if share == nil {
 		return "—"
 	}
+	cell := fmt.Sprintf("%.2f", *share)
+	if ci != nil {
+		cell += fmt.Sprintf(" [%.2f, %.2f]", ci[0], ci[1])
+	}
 
-	return provisionalMarked(fmt.Sprintf("%.2f", *share), provisional)
+	return provisionalMarked(cell, provisional)
 }
 
 // provisionalMarked appends the provisional mark to a formatted rate.
@@ -563,10 +569,13 @@ func printHotspots(w io.Writer, res *historyResult) {
 		return
 	}
 	report.Fprintln(w)
-	rows := make([][]string, 0, len(res.Hotspots))
-	for _, d := range report.SortedKeys(res.Hotspots) {
+	dirs := report.SortedKeys(res.Hotspots)
+	slices.SortStableFunc(dirs, func(a, b string) int {
+		return cmp.Or(cmp.Compare(res.Hotspots[b], res.Hotspots[a]), strings.Compare(a, b))
+	})
+	rows := make([][]string, 0, len(dirs))
+	for _, d := range dirs {
 		rows = append(rows, []string{d, fmt.Sprintf("%.0f", res.Hotspots[d])})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i][1] > rows[j][1] })
 	report.Table(w, []string{"hotspot", "score"}, rows)
 }

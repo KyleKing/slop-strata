@@ -1,9 +1,29 @@
 package main
 
 import (
+	"bytes"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestHotspotTableRanksByScore(t *testing.T) {
+	t.Parallel()
+	res := &historyResult{Hotspots: map[string]float64{"a": 5353, "b": 35565, "c": 35565, "d": 9}}
+	var out bytes.Buffer
+	printHotspots(&out, res)
+
+	var order []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		name, _, _ := strings.Cut(line, " ")
+		if slices.Contains([]string{"a", "b", "c", "d"}, name) {
+			order = append(order, name)
+		}
+	}
+	if want := []string{"b", "c", "a", "d"}; !slices.Equal(order, want) {
+		t.Fatalf("hotspot order = %v, want %v (score descending, then name)", order, want)
+	}
+}
 
 func TestMarkNoiseFlagsWeeksWithinOneMAD(t *testing.T) {
 	t.Parallel()
