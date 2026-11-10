@@ -53,6 +53,15 @@ func pythonFuncCases() []funcCase {
 				{name: "sign", cc: 2, sloc: 5, nesting: 1, cognitive: 2, params: 1},
 			},
 		},
+		{
+			name: "python comprehension clauses count toward cc",
+			path: "pick.py",
+			src: "def pick(items):\n" +
+				"    return [y for y in items if y]\n",
+			want: []funcWant{
+				{name: "pick", cc: 3, sloc: 2, nesting: 0, cognitive: 0, params: 1},
+			},
+		},
 	}
 }
 
@@ -158,6 +167,18 @@ func tsFuncCases() []funcCase {
 				"}\n",
 			want: []funcWant{
 				{name: "sign", cc: 2, sloc: 7, nesting: 1, cognitive: 2, params: 1},
+			},
+		},
+		{
+			name: "typescript logical assignment counts toward cc",
+			path: "fill.ts",
+			src: "function fill(a: string | undefined, b: number | undefined) {\n" +
+				"  a ||= \"x\";\n" +
+				"  b &&= 2;\n" +
+				"  b ??= 3;\n" +
+				"}\n",
+			want: []funcWant{
+				{name: "fill", cc: 4, sloc: 5, nesting: 0, cognitive: 3, params: 2},
 			},
 		},
 	}

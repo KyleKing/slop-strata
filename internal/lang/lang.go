@@ -135,6 +135,8 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"except_clause":          true,
 		"conditional_expression": true,
 		"case_clause":            true,
+		"for_in_clause":          true,
+		"if_clause":              true,
 	},
 	OpContainerKinds: map[string]bool{"boolean_operator": true},
 	DecisionOps:      map[string]bool{"and": true, "or": true},
@@ -187,8 +189,10 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		"catch_clause":       true,
 		"ternary_expression": true,
 	},
-	OpContainerKinds: map[string]bool{"binary_expression": true},
-	DecisionOps:      map[string]bool{"&&": true, "||": true, "??": true},
+	OpContainerKinds: map[string]bool{"binary_expression": true, "augmented_assignment_expression": true},
+	DecisionOps: map[string]bool{
+		"&&": true, "||": true, "??": true, "&&=": true, "||=": true, "??=": true,
+	},
 	NestKinds: map[string]bool{
 		kindIfStatement:      true,
 		kindForStatement:     true,
