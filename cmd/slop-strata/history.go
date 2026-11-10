@@ -462,8 +462,9 @@ func printHistory(w io.Writer, res *historyResult) {
 			})
 		}
 		report.Table(w, []string{"cohort", colAdded, "alive", "s_30d", "s_90d"}, rows)
-		provisionalNote(w, res.Lineage.Survival, func(s lineage.Survival) bool { return s.Provisional },
-			lineage.ProvisionalLines)
+		provisionalNote(w, res.Lineage.Survival, func(s lineage.Survival) bool {
+			return s.Provisional && (s.S30 != nil || s.S90 != nil)
+		}, lineage.ProvisionalLines)
 	}
 
 	printTestSurvival(w, res)
@@ -516,8 +517,9 @@ func printTestSurvival(w io.Writer, res *historyResult) {
 		})
 	}
 	report.Table(w, []string{"test files by class", "added", "dead<30d", "dead<90d", "s_30d", "s_90d"}, rows)
-	provisionalNote(w, res.Lineage.TestSurvival, func(t lineage.TestSurvival) bool { return t.Provisional },
-		lineage.ProvisionalTests)
+	provisionalNote(w, res.Lineage.TestSurvival, func(t lineage.TestSurvival) bool {
+		return t.Provisional && (t.S30 != nil || t.S90 != nil)
+	}, lineage.ProvisionalTests)
 }
 
 // rateCell formats a survival share, or an em dash when the horizon runs past the data.
