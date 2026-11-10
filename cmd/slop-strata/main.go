@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -16,16 +17,10 @@ var (
 	date    = "unknown"
 )
 
+// exitUsage is the exit status for a bad command line.
+const exitUsage = 2
+
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "-v", "--version":
-			fmt.Printf("slop-strata %s (commit: %s, built: %s)\n", version, commit, date)
-
-			return
-		}
-	}
-
 	os.Exit(runMain())
 }
 
@@ -35,6 +30,11 @@ func runMain() int {
 
 	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "slop-strata:", err)
+		if errors.Is(err, errUsage) {
+			fmt.Fprintln(os.Stderr, `Run "slop-strata --help" for usage.`)
+
+			return exitUsage
+		}
 
 		return 1
 	}
