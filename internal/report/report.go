@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Version is the JSON schema version; bump on any field change.
@@ -145,19 +146,17 @@ func Fprintln(w io.Writer, args ...any) {
 func Table(w io.Writer, header []string, rows [][]string) {
 	widths := make([]int, len(header))
 	for i, h := range header {
-		widths[i] = len(h)
+		widths[i] = utf8.RuneCountInString(h)
 	}
 	for _, r := range rows {
 		for i, c := range r {
-			if len(c) > widths[i] {
-				widths[i] = len(c)
-			}
+			widths[i] = max(widths[i], utf8.RuneCountInString(c))
 		}
 	}
 	line := func(cols []string) {
 		parts := make([]string, len(cols))
 		for i, c := range cols {
-			parts[i] = c + strings.Repeat(" ", widths[i]-len(c))
+			parts[i] = c + strings.Repeat(" ", widths[i]-utf8.RuneCountInString(c))
 		}
 		Fprintln(w, strings.TrimRight(strings.Join(parts, "  "), " "))
 	}
