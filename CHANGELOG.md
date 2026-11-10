@@ -1,3 +1,9 @@
+## v0.11.3 (2026-11-10)
+
+### Perf
+
+- **change**: count hotspot touches from file names
+
 ## v0.11.2 (2026-11-10)
 
 ### Fix
