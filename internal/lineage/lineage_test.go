@@ -104,6 +104,33 @@ func TestPureInsertionHunkLandsAfterAnchor(t *testing.T) {
 	}
 }
 
+func TestChurnIsCreditedToTheDirectoryLinesWereAddedIn(t *testing.T) {
+	t.Parallel()
+	w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+	src := []string{"first line", "second line", "third line"}
+	w.Commit(commitOn(0, vcs.CommitFile{
+		Path: "src/a.go", Status: vcs.StatusAdded, Added: src,
+		Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: len(src)}},
+	}), false, false)
+	w.Commit(commitOn(2, vcs.CommitFile{
+		Path: "lib/a.go", OldPath: "src/a.go", Status: vcs.StatusRenamed, Removed: []string{"second line"},
+		Hunks: []vcs.DiffHunk{{OldStart: 2, OldLines: 1, NewStart: 2}},
+	}), false, false)
+
+	res := w.Finish()
+	for dir, ds := range res.Dirs {
+		if ds.Churn30 > ds.Added {
+			t.Errorf("%s: churn_30d %d exceeds added %d", dir, ds.Churn30, ds.Added)
+		}
+	}
+	if got := res.Dirs["src"].Churn14; got != 1 {
+		t.Errorf("the line dies within 14 days of its birth in src: churn_14d = %d, want 1", got)
+	}
+	if got := res.Dirs["lib"].Churn30; got != 0 {
+		t.Errorf("a renamed file does not own its lines' churn: lib churn_30d = %d, want 0", got)
+	}
+}
+
 var walkEpoch = time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
 
 func commitOn(day int, files ...vcs.CommitFile) vcs.CommitRecord {

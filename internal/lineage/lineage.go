@@ -47,10 +47,12 @@ const (
 
 // tag is one live line's provenance.
 type tag struct {
-	class     string
-	author    string
-	birthDays int // unix days when the line was added
-	cohort    int // birth month as year*12+month
+	class  string
+	author string
+	dir    string // directory the line was added in, which its churn is credited to
+	// birthDays is the unix day the line was added, and cohort its birth month as year*12+month.
+	birthDays int
+	cohort    int
 }
 
 // fileLines is a file as the walk sees it: one tag per current line.
@@ -323,7 +325,7 @@ func (w *Walker) addFile(f *vcs.CommitFile, klass string, cohort, birth int,
 	lines := make(fileLines, 0, n)
 	births := 0
 	for i := range n {
-		t := tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
+		t := tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort, dir: DirOf(f.Path)}
 		kept := false
 		if t2, ok := mv.take(f.Path, i); ok {
 			t = t2
@@ -452,7 +454,7 @@ func insertTags(edit hunkEdit, cohort, birth int, klass string,
 	mid := make(fileLines, edit.h.NewLines)
 	births := 0
 	for i := range mid {
-		mid[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
+		mid[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort, dir: DirOf(edit.path)}
 		if kept, ok := mv.take(edit.path, edit.first+i); ok {
 			mid[i] = kept
 
@@ -464,21 +466,32 @@ func insertTags(edit hunkEdit, cohort, birth int, klass string,
 	return mid, births
 }
 
-// recordDeath logs one line's removal with its provenance.
+// recordDeath logs one line's removal with its provenance. Churn goes to the
+// directory the line was added in, so it never exceeds that directory's added
+// lines, while removal and rework stay with the directory it died in.
 func (w *Walker) recordDeath(t tag, ds *DirStats, deathDay int, fix bool) {
 	ds.Removed++
 	age := ageDays(t.birthDays, deathDay)
 	w.deaths = append(w.deaths, death{cohort: t.cohort, age: age, klass: t.class, fix: fix})
-	if age <= churn14Days {
-		ds.Churn14++
-	}
 	if age <= churn30Days {
-		ds.Churn30++
+		born := w.dirStats(t.dir)
+		if age <= churn14Days {
+			born.Churn14++
+		}
+		born.Churn30++
 		w.res.Churned30++
 	}
 	if fix && age <= churn30Days {
 		ds.Rework++
 	}
+}
+
+func (w *Walker) dirStats(d string) *DirStats {
+	if w.res.Dirs[d] == nil {
+		w.res.Dirs[d] = &DirStats{}
+	}
+
+	return w.res.Dirs[d]
 }
 
 // countCouples counts same-commit file pairs, skipping very large commits.
