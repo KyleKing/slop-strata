@@ -136,7 +136,8 @@ type hitCase struct {
 func TestRuleHits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range slices.Concat(
-		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), tsHitCases(), commentHitCases(),
+		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), pyMockPatchCases(),
+		tsHitCases(), commentHitCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -685,6 +686,43 @@ func commentHitCases() []hitCase { //nolint:dupl // a case table repeats its sha
 			path: "hack.go",
 			src:  "package p\n\n// remove once ABC-123 lands\nvar hack = 1\n",
 			rule: narrating, want: 0,
+		},
+	}
+}
+
+func pyMockPatchCases() []hitCase {
+	const mockPatch = "py/mock-patch"
+
+	return []hitCase{
+		{
+			name: "mock.patch fires",
+			path: "test_mock.py",
+			src:  "from unittest import mock\n\n\ndef test_x():\n    with mock.patch(\"pkg.client\"):\n        pass\n",
+			rule: mockPatch, want: 1,
+		},
+		{
+			name: "mocker.patch fires",
+			path: "test_mocker.py",
+			src:  "def test_x(mocker):\n    mocker.patch(\"pkg.client.fetch\")\n",
+			rule: mockPatch, want: 1,
+		},
+		{
+			name: "patch.object fires",
+			path: "test_object.py",
+			src:  "def test_x():\n    with patch.object(Client, \"fetch\"):\n        pass\n",
+			rule: mockPatch, want: 1,
+		},
+		{
+			name: "monkeypatch.setattr fires",
+			path: "test_monkey.py",
+			src:  "def test_x(monkeypatch):\n    monkeypatch.setattr(\"pkg.mod.name\", 1)\n",
+			rule: mockPatch, want: 1,
+		},
+		{
+			name: "client patch request stays quiet",
+			path: "test_client.py",
+			src:  "def test_x(client):\n    client.patch(\"/items\", json={})\n",
+			rule: mockPatch, want: 0,
 		},
 	}
 }

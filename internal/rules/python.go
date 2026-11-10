@@ -128,17 +128,29 @@ func pyTypeAny(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// pyMockPatch flags unittest.mock patching inside tests: the test stops
+// pyMockPatch flags test-time replacement of a target: the test stops
 // exercising the code it names.
 func pyMockPatch(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Python {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
-		if callee == "patch" || strings.HasPrefix(callee, "patch.") || strings.Contains(callee, ".patch") {
+		if isPatchCallee(callee) {
 			*findings = append(*findings, Finding{Rule: "py/mock-patch", Line: lineOf(n), Match: callee})
 		}
 	})
+}
+
+// isPatchCallee reports whether a callee replaces a target for the test's
+// duration: unittest.mock's patch and its object form, pytest-mock's mocker,
+// and pytest's monkeypatch.
+func isPatchCallee(callee string) bool {
+	switch callee {
+	case "patch", "mock.patch", "patch.object", "mock.patch.object", "monkeypatch.setattr":
+		return true
+	default:
+		return strings.HasPrefix(callee, "mocker.patch")
+	}
 }
 
 // pyTestReadsSource flags tests that open or parse repository source, config,
