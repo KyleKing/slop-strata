@@ -42,7 +42,7 @@ func (s *session) initCmd(ctx context.Context, a *args, w io.Writer) error {
 }
 
 // writeConfig renders .slop-strata.toml with the bot logins seen in recent
-// first-parent history plus the default co-author trailer class.
+// first-parent history. The built-in classes need no entry.
 func (s *session) writeConfig(ctx context.Context, path string) error {
 	logins := map[string]bool{}
 	n := 0
@@ -63,8 +63,8 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 	b.WriteString("# slop-strata configuration\n\n" +
 		"# skip = [\"vendor/*\", \"*.min.js\"]\n" +
 		"# entry_points = [\"cmd/*\", \"main.go\"]\n" +
-		"# config_paths = [\"config/*.toml\", \"settings/*.yaml\"]\n\n" +
-		"[[author_class]]\nname = \"bot\"\n")
+		"# config_paths = [\"config/*.toml\", \"settings/*.yaml\"]\n" +
+		"# Built in after these: agent (coding-agent co-author trailers), bot (logins ending in [bot])\n\n")
 	if len(logins) > 0 {
 		sorted := make([]string, 0, len(logins))
 		for l := range logins {
@@ -75,9 +75,8 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 		for _, l := range sorted {
 			quoted = append(quoted, fmt.Sprintf("%q", l))
 		}
-		fmt.Fprintf(&b, "logins = [%s]\n", strings.Join(quoted, ", "))
+		fmt.Fprintf(&b, "[[author_class]]\nname = \"bot\"\nlogins = [%s]\n", strings.Join(quoted, ", "))
 	}
-	b.WriteString("trailers = ['(?i)co-authored-by:.*\\[bot\\]']\n")
 
 	if err := os.WriteFile(path, []byte(b.String()), configPerm); err != nil {
 		return fmt.Errorf("writing %s: %w", config.FileName, err)

@@ -35,7 +35,9 @@ const (
 type AuthorClass struct {
 	// Name is the label reported in output, e.g. "bot" or "agent".
 	Name string `toml:"name"`
-	// Logins are author and committer names or emails that mark the class.
+	// Logins are author and committer names or emails that mark the class. A
+	// login starting with `*` matches an identity whose name or email local part
+	// ends with the rest, e.g. "*[bot]".
 	Logins []string `toml:"logins"`
 	// Trailer patterns match against the commit message body, one regexp per
 	// entry. They cover co-author trailers a bot leaves, e.g.
@@ -61,15 +63,24 @@ func (a *AuthorClass) Matches(author, committer, body string) bool {
 	return false
 }
 
-// identityMatches reports whether a login equals the name or the email of an
-// identity written as `Name <email>`, ignoring case.
+// identityMatches reports whether a login names an identity written as
+// `Name <email>`, ignoring case.
 func identityMatches(identity, login string) bool {
 	name, email := identity, ""
 	if i := strings.LastIndex(identity, " <"); i >= 0 && strings.HasSuffix(identity, ">") {
 		name, email = identity[:i], identity[i+len(" <"):len(identity)-1]
 	}
+	if suffix, ok := strings.CutPrefix(login, "*"); ok {
+		local, _, _ := strings.Cut(email, "@")
+
+		return hasSuffixFold(name, suffix) || hasSuffixFold(local, suffix)
+	}
 
 	return strings.EqualFold(name, login) || strings.EqualFold(email, login)
+}
+
+func hasSuffixFold(s, suffix string) bool {
+	return strings.HasSuffix(strings.ToLower(s), strings.ToLower(suffix))
 }
 
 // Config is the parsed .slop-strata.toml.
@@ -108,33 +119,43 @@ func Default() *Config {
 		MaxFileBytes:    defaultMaxFileBytes,
 		MinifiedAvgLine: defaultMinifiedAvgLine,
 		Baseline:        BaselineFileName,
-		AuthorClasses: []AuthorClass{
-			{Name: "bot", Logins: nil, Trailers: []string{`(?i)co-authored-by:.*\[bot\]`}},
+	}
+}
+
+// defaultAuthorClasses are tried after the repository's own classes, so a
+// repository can claim a login for a different class.
+func defaultAuthorClasses() []AuthorClass {
+	return []AuthorClass{
+		{
+			Name:     "agent",
+			Trailers: []string{`(?im)^co-authored-by:.*(claude|copilot|cursor|codex|devin|aider)`},
+		},
+		{
+			Name:     "bot",
+			Logins:   []string{"*[bot]"},
+			Trailers: []string{`(?i)co-authored-by:.*\[bot\]`},
 		},
 	}
 }
 
 // Load reads .slop-strata.toml under root, falling back to Default when the
-// file does not exist.
+// file does not exist. The default author classes follow the file's own.
 func Load(root string) (*Config, error) {
 	cfg := Default()
 
 	data, err := os.ReadFile(filepath.Join(root, FileName)) //nolint:gosec // root is the caller's repo path
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			cerr := cfg.compile()
-
-			return cfg, cerr
-		}
-
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
 		return nil, fmt.Errorf("reading %s: %w", FileName, err)
+	default:
+		dec := toml.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(cfg); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", FileName, err)
+		}
 	}
-
-	dec := toml.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(cfg); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", FileName, err)
-	}
+	cfg.AuthorClasses = append(cfg.AuthorClasses, defaultAuthorClasses()...)
 
 	cerr := cfg.compile()
 
