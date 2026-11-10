@@ -107,7 +107,8 @@ var Docs = map[string]string{
 	"findings": "New rule hits attributable to this change, after the baseline and pre-existing " +
 		"hits are excluded.",
 	"virality": "For each rule: the first commit that hit it, then how hits spread afterward per " +
-		"author class. Answers whether a pattern gets copied once it lands.",
+		"author class and across directories (spread_dirs). Answers whether a pattern gets " +
+		"copied once it lands.",
 	"test_survival": "Share of test files added in the range that were deleted within 30 and 90 " +
 		"days, split by the adding commit's author class. Only adds observed inside the range count.",
 	"pairing": "Author classes compared on the same week and directory: net mass moved and " +

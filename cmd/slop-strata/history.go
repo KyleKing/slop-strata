@@ -46,8 +46,10 @@ type weekRow struct {
 // viralRow tracks one rule's spread after its first hit.
 type viralRow struct {
 	HitsByClass map[string]int `json:"hits_by_class"`
-	Rule        string         `json:"rule"`
-	FirstWeek   string         `json:"first_week"`
+	dirs        map[string]bool
+	Rule        string `json:"rule"`
+	FirstWeek   string `json:"first_week"`
+	SpreadDirs  int    `json:"spread_dirs"`
 }
 
 // pairRow compares author classes on the same week and directories.
@@ -269,10 +271,14 @@ func (s *session) scoreBlob(
 	cs.wk.MassNet += delta
 	pairCell(cs.pairs, cs.week, lineage.DirOf(f.Path)).ClassMass[cs.klass] += delta
 	for _, fn := range rep.Findings {
-		if cs.viral[fn.Rule] == nil {
-			cs.viral[fn.Rule] = &viralRow{Rule: fn.Rule, FirstWeek: cs.week, HitsByClass: map[string]int{}}
+		v := cs.viral[fn.Rule]
+		if v == nil {
+			v = &viralRow{Rule: fn.Rule, FirstWeek: cs.week, HitsByClass: map[string]int{}, dirs: map[string]bool{}}
+			cs.viral[fn.Rule] = v
 		}
-		cs.viral[fn.Rule].HitsByClass[cs.klass]++
+		v.HitsByClass[cs.klass]++
+		v.dirs[lineage.DirOf(f.Path)] = true
+		v.SpreadDirs = len(v.dirs)
 		if _, ok := cs.ruleFirst[fn.Rule]; !ok {
 			cs.ruleFirst[fn.Rule] = cs.week
 		}
