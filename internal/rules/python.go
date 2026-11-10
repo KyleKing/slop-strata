@@ -341,6 +341,12 @@ func isEchoComparison(ctx *Ctx, assert *ts.Node) bool {
 	return literal(left) && nameLike(right) || literal(right) && nameLike(left)
 }
 
+// cooperativeSleeps are the event-loop sleeps that yield control at 0 without
+// waiting on time.
+//
+//nolint:gochecknoglobals // a lookup table is a constant
+var cooperativeSleeps = map[string]bool{"asyncio.sleep": true, "anyio.sleep": true, "trio.sleep": true}
+
 // pyTimingHack flags sleeps and frozen clocks in tests: a test synchronized by
 // time is a flake in waiting.
 func pyTimingHack(ctx *Ctx, findings *[]Finding) {
@@ -348,6 +354,9 @@ func pyTimingHack(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
+		if cooperativeSleeps[callee] && firstArgText(ctx, n) == "0" {
+			return
+		}
 		switch {
 		case callee == "time.sleep" || callee == "asyncio.sleep" || callee == "sleep",
 			strings.HasSuffix(callee, ".sleep"),

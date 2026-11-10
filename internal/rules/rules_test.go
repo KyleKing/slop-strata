@@ -150,7 +150,8 @@ func TestRuleHits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range slices.Concat(
 		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), pyMockPatchCases(),
-		tsHitCases(), tsMockOnlyCases(), registryCases(), commentHitCases(),
+		tsHitCases(), tsMockOnlyCases(), tsTimingCases(), registryCases(), commentHitCases(),
+		pyTimingHackCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -808,6 +809,51 @@ func pyMockPatchCases() []hitCase {
 			path: "test_client.py",
 			src:  "def test_x(client):\n    client.patch(\"/items\", json={})\n",
 			rule: mockPatch, want: 0,
+		},
+	}
+}
+
+func pyTimingHackCases() []hitCase {
+	const timing = "py/timing-hack"
+
+	return []hitCase{
+		{
+			name: "asyncio.sleep(0) is a cooperative yield",
+			path: "test_yield.py",
+			src:  "import asyncio\n\n\nasync def test_x():\n    await asyncio.sleep(0)\n",
+			rule: timing, want: 0,
+		},
+		{
+			name: "trio and anyio sleep(0) are cooperative yields",
+			path: "test_yield_other.py",
+			src: "import trio\nimport anyio\n\n\nasync def test_x():\n    await trio.sleep(0)\n" +
+				"    await anyio.sleep(0)\n",
+			rule: timing, want: 0,
+		},
+		{
+			name: "asyncio.sleep with a delay fires",
+			path: "test_delay.py",
+			src:  "import asyncio\n\n\nasync def test_x():\n    await asyncio.sleep(0.1)\n",
+			rule: timing, want: 1,
+		},
+		{
+			name: "time.sleep(0) still fires",
+			path: "test_thread.py",
+			src:  "import time\n\n\ndef test_x():\n    time.sleep(0)\n",
+			rule: timing, want: 1,
+		},
+	}
+}
+
+func tsTimingCases() []hitCase {
+	const timing = "ts/timing-hack"
+
+	return []hitCase{
+		{
+			name: "promise wrapped setTimeout zero is not flagged",
+			path: "yield.test.ts",
+			src:  "it(\"yields\", async () => {\n  await new Promise((r) => setTimeout(r, 0));\n});\n",
+			rule: timing, want: 0,
 		},
 	}
 }
