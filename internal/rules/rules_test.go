@@ -273,7 +273,7 @@ type crossCase struct {
 
 func TestCrossFileHits(t *testing.T) {
 	t.Parallel()
-	for _, tc := range slices.Concat(crossHitCases(), staleProseCases(), deadExportCases()) {
+	for _, tc := range slices.Concat(crossHitCases(), staleProseCases(), deadExportCases(), cloneCases()) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := countRule(flatten(crossFileOf(t, tc.files, true)), tc.rule)
@@ -609,6 +609,33 @@ func deadExportCases() []crossCase {
 				"src/index.ts": "export function run() {}\n",
 			},
 			rule: dead, want: 0,
+		},
+	}
+}
+
+// sameBody gives each file the same function body under its own name.
+func sameBody(body string) map[string]string {
+	return map[string]string{"one.py": "def load(p):\n" + body, "two.py": "def fetch(q):\n" + body}
+}
+
+func cloneCases() []crossCase {
+	const clone = "x/clone-function"
+	return []crossCase{
+		{
+			name:  "six statements in seven lines fires",
+			files: sameBody("    a = 1\n    b = 2\n    c = 3\n    d = 4\n    e = 5\n    return a\n"),
+			rule:  clone, want: 2,
+		},
+		{
+			name:  "five statements in six lines stays quiet",
+			files: sameBody("    a = 1\n    b = 2\n    c = 3\n    d = 4\n    return a\n"),
+			rule:  clone, want: 0,
+		},
+		{
+			name: "one statement spanning eight lines fires",
+			files: sameBody("    return g(\n        p,\n        1,\n        2,\n        3,\n" +
+				"        4,\n    )\n"),
+			rule: clone, want: 2,
 		},
 	}
 }

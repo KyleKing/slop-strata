@@ -22,9 +22,12 @@ const minDupFiles = 3
 // before it is reported.
 const minDupOccurrences = 4
 
-// minCloneLines keeps trivial shapes (getters, one-line wrappers) out of the
-// clone report.
-const minCloneLines = 5
+// minCloneStatements and minCloneLines keep trivial shapes (getters, one-line
+// wrappers) out of the clone report: a body must reach either bound.
+const (
+	minCloneStatements = 6
+	minCloneLines      = 8
+)
 
 // LiteralUse is where a string literal first appears in one file and how many
 // times the file carries it.
@@ -156,7 +159,7 @@ func repeatsByDesign(ctx *Ctx, n *ts.Node) bool {
 // hashes alike.
 func collectClone(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	span := int(n.EndPosition().Row) - int(n.StartPosition().Row) + 1
-	if span < minCloneLines {
+	if span < minCloneLines && blockStatements(n) < minCloneStatements {
 		return
 	}
 	var b strings.Builder
