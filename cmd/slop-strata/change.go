@@ -47,6 +47,7 @@ type changeResult struct {
 	Skipped      []skippedRow  `json:"skipped,omitempty"`
 	Files        []fileDelta   `json:"files"`
 	Delta        deltaSummary  `json:"delta"`
+	highFuncs    funcCounts
 }
 
 type deltaSummary struct {
@@ -270,6 +271,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		res.Files[i].OverLimit = over
 		res.Delta.MassGrown += grown
 		res.Delta.OverLimit += over
+		res.highFuncs.add(highFuncChanges(scored[i].before, scored[i].after, moved))
 	}
 
 	markFindingsOld(old, res)
@@ -284,7 +286,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // detached HEAD leaves intent to subjects
 	res.Intent = s.changeIntent(ctx, base, end, branch)
 	s.dirDeltas(ctx, res)
-	res.Reading = readingFor(res, aggBefore, aggAfter, before, after)
+	res.Reading = readingFor(res, aggBefore, aggAfter)
 
 	return res, nil
 }
@@ -529,33 +531,21 @@ func (s *session) changeIntent(ctx context.Context, base, end, branch string) in
 }
 
 // readingFor composes the one-line reading.
-func readingFor(res *changeResult, before, after structure.Aggregates,
-	beforeFiles, afterFiles []structure.FileMetrics,
-) string {
+func readingFor(res *changeResult, before, after structure.Aggregates) string {
 	f := reading.Fields{
-		Intent:        res.Intent,
-		MassAdded:     res.Delta.MassAdded,
-		MassRemoved:   res.Delta.MassRemoved,
-		ErosionBefore: before.Erosion,
-		ErosionAfter:  after.Erosion,
+		Intent:          res.Intent,
+		MassAdded:       res.Delta.MassAdded,
+		MassRemoved:     res.Delta.MassRemoved,
+		MassGrown:       res.Delta.MassGrown,
+		ErosionBefore:   before.Erosion,
+		ErosionAfter:    after.Erosion,
+		FuncHighAdded:   res.highFuncs.added,
+		FuncHighTouched: res.highFuncs.touched,
+		FuncHighGone:    res.highFuncs.gone,
 	}
 	for _, fn := range res.Findings {
 		if fn.New {
 			f.FindingsNew++
-		}
-	}
-	for _, m := range beforeFiles {
-		for _, fn := range m.Funcs {
-			if fn.CC > structure.CCLimit {
-				f.FuncHighGone++
-			}
-		}
-	}
-	for _, m := range afterFiles {
-		for _, fn := range m.Funcs {
-			if fn.CC > structure.CCLimit {
-				f.FuncHighAdded++
-			}
 		}
 	}
 	for _, d := range res.Dirs {
@@ -569,6 +559,65 @@ func readingFor(res *changeResult, before, after structure.Aggregates,
 	sort.Strings(f.TouchedDirs)
 
 	return f.Sentence()
+}
+
+// funcCounts tallies a change's functions over the CC limit by how the change
+// reached them.
+type funcCounts struct {
+	added   int
+	touched int
+	gone    int
+}
+
+func (c *funcCounts) add(o funcCounts) {
+	c.added += o.added
+	c.touched += o.touched
+	c.gone += o.gone
+}
+
+// highFuncChanges counts one file's functions over the CC limit: added when
+// they match nothing on the before side, touched when they match and their
+// shape changed, gone when a before-side function over the limit has no match
+// after. A function matched by moved code is neither added nor touched.
+func highFuncChanges(before, after *structure.FileMetrics, moved map[funcKey]float64) funcCounts {
+	var c funcCounts
+	prev := map[string]structure.FuncMetrics{}
+	var beforeKeys []string
+	if before != nil {
+		beforeKeys = funcKeys(before.Funcs)
+		for i, key := range beforeKeys {
+			prev[key] = before.Funcs[i]
+		}
+	}
+	matched := map[string]bool{}
+	if after != nil {
+		for i, key := range funcKeys(after.Funcs) {
+			fn := after.Funcs[i]
+			matched[key] = true
+			old, ok := prev[key]
+			_, isMoved := moved[funcKey{fn.Name, fn.CC, fn.SLOC}]
+			switch {
+			case fn.CC <= structure.CCLimit:
+			case !ok && !isMoved:
+				c.added++
+			case ok && !sameShape(old, fn):
+				c.touched++
+			}
+		}
+	}
+	for i, key := range beforeKeys {
+		if before.Funcs[i].CC > structure.CCLimit && !matched[key] {
+			c.gone++
+		}
+	}
+
+	return c
+}
+
+// sameShape reports whether two versions of a function measure the same.
+func sameShape(a, b structure.FuncMetrics) bool {
+	return a.CC == b.CC && a.SLOC == b.SLOC && a.Cognitive == b.Cognitive &&
+		a.Nesting == b.Nesting && a.Params == b.Params && a.Comments == b.Comments
 }
 
 // markFindingsOld clears New on hits whose (rule,match) pair exists on the

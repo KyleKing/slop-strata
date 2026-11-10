@@ -11,17 +11,19 @@ import (
 
 // Fields is what a reading is built from.
 type Fields struct {
-	Intent        intent.Intent
-	TouchedDirs   []string
-	MassAdded     float64
-	MassRemoved   float64
-	ErosionBefore float64
-	ErosionAfter  float64
-	FuncHighAdded int // functions crossing CC 10 that appeared
-	FuncHighGone  int // functions over CC 10 that disappeared
-	FindingsNew   int
-	FindingsGone  int
-	Hotspot       bool
+	Intent          intent.Intent
+	TouchedDirs     []string
+	MassAdded       float64
+	MassRemoved     float64
+	MassGrown       float64
+	ErosionBefore   float64
+	ErosionAfter    float64
+	FuncHighAdded   int // functions over CC 10 that the change introduced
+	FuncHighTouched int // functions over CC 10 that existed before and changed
+	FuncHighGone    int // functions over CC 10 that disappeared
+	FindingsNew     int
+	FindingsGone    int
+	Hotspot         bool
 }
 
 // Disagreement reports whether the numbers argue against the stated intent.
@@ -57,20 +59,20 @@ func (f Fields) Sentence() string {
 	}
 	fmt.Fprintf(&b, "%s%s: ", strings.ToUpper(label[:1])+label[1:], where)
 
-	switch {
-	case f.MassAdded == 0 && f.MassRemoved == 0:
+	if f.MassAdded == 0 && f.MassRemoved == 0 {
 		b.WriteString("no complexity mass moved")
-	case f.MassAdded >= f.MassRemoved:
-		fmt.Fprintf(&b, "added %.1f mass, removed %.1f", f.MassAdded, f.MassRemoved)
-	default:
-		fmt.Fprintf(&b, "removed %.1f mass, added %.1f", f.MassRemoved, f.MassAdded)
+	} else {
+		fmt.Fprintf(&b, "net %+.1f mass, %.1f grown", f.MassAdded-f.MassRemoved, f.MassGrown)
 	}
 
-	switch {
-	case f.FuncHighGone > 0 && f.FuncHighAdded == 0:
-		fmt.Fprintf(&b, "; removed %d functions over CC 10", f.FuncHighGone)
-	case f.FuncHighAdded > 0:
+	if f.FuncHighAdded > 0 {
 		fmt.Fprintf(&b, "; added %d functions over CC 10", f.FuncHighAdded)
+	}
+	if f.FuncHighTouched > 0 {
+		fmt.Fprintf(&b, "; touched %d functions over CC 10", f.FuncHighTouched)
+	}
+	if f.FuncHighGone > 0 {
+		fmt.Fprintf(&b, "; removed %d functions over CC 10", f.FuncHighGone)
 	}
 
 	if f.ErosionBefore != f.ErosionAfter {
