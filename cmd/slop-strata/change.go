@@ -235,8 +235,8 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	var before, after []structure.FileMetrics
 	old := map[string]bool{}
 	scored := make([]scoredFile, 0, len(files))
-	for _, f := range files {
-		sf, err := s.scoreFile(ctx, f, oldBlobs, committed, baseline, res, old)
+	for i := range files {
+		sf, err := s.scoreFile(ctx, &files[i], oldBlobs, committed, baseline, res, old)
 		if err != nil {
 			return nil, err
 		}
@@ -287,9 +287,9 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 // oldBlobs batch-reads every old-side blob in the diff.
 func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[string][]byte, error) {
 	var shas []string
-	for _, f := range files {
-		if f.OldSHA != "" {
-			shas = append(shas, f.OldSHA)
+	for i := range files {
+		if files[i].OldSHA != "" {
+			shas = append(shas, files[i].OldSHA)
 		}
 	}
 	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
@@ -302,7 +302,7 @@ func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[str
 
 // scoreFile analyzes one changed file on both sides and folds it into res;
 // old collects the old side's (rule, match) pairs for markFindingsOld.
-func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[string][]byte,
+func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map[string][]byte,
 	committed bool, baseline rules.Baseline, res *changeResult, old map[string]bool,
 ) (scoredFile, error) {
 	sf := scoredFile{delta: fileDelta{
@@ -312,9 +312,9 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 	res.Delta.LinesAdded += f.LinesAdded()
 	res.Delta.LinesDeleted += f.LinesDeleted()
 
-	if rep := s.oldReport(ctx, f, oldBlobs); rep != nil && rep.Skipped == "" {
+	if rep := s.oldReport(ctx, *f, oldBlobs); rep != nil && rep.Skipped == "" {
 		sf.before = &rep.Metrics
-		res.beforeByPath[oldPathOf(f)] = rep.Metrics
+		res.beforeByPath[oldPathOf(*f)] = rep.Metrics
 		sf.delta.MassBefore = fileMass(rep.Metrics)
 		res.Delta.MassRemoved += sf.delta.MassBefore
 		for _, fn := range rep.Findings {
@@ -322,7 +322,7 @@ func (s *session) scoreFile(ctx context.Context, f vcs.CommitFile, oldBlobs map[
 		}
 	}
 
-	newSide := s.newContent(ctx, f, committed)
+	newSide := s.newContent(ctx, *f, committed)
 	if newSide.err != nil {
 		return sf, newSide.err
 	}
@@ -539,8 +539,8 @@ func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string
 		if err != nil {
 			break
 		}
-		for _, f := range rec.Files {
-			touches[lineage.DirOf(f.Path)]++
+		for i := range rec.Files {
+			touches[lineage.DirOf(rec.Files[i].Path)]++
 		}
 	}
 	hot := map[string]bool{}
@@ -584,9 +584,9 @@ func (s *session) buildContext(ctx context.Context, base, end string, files []vc
 		Hunks:    map[string][]vcs.DiffHunk{},
 		Snippets: map[string]map[int]string{},
 	}
-	for _, f := range files {
-		if len(f.Hunks) > 0 {
-			cp.Hunks[f.Path] = f.Hunks
+	for i := range files {
+		if len(files[i].Hunks) > 0 {
+			cp.Hunks[files[i].Path] = files[i].Hunks
 		}
 	}
 	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{Range: base + ".." + end, FirstParent: true}) {

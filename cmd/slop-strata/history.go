@@ -101,9 +101,9 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 		wk := weeks[week]
 		wk.Commits++
 		wk.Kinds[string(in.Kind)]++
-		for _, f := range rec.Files {
-			wk.Added += f.LinesAdded()
-			wk.Removed += f.LinesDeleted()
+		for i := range rec.Files {
+			wk.Added += rec.Files[i].LinesAdded()
+			wk.Removed += rec.Files[i].LinesDeleted()
 		}
 
 		// Score this commit's new blobs for mass delta and rule hits.
@@ -193,7 +193,8 @@ type commitScore struct {
 // delta, findings, and the per-class pairing.
 func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *commitScore) {
 	var shas []string
-	for _, f := range rec.Files {
+	for i := range rec.Files {
+		f := &rec.Files[i]
 		if f.NewSHA != "" {
 			shas = append(shas, f.NewSHA)
 		}
@@ -205,7 +206,8 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 	if err != nil {
 		return
 	}
-	for _, f := range rec.Files {
+	for i := range rec.Files {
+		f := &rec.Files[i]
 		d := lineage.DirOf(f.Path)
 		if f.Status == vcs.StatusRenamed && f.OldPath != "" {
 			cs.liveMass[f.Path] = cs.liveMass[f.OldPath]
@@ -219,7 +221,7 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 
 			continue
 		}
-		s.scoreBlob(ctx, cs, f, content, s.oldMass(ctx, f, blobs))
+		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs))
 	}
 }
 

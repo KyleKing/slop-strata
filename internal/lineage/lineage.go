@@ -155,6 +155,76 @@ func DirOf(path string) string {
 	return "."
 }
 
+// moves carries one commit's moved-line accounting: removed-line tags keyed
+// by text for the added side to reuse, and the old positions whose removal
+// is a move rather than a death.
+type moves struct {
+	tags   map[string][]tag
+	exempt map[string]map[int]bool
+}
+
+// moveTextFloor is the fewest trimmed bytes a line needs before a text match
+// reads as a move; shorter lines like braces match by coincidence.
+const moveTextFloor = 8
+
+// moveTextKey normalizes a line for move matching.
+func moveTextKey(text string) string {
+	if key := strings.TrimSpace(text); len(key) >= moveTextFloor {
+		return key
+	}
+
+	return ""
+}
+
+// collectMoves pairs the commit's removed and added line texts. Each removed
+// line whose text also arrives (up to the number of copies arriving) keeps its
+// tag: it moves rather than dying and being reborn as new code.
+func (w *Walker) collectMoves(rec vcs.CommitRecord) *moves {
+	addCount := map[string]int{}
+	for i := range rec.Files {
+		for _, text := range rec.Files[i].Added {
+			if key := moveTextKey(text); key != "" {
+				addCount[key]++
+			}
+		}
+	}
+	mv := &moves{tags: map[string][]tag{}, exempt: map[string]map[int]bool{}}
+	for i := range rec.Files {
+		w.stashRemoved(&rec.Files[i], addCount, mv)
+	}
+
+	return mv
+}
+
+// stashRemoved banks the tags of one file's removed lines that arrive
+// elsewhere in the same commit, keyed by text for the added side to claim.
+func (w *Walker) stashRemoved(f *vcs.CommitFile, addCount map[string]int, mv *moves) {
+	tagPath := f.Path
+	if f.Status == vcs.StatusRenamed && f.OldPath != "" {
+		tagPath = f.OldPath
+	}
+	lines := w.files[tagPath]
+	cur := 0
+	for _, h := range f.Hunks {
+		for i := range h.OldLines {
+			pos := h.OldStart - 1 + i
+			key := ""
+			if cur < len(f.Removed) {
+				key = moveTextKey(f.Removed[cur])
+			}
+			cur++
+			if key == "" || pos < 0 || pos >= len(lines) || len(mv.tags[key]) >= addCount[key] {
+				continue
+			}
+			mv.tags[key] = append(mv.tags[key], lines[pos])
+			if mv.exempt[f.Path] == nil {
+				mv.exempt[f.Path] = map[int]bool{}
+			}
+			mv.exempt[f.Path][pos] = true
+		}
+	}
+}
+
 // Commit applies one commit's record to the line state.
 func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 	w.res.Commits++
@@ -167,9 +237,11 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 	if birth > w.lastDay {
 		w.lastDay = birth
 	}
+	mv := w.collectMoves(rec)
 
 	touched := map[string]bool{}
-	for _, f := range rec.Files {
+	for i := range rec.Files {
+		f := &rec.Files[i]
 		d := DirOf(f.Path)
 		if w.res.Dirs[d] == nil {
 			w.res.Dirs[d] = &DirStats{}
@@ -180,30 +252,43 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 
 		switch f.Status {
 		case vcs.StatusAdded:
-			w.addFile(f, klass, cohort, birth, rec, ds)
+			w.addFile(f, klass, cohort, birth, rec, ds, mv)
 		case vcs.StatusDeleted:
-			w.removeFile(f.Path, birth, ds, rec, fixIntent)
+			w.removeFile(f.Path, birth, ds, rec, fixIntent, mv)
 		default:
 			if f.Status == vcs.StatusRenamed && f.OldPath != "" {
 				w.renameFile(f)
 			}
-			w.applyHunks(f.Path, f.Hunks, cohort, birth, klass, rec, ds, fixIntent)
+			w.applyHunks(f, cohort, birth, klass, rec, ds, fixIntent, mv)
 		}
 	}
 	w.countCouples(touched)
 }
 
-// addFile records a whole new file's lines as births at this commit.
-func (w *Walker) addFile(f vcs.CommitFile, klass string, cohort, birth int,
-	rec vcs.CommitRecord, ds *DirStats,
+// addFile records a whole new file's lines as births at this commit, keeping
+// any tags the commit moved in from elsewhere.
+func (w *Walker) addFile(f *vcs.CommitFile, klass string, cohort, birth int,
+	rec vcs.CommitRecord, ds *DirStats, mv *moves,
 ) {
 	n := f.LinesAdded()
-	lines := make(fileLines, n)
-	for i := range lines {
-		lines[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
+	lines := make(fileLines, 0, n)
+	births := 0
+	for i := range n {
+		t := tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
+		kept := false
+		if i < len(f.Added) {
+			if t2, ok := mv.take(f.Added[i]); ok {
+				t = t2
+				kept = true
+			}
+		}
+		if !kept {
+			births++
+		}
+		lines = append(lines, t)
 	}
 	w.files[f.Path] = lines
-	w.births[cohort] += n
+	w.births[cohort] += births
 	ds.Added += n
 	if lang.IsTestPath(f.Path) {
 		w.testBirths[f.Path] = testBirth{day: birth, klass: klass}
@@ -212,16 +297,16 @@ func (w *Walker) addFile(f vcs.CommitFile, klass string, cohort, birth int,
 
 // removeFile records a deletion: a test death when the file was being
 // tracked, plus every live line killed.
-func (w *Walker) removeFile(path string, birth int, ds *DirStats, rec vcs.CommitRecord, fix bool) {
+func (w *Walker) removeFile(path string, birth int, ds *DirStats, rec vcs.CommitRecord, fix bool, mv *moves) {
 	if tb, ok := w.testBirths[path]; ok {
 		w.testDeaths = append(w.testDeaths, testDeath{age: birth - tb.day, klass: tb.klass})
 		delete(w.testBirths, path)
 	}
-	w.killAll(path, ds, rec, birth, fix)
+	w.killAll(path, ds, rec, birth, fix, mv)
 }
 
 // renameFile moves a file's line tags and test-birth record to its new path.
-func (w *Walker) renameFile(f vcs.CommitFile) {
+func (w *Walker) renameFile(f *vcs.CommitFile) {
 	w.files[f.Path] = w.files[f.OldPath]
 	delete(w.files, f.OldPath)
 	if tb, ok := w.testBirths[f.OldPath]; ok {
@@ -230,52 +315,113 @@ func (w *Walker) renameFile(f vcs.CommitFile) {
 	}
 }
 
+// take claims the tag a moved line brings, if one was stashed for its text.
+func (mv *moves) take(text string) (tag, bool) {
+	key := moveTextKey(text)
+	if key == "" || len(mv.tags[key]) == 0 {
+		return tag{}, false
+	}
+	t := mv.tags[key][0]
+	mv.tags[key] = mv.tags[key][1:]
+
+	return t, true
+}
+
 // killAll records every live line of a deleted file as a death.
-func (w *Walker) killAll(path string, ds *DirStats, _ vcs.CommitRecord, deathDay int, fix bool) {
-	for _, t := range w.files[path] {
-		w.recordDeath(t, ds, deathDay, fix)
+func (w *Walker) killAll(path string, ds *DirStats, _ vcs.CommitRecord, deathDay int, fix bool, mv *moves) {
+	for i, t := range w.files[path] {
+		if !mv.exempt[path][i] {
+			w.recordDeath(t, ds, deathDay, fix)
+		}
 	}
 	delete(w.files, path)
 }
 
+// hunkEdit pairs a hunk with the text it adds, split out of the file-level
+// Added list in patch order before the hunks get applied last-first.
+type hunkEdit struct {
+	add []string
+	h   vcs.DiffHunk
+}
+
 // applyHunks rewrites a file's line tags through its hunks, last hunk first so
 // earlier offsets stay valid.
-func (w *Walker) applyHunks(path string, hunks []vcs.DiffHunk, cohort, birth int, klass string,
-	rec vcs.CommitRecord, ds *DirStats, fix bool,
+func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
+	rec vcs.CommitRecord, ds *DirStats, fix bool, mv *moves,
 ) {
-	lines := w.files[path]
-	sorted := append([]vcs.DiffHunk(nil), hunks...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].OldStart > sorted[j].OldStart })
-	for _, h := range sorted {
+	lines := w.files[f.Path]
+	edits := make([]hunkEdit, len(f.Hunks))
+	cur := 0
+	for i, h := range f.Hunks {
+		n := min(h.NewLines, max(len(f.Added)-cur, 0))
+		edits[i] = hunkEdit{f.Added[cur : cur+n], h}
+		cur += n
+	}
+	sort.Slice(edits, func(i, j int) bool { return edits[i].h.OldStart > edits[j].h.OldStart })
+	exempt := mv.exempt[f.Path]
+	for _, edit := range edits {
+		h := edit.h
 		idx := max(h.OldStart-1, 0)
-		if need := idx + h.OldLines; need > len(lines) {
-			// The file predates the walked range, so its line provenance is
-			// unknown: grow the state with pre-range tags. Their deaths count
-			// as removed lines, but a negative birth keeps them out of the
-			// young-churn windows, and a negative cohort out of survival.
-			pad := make(fileLines, need-len(lines))
-			for i := range pad {
-				pad[i] = tag{birthDays: -1, cohort: -1, class: "pre-range"}
-			}
-			lines = append(lines, pad...)
-		}
-		end := min(idx+h.OldLines, len(lines))
-		for _, t := range lines[idx:end] {
-			w.recordDeath(t, ds, birth, fix)
-		}
-		mid := make(fileLines, h.NewLines)
-		for i := range mid {
-			mid[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
-		}
+		lines = w.killRange(lines, idx, h.OldLines, exempt, ds, birth, fix)
+		mid, births := insertTags(edit, cohort, birth, klass, rec, mv)
 		out := make(fileLines, 0, len(lines)-h.OldLines+h.NewLines)
 		out = append(out, lines[:idx]...)
 		out = append(out, mid...)
-		out = append(out, lines[end:]...)
+		out = append(out, lines[min(idx+h.OldLines, len(lines)):]...)
 		lines = out
 		ds.Added += h.NewLines
-		w.births[cohort] += h.NewLines
+		w.births[cohort] += births
 	}
-	w.files[path] = lines
+	w.files[f.Path] = lines
+}
+
+// killRange records deaths over [idx, idx+oldLines), padding pre-range files
+// whose true state the walk never saw. It answers the padded line state.
+func (w *Walker) killRange(lines fileLines, idx, oldLines int, exempt map[int]bool,
+	ds *DirStats, birth int, fix bool,
+) fileLines {
+	if need := idx + oldLines; need > len(lines) {
+		// The file predates the walked range, so its line provenance is
+		// unknown: grow the state with pre-range tags. Their deaths count
+		// as removed lines, but a negative birth keeps them out of the
+		// young-churn windows, and a negative cohort out of survival.
+		pad := make(fileLines, need-len(lines))
+		for i := range pad {
+			pad[i] = tag{birthDays: -1, cohort: -1, class: "pre-range"}
+		}
+		lines = append(lines, pad...)
+	}
+	end := min(idx+oldLines, len(lines))
+	for p, t := range lines[idx:end] {
+		if !exempt[idx+p] {
+			w.recordDeath(t, ds, birth, fix)
+		}
+	}
+
+	return lines
+}
+
+// insertTags builds the line tags a hunk adds: a moved line claims its stashed
+// tag, anything else is a birth at this commit. It answers the tags and the
+// true birth count for the cohort tally.
+func insertTags(edit hunkEdit, cohort, birth int, klass string,
+	rec vcs.CommitRecord, mv *moves,
+) (fileLines, int) {
+	mid := make(fileLines, edit.h.NewLines)
+	births := 0
+	for i := range mid {
+		mid[i] = tag{class: klass, author: rec.AuthorEmail, birthDays: birth, cohort: cohort}
+		if i < len(edit.add) {
+			if kept, ok := mv.take(edit.add[i]); ok {
+				mid[i] = kept
+
+				continue
+			}
+		}
+		births++
+	}
+
+	return mid, births
 }
 
 // recordDeath logs one line's removal with its provenance.
