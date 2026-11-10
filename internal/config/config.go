@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -47,7 +48,7 @@ type AuthorClass struct {
 // Matches reports whether a commit belongs to the class.
 func (a *AuthorClass) Matches(author, committer, body string) bool {
 	for _, login := range a.Logins {
-		if author == login || committer == login {
+		if identityMatches(author, login) || identityMatches(committer, login) {
 			return true
 		}
 	}
@@ -58,6 +59,17 @@ func (a *AuthorClass) Matches(author, committer, body string) bool {
 	}
 
 	return false
+}
+
+// identityMatches reports whether a login equals the name or the email of an
+// identity written as `Name <email>`, ignoring case.
+func identityMatches(identity, login string) bool {
+	name, email := identity, ""
+	if i := strings.LastIndex(identity, " <"); i >= 0 && strings.HasSuffix(identity, ">") {
+		name, email = identity[:i], identity[i+len(" <"):len(identity)-1]
+	}
+
+	return strings.EqualFold(name, login) || strings.EqualFold(email, login)
 }
 
 // Config is the parsed .slop-strata.toml.
