@@ -42,6 +42,15 @@ func TestSentenceLeadsWithNetAndCountsFunctionsByHowTheyChanged(t *testing.T) {
 			want: "Refactor: net -55.0 mass, 0.0 grown; removed 2 functions over CC 10",
 		},
 		{
+			name: "one touched function reads singular",
+			fields: reading.Fields{
+				Intent:    intent.Intent{Kind: intent.Fix},
+				MassAdded: 2, MassRemoved: 1, MassGrown: 1,
+				FuncHighTouched: 1,
+			},
+			want: "Fix: net +1.0 mass, 1.0 grown; touched 1 function over CC 10",
+		},
+		{
 			name:   "no mass moved",
 			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Chore}},
 			want:   "Chore: no complexity mass moved",

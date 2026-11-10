@@ -42,6 +42,15 @@ func (f Fields) Disagreement() string {
 	}
 }
 
+// functions counts functions with the right noun.
+func functions(n int) string {
+	if n == 1 {
+		return "1 function"
+	}
+
+	return fmt.Sprintf("%d functions", n)
+}
+
 // Sentence renders the one-line reading.
 func (f Fields) Sentence() string {
 	var b strings.Builder
@@ -66,13 +75,13 @@ func (f Fields) Sentence() string {
 	}
 
 	if f.FuncHighAdded > 0 {
-		fmt.Fprintf(&b, "; added %d functions over CC 10", f.FuncHighAdded)
+		fmt.Fprintf(&b, "; added %s over CC 10", functions(f.FuncHighAdded))
 	}
 	if f.FuncHighTouched > 0 {
-		fmt.Fprintf(&b, "; touched %d functions over CC 10", f.FuncHighTouched)
+		fmt.Fprintf(&b, "; touched %s over CC 10", functions(f.FuncHighTouched))
 	}
 	if f.FuncHighGone > 0 {
-		fmt.Fprintf(&b, "; removed %d functions over CC 10", f.FuncHighGone)
+		fmt.Fprintf(&b, "; removed %s over CC 10", functions(f.FuncHighGone))
 	}
 
 	if f.ErosionBefore != f.ErosionAfter {
