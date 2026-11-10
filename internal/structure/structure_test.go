@@ -58,6 +58,25 @@ func TestAnalyzeFunctions(t *testing.T) {
 			},
 		},
 		{
+			name: "go switch nests its body",
+			path: "route.go",
+			src: "package p\n" +
+				"\n" +
+				"func route(v any, x int) int {\n" +
+				"\tswitch x {\n" +
+				"\tcase 1:\n" +
+				"\t\tswitch v.(type) {\n" +
+				"\t\tcase int:\n" +
+				"\t\t\treturn 1\n" +
+				"\t\t}\n" +
+				"\t}\n" +
+				"\treturn 0\n" +
+				"}\n",
+			want: []funcWant{
+				{name: "route", cc: 3, sloc: 10, nesting: 2, cognitive: 3, params: 2},
+			},
+		},
+		{
 			name: "typescript nested declaration scores alone",
 			path: "outer.ts",
 			src: "function outer(): number {\n" +
