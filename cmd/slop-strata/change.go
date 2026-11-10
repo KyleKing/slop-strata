@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -146,16 +147,10 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		}
 		files = d
 	} else {
-		d, err := s.ops.DiffWorktree(ctx, s.root, base)
+		files, err = s.worktreeFiles(ctx, base)
 		if err != nil {
-			return fmt.Errorf("diff %s..worktree: %w", base, err)
+			return err
 		}
-		untracked, err := s.ops.UntrackedFiles(ctx, s.root)
-		if err != nil {
-			return fmt.Errorf("listing untracked files: %w", err)
-		}
-		files = append(files, d...)
-		files = append(files, untrackedAsAdds(untracked)...)
 	}
 
 	res, err := s.scoreChange(ctx, base, end, files, a.rev != "")
@@ -252,15 +247,46 @@ func (s *session) defaultBranch(ctx context.Context) (string, error) {
 	return name, nil
 }
 
-// untrackedAsAdds turns untracked paths into added-file records; their blobs
-// are scored straight off disk.
-func untrackedAsAdds(paths []string) []vcs.CommitFile {
-	out := make([]vcs.CommitFile, 0, len(paths))
-	for _, p := range paths {
-		out = append(out, vcs.CommitFile{Path: p, Status: vcs.StatusAdded})
+// worktreeFiles diffs base against the working tree and adds the untracked
+// files as additions.
+func (s *session) worktreeFiles(ctx context.Context, base string) ([]vcs.CommitFile, error) {
+	files, err := s.ops.DiffWorktree(ctx, s.root, base)
+	if err != nil {
+		return nil, fmt.Errorf("diff %s..worktree: %w", base, err)
+	}
+	untracked, err := s.ops.UntrackedFiles(ctx, s.root)
+	if err != nil {
+		return nil, fmt.Errorf("listing untracked files: %w", err)
+	}
+	added, err := untrackedAsAdds(s.root, untracked)
+	if err != nil {
+		return nil, err
 	}
 
-	return out
+	return append(files, added...), nil
+}
+
+// untrackedAsAdds turns untracked paths into added-file records whose hunk
+// spans every line, so they count toward lines added. Their blobs are scored
+// straight off disk.
+func untrackedAsAdds(root string, paths []string) ([]vcs.CommitFile, error) {
+	out := make([]vcs.CommitFile, 0, len(paths))
+	for _, p := range paths {
+		data, err := os.ReadFile(filepath.Join(root, p)) //nolint:gosec // p is git's own listing of the worktree
+		if err != nil {
+			return nil, fmt.Errorf("reading untracked %s: %w", p, err)
+		}
+		lines := bytes.Count(data, []byte{'\n'})
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			lines++
+		}
+		out = append(out, vcs.CommitFile{
+			Path: p, Status: vcs.StatusAdded,
+			Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: lines}},
+		})
+	}
+
+	return out, nil
 }
 
 // scoredFile is one changed file's delta plus the metrics each side yielded.
@@ -708,8 +734,12 @@ func (s *session) hotspotDirs(ctx context.Context, touched []string) (map[string
 		if err != nil {
 			break
 		}
+		dirs := map[string]bool{}
 		for i := range rec.Files {
-			touches[lineage.DirOf(rec.Files[i].Path)]++
+			dirs[lineage.DirOf(rec.Files[i].Path)] = true
+		}
+		for d := range dirs {
+			touches[d]++
 		}
 	}
 	hot := map[string]bool{}

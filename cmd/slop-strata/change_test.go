@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -300,5 +301,92 @@ func TestChangeDefaultBaseFollowsUpstream(t *testing.T) {
 	}
 	if !slices.Contains(paths, "lib.go") {
 		t.Fatalf("unpushed commit left out of the change: files = %v", paths)
+	}
+}
+
+func TestChangeCountsUntrackedLines(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: init")
+	if err := os.WriteFile(filepath.Join(dir, "fresh.go"),
+		[]byte("package main\n\nfunc fresh() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCLI(t, dir, "change", "--json")
+	if err != nil {
+		t.Fatalf("change: %v\n%s", err, out)
+	}
+	var env struct {
+		Result struct {
+			Files []struct {
+				Path  string `json:"path"`
+				Added int    `json:"added"`
+			} `json:"files"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	for _, f := range env.Result.Files {
+		if f.Path == "fresh.go" {
+			if f.Added != 3 {
+				t.Fatalf("untracked fresh.go added = %d, want 3", f.Added)
+			}
+
+			return
+		}
+	}
+	t.Fatalf("untracked fresh.go missing from files: %s", out)
+}
+
+func TestHotspotCountsCommitsNotFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--initial-branch=main")
+	if err := os.Mkdir(filepath.Join(dir, "pkg"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	const commits = 6
+	for i := range commits {
+		body := fmt.Sprintf("package pkg\n\nvar n%d = %d\n", i, i)
+		for _, name := range []string{"a.go", "b.go"} {
+			if err := os.WriteFile(filepath.Join(dir, "pkg", name), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		gitRun(t, dir, "add", "-A")
+		gitRun(t, dir, "commit", "-m", fmt.Sprintf("chore: step %d", i))
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pkg", "a.go"),
+		[]byte("package pkg\n\nvar n = 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCLI(t, dir, "change", "--json")
+	if err != nil {
+		t.Fatalf("change: %v\n%s", err, out)
+	}
+	var env struct {
+		Result struct {
+			Dirs map[string]struct {
+				Hotspot bool `json:"hotspot"`
+			} `json:"dirs"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	pkg, ok := env.Result.Dirs["pkg"]
+	if !ok {
+		t.Fatalf("pkg missing from dirs: %s", out)
+	}
+	if pkg.Hotspot {
+		t.Fatalf("pkg is %d commits touched, not a hotspot at 10: %s", commits, out)
 	}
 }
