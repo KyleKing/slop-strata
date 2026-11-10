@@ -104,6 +104,10 @@ const percentScale = 100
 // parseErrorRow reports a blob tree-sitter could not fully parse, with the
 // byte share under error nodes.
 func parseErrorRow(path string, m structure.FileMetrics) skippedRow {
+	if m.ErrorCoverage == 0 {
+		return skippedRow{path, "tree-sitter parse error (missing node)"}
+	}
+
 	return skippedRow{
 		path,
 		fmt.Sprintf("tree-sitter parse error (%.1f%% of bytes)", m.ErrorCoverage*percentScale),

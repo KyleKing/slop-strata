@@ -390,3 +390,24 @@ func TestHotspotCountsCommitsNotFiles(t *testing.T) {
 		t.Fatalf("pkg is %d commits touched, not a hotspot at 10: %s", commits, out)
 	}
 }
+
+func TestParseErrorRowDescribesMissingNodes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "missing node covers no bytes", src: "def f(:\n", want: "tree-sitter parse error (missing node)"},
+		{name: "error node covers bytes", src: "x = = 1\n", want: "tree-sitter parse error (12.5% of bytes)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fm := analyzePython(t, tc.src)
+			if got := parseErrorRow("p.py", fm).Reason; got != tc.want {
+				t.Fatalf("reason = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
