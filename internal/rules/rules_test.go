@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -146,6 +147,7 @@ func TestRuleHits(t *testing.T) {
 
 func goHitCases() []hitCase {
 	const silent = "go/silent-error"
+
 	return []hitCase{
 		{
 			name: "discarded error from a call fires",
@@ -213,6 +215,96 @@ func goHitCases() []hitCase {
 			path: "both.go",
 			src:  "package p\n\nfunc g() {\n\t_, _ = f()\n}\n",
 			rule: silent, want: 1,
+		},
+	}
+}
+
+// crossCase is a set of files and how many findings of one cross-file rule the
+// passes must report across them.
+type crossCase struct {
+	name  string
+	files map[string]string
+	rule  string
+	want  int
+}
+
+func TestCrossFileHits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range crossHitCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := countRule(flatten(crossFileOf(t, tc.files, true)), tc.rule)
+			if got != tc.want {
+				t.Errorf("%s hits = %d, want %d", tc.rule, got, tc.want)
+			}
+		})
+	}
+}
+
+// repeated builds n files that each carry the same snippet body.
+func repeated(n int, body string) map[string]string {
+	files := make(map[string]string, n)
+	for i := range n {
+		files[fmt.Sprintf("pkg%d/file.go", i)] = "package p\n\nfunc g() {\n" + body + "}\n"
+	}
+
+	return files
+}
+
+func crossHitCases() []crossCase {
+	const dup = "x/dup-literal"
+	const call = "\tuse(\"https://example.org/feed/updates\")\n"
+
+	return []crossCase{
+		{
+			name:  "literal in three files once each stays quiet",
+			files: repeated(3, call),
+			rule:  dup, want: 0,
+		},
+		{
+			name:  "literal in three files twice each fires per file",
+			files: repeated(3, call+call),
+			rule:  dup, want: 3,
+		},
+		{
+			name:  "literal of exactly the minimum content length fires",
+			files: repeated(4, "\tuse(\"01234567\")\n"),
+			rule:  dup, want: 4,
+		},
+		{
+			name:  "literal under the minimum content length stays quiet",
+			files: repeated(4, "\tuse(\"0123456\")\n"),
+			rule:  dup, want: 0,
+		},
+		{
+			name: "go import path repeated across files stays quiet",
+			files: map[string]string{
+				"a/one.go":   "package p\n\nimport \"github.com/example/project/internal/store\"\n",
+				"a/two.go":   "package p\n\nimport \"github.com/example/project/internal/store\"\n",
+				"a/three.go": "package p\n\nimport \"github.com/example/project/internal/store\"\n",
+				"a/four.go":  "package p\n\nimport \"github.com/example/project/internal/store\"\n",
+			},
+			rule: dup, want: 0,
+		},
+		{
+			name: "python import and dict key repeated across files stay quiet",
+			files: map[string]string{
+				"a/one.py":   "from pkg.reporting import run\nDEFAULTS = {\"reporting_window_days\": 30}\n",
+				"a/two.py":   "from pkg.reporting import run\nDEFAULTS = {\"reporting_window_days\": 30}\n",
+				"a/three.py": "from pkg.reporting import run\nDEFAULTS = {\"reporting_window_days\": 30}\n",
+				"a/four.py":  "from pkg.reporting import run\nDEFAULTS = {\"reporting_window_days\": 30}\n",
+			},
+			rule: dup, want: 0,
+		},
+		{
+			name: "typescript require and go map key repeated across files stay quiet",
+			files: map[string]string{
+				"a/one.ts":   "const m = require(\"./modules/reporting-window\")\n",
+				"a/two.ts":   "const m = require(\"./modules/reporting-window\")\n",
+				"a/three.ts": "const m = require(\"./modules/reporting-window\")\n",
+				"a/four.ts":  "const m = require(\"./modules/reporting-window\")\n",
+			},
+			rule: dup, want: 0,
 		},
 	}
 }

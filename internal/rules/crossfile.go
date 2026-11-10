@@ -205,16 +205,19 @@ func normKey(name string) string {
 	return name
 }
 
-// dupLiterals flags a literal carried by minDupFiles or more files.
+// dupLiterals flags a literal carried by minDupFiles or more files and
+// appearing minDupOccurrences or more times across the tree.
 func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 	byLiteral := map[string][]BlobPrint{}
+	occurrences := map[string]int{}
 	for _, b := range blobs {
-		for lit := range b.Print.Literals {
+		for lit, use := range b.Print.Literals {
 			byLiteral[lit] = append(byLiteral[lit], b)
+			occurrences[lit] += use.Count
 		}
 	}
 	for lit, owners := range byLiteral {
-		if len(owners) < minDupFiles {
+		if len(owners) < minDupFiles || occurrences[lit] < minDupOccurrences {
 			continue
 		}
 		short := lit
@@ -223,7 +226,7 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 		}
 		for _, b := range owners {
 			out[b.Path] = append(out[b.Path], Finding{
-				Rule: "x/dup-literal", Line: b.Print.Literals[lit],
+				Rule: "x/dup-literal", Line: b.Print.Literals[lit].Line,
 				Match: short,
 				Note:  fmt.Sprintf("shared by %d files", len(owners)),
 			})

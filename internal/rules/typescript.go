@@ -139,7 +139,7 @@ func expectChain(ctx *Ctx, n *ts.Node) (*ts.Node, string, *ts.Node) {
 	}
 	obj := fn.NamedChild(0)
 	prop := fn.NamedChild(fn.NamedChildCount() - 1)
-	if obj == nil || obj.Kind() != "call_expression" || ctx.calleeText(obj) != "expect" {
+	if obj == nil || obj.Kind() != kindCallExpression || ctx.calleeText(obj) != "expect" {
 		return nil, "", nil
 	}
 	args := obj.ChildByFieldName("arguments")

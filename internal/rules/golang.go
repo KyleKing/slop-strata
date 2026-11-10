@@ -72,7 +72,7 @@ func bindsErr(ctx *Ctx, targets []*ts.Node) bool {
 // soleCall answers the call when a right-hand side is exactly one call.
 func soleCall(right *ts.Node) *ts.Node {
 	items := exprItems(right)
-	if len(items) != 1 || items[0].Kind() != "call_expression" {
+	if len(items) != 1 || items[0].Kind() != kindCallExpression {
 		return nil
 	}
 

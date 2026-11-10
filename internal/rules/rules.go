@@ -28,11 +28,13 @@ const (
 
 // Tree-sitter node kinds and texts several rules match on.
 const (
-	kindIdentifier     = "identifier"
-	kindTypeIdentifier = "type_identifier"
-	kindGenericType    = "generic_type"
-	textAny            = "any"
-	textUnknown        = "unknown"
+	kindCallExpression  = "call_expression"
+	kindExportStatement = "export_statement"
+	kindIdentifier      = "identifier"
+	kindTypeIdentifier  = "type_identifier"
+	kindGenericType     = "generic_type"
+	textAny             = "any"
+	textUnknown         = "unknown"
 )
 
 // Finding is one rule hit: the rule, where, and an optional note.
