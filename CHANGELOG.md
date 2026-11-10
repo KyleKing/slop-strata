@@ -1,3 +1,32 @@
+## v0.7.0 (2026-11-10)
+
+### Feat
+
+- **config**: ship default agent and bot author classes
+
+### Fix
+
+- **reading**: singularize one function in the headline
+- **report**: pad table cells by rune width
+- **lineage**: report survival only with enough lines at the horizon
+- **change**: name missing-node parse errors without a byte share
+- **change**: count untracked lines and hotspot touches per commit
+- **change**: base the default diff on the upstream of the default branch
+- **change**: diff a root commit against the empty tree
+- **reading**: lead with net and grown mass and split touched from added
+- **change**: mark findings new only on added lines
+- **change**: match functions by owner-qualified name
+- **lineage**: age lines by committer date in UTC
+- **config**: match author class logins against name or email
+- **lineage**: null survival past exposure and censor young tests
+- **lang**: count comprehension clauses and logical assignments in cc
+- **structure**: classify CRLF blank lines as blank
+- **structure**: flag any ERROR or MISSING node as a parse error
+- **lang**: count parameters from the parameters field
+- **structure**: count else in Go and TypeScript toward cognitive
+- **lang**: count Go expression switches as nesting
+- **structure**: score nested functions on their own
+
 ## v0.6.0 (2026-11-10)
 
 ### Feat
