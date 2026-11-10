@@ -112,9 +112,9 @@ func ForChange(intents []Intent) Intent {
 		}
 	}
 	best, n := Unknown, 0
-	for k, c := range counts {
-		if c > n && k != Unknown {
-			best, n = k, c
+	for _, in := range intents {
+		if c := counts[in.Kind]; in.Kind != Unknown && c > n {
+			best, n = in.Kind, c
 		}
 	}
 	if n > 0 {
