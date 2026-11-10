@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -389,10 +390,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	}
 
 	markFindingsOld(old, res)
-	if basePrints, err := s.treePrints(ctx, base); err == nil {
-		s.lastRefs(ctx, end, files, scored, basePrints, res)
-		s.removedNameProse(ctx, basePrints, files, newSides, scored, baseline, res)
-	}
+	s.crossFileFindings(ctx, base, end, files, newSides, scored, baseline, res)
 
 	aggBefore := structure.Aggregate(before)
 	aggAfter := structure.Aggregate(after)
@@ -945,6 +943,19 @@ func mapKeys[V any](m map[string]V) []string {
 	return keys
 }
 
+// sortFindings orders findings by path, line, rule, then match, so a change
+// prints the same rows on every run.
+func sortFindings(fs []findingRow) {
+	slices.SortFunc(fs, func(a, b findingRow) int {
+		return cmp.Or(
+			strings.Compare(a.Path, b.Path),
+			cmp.Compare(a.Line, b.Line),
+			strings.Compare(a.Rule, b.Rule),
+			strings.Compare(a.Match, b.Match),
+		)
+	})
+}
+
 // warnings lists skip and parse-error reasons worth surfacing.
 func warnings(res *changeResult) []string {
 	out := make([]string, 0, len(res.Skipped)+len(res.Errors))
@@ -1097,6 +1108,18 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 	}
 }
 
+// crossFileFindings adds the findings that need the base tree and sorts every
+// finding, so the rows come out in one order however the passes ran.
+func (s *session) crossFileFindings(ctx context.Context, base, end string, files []vcs.CommitFile,
+	newSides []side, scored []scoredFile, baseline rules.Baseline, res *changeResult,
+) {
+	if basePrints, err := s.treePrints(ctx, base); err == nil {
+		s.lastRefs(ctx, end, files, scored, basePrints, res)
+		s.removedNameProse(ctx, basePrints, files, newSides, scored, baseline, res)
+	}
+	sortFindings(res.Findings)
+}
+
 // lastRefs flags a symbol whose last live reference this change removed: its
 // declaration still stands at the end of the change, but nothing uses it now.
 // The pass is observational — a failed tree read skips it, never fails the run.
@@ -1122,7 +1145,7 @@ func (s *session) lastRefs(ctx context.Context, end string,
 			continue
 		}
 		ap := scored[i].afterPrint
-		for name := range bp.Referenced {
+		for _, name := range mapKeys(bp.Referenced) {
 			if ap != nil && ap.Referenced[name] > 0 {
 				continue
 			}

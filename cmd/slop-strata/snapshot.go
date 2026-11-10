@@ -1,10 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -160,6 +162,15 @@ func (s *session) snapshotRollup(
 	}
 
 	s.astGrepFindings(ctx, rev, res, live, baseline)
+	for _, fs := range res.Findings {
+		slices.SortFunc(fs, func(a, b rules.Finding) int {
+			return cmp.Or(
+				cmp.Compare(a.Line, b.Line),
+				strings.Compare(a.Rule, b.Rule),
+				strings.Compare(a.Match, b.Match),
+			)
+		})
+	}
 
 	res.Total = structure.Aggregate(files)
 

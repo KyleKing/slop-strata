@@ -63,27 +63,27 @@
     "findings": {
       "config.py": [
         {
-          "line": 4,
-          "rule": "py/silent-except"
-        },
-        {
           "line": 1,
           "match": "load",
           "note": "exported, referenced nowhere else",
           "rule": "x/dead-export"
+        },
+        {
+          "line": 4,
+          "rule": "py/silent-except"
         }
       ],
       "tally.go": [
-        {
-          "line": 17,
-          "match": "narration",
-          "rule": "x/narrating-comment"
-        },
         {
           "line": 6,
           "match": "Sum",
           "note": "exported, referenced nowhere else",
           "rule": "x/dead-export"
+        },
+        {
+          "line": 17,
+          "match": "narration",
+          "rule": "x/narrating-comment"
         }
       ]
     },

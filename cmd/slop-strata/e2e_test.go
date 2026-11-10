@@ -509,6 +509,58 @@ func TestChangeLastRef(t *testing.T) {
 	}
 }
 
+func TestChangeOutputRepeats(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const n = 20
+	var decls, calls strings.Builder
+	decls.WriteString("package main\n\n")
+	calls.WriteString("package main\n\nfunc other() {\n")
+	for i := range n {
+		fmt.Fprintf(&decls, "func helper%02d() {}\n", i)
+		fmt.Fprintf(&calls, "\thelper%02d()\n", i)
+	}
+	calls.WriteString("}\n")
+
+	gitIn(t, dir, "init", "--initial-branch=main")
+	write("a.go", decls.String())
+	write("b.go", calls.String())
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "feat: add helpers")
+	write("b.go", "package main\n\nfunc other() {}\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "fix: drop the calls")
+
+	result := func() []byte {
+		t.Helper()
+		out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
+		if err != nil {
+			t.Fatalf("change: %v", err)
+		}
+		var env struct {
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatalf("parsing JSON: %v\n%s", err, out)
+		}
+
+		return env.Result
+	}
+	first, second := result(), result()
+	if got := strings.Count(string(first), `"x/last-ref"`); got != n {
+		t.Fatalf("want %d last-ref findings, got %d", n, got)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("two runs of the same change differ:\n%s\n---\n%s", first, second)
+	}
+}
+
 func TestChangeReportsProseNamingRemovedNames(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
