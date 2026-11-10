@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	_ "modernc.org/sqlite" // the database/sql driver
+	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // Store is a SQLite-backed blob cache. A nil Store is valid and answers every
@@ -32,6 +34,15 @@ CREATE TABLE IF NOT EXISTS blobs (
 	PRIMARY KEY (sha, grammar, rules)
 )`
 
+// openAttempts bounds the busy retry: parallel slop-strata invocations race
+// the WAL transition and first schema write, and the journal-mode pragma
+// answers BUSY without honoring the busy timeout, so opening retries at a
+// fixed pace instead.
+const openAttempts = 50
+
+// openRetryWait paces the busy retry.
+const openRetryWait = 100 * time.Millisecond
+
 // Open opens (creating, if needed) the cache file at path. A nil path or an
 // unwritable directory yields a nil store and no error: the cache is an
 // accelerator, not a requirement.
@@ -42,7 +53,30 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return nil, fmt.Errorf("creating cache directory: %w", err)
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	var err error
+	for range openAttempts {
+		db, opened := openStore(ctx, dsn)
+		if opened == nil {
+			return &Store{db: db}, nil
+		}
+		err = opened
+		if !isBusy(err) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("opening cache: %w", ctx.Err())
+		case <-time.After(openRetryWait):
+		}
+	}
+
+	return nil, err
+}
+
+// openStore opens the database and writes the schema once.
+func openStore(ctx context.Context, dsn string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening cache: %w", err)
 	}
@@ -50,7 +84,18 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("migrating cache: %w", errors.Join(err, db.Close()))
 	}
 
-	return &Store{db: db}, nil
+	return db, nil
+}
+
+// isBusy reports whether err is a SQLite BUSY result, the failure the open
+// path retries. Extended busy codes share the low byte.
+func isBusy(err error) bool {
+	var sqlErr *sqlite.Error
+	if errors.As(err, &sqlErr) {
+		return sqlErr.Code()&0xFF == sqlite3.SQLITE_BUSY
+	}
+
+	return false
 }
 
 // Path answers where the cache file lives: one database per tool version
