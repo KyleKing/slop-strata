@@ -105,9 +105,9 @@ func singleEntryRegistry(ctx *Ctx, findings *[]Finding) {
 func registryEntries(ctx *Ctx, n *ts.Node) (int, string) {
 	switch ctx.Lang {
 	case lang.Go:
-		// var/const/short declarations: left is the name, right the literal.
-		if n.Kind() != "var_declaration" && n.Kind() != "const_declaration" &&
-			n.Kind() != "short_var_declaration" && n.Kind() != "var_spec" && n.Kind() != "const_spec" {
+		switch n.Kind() {
+		case "var_spec", "const_spec", "short_var_declaration":
+		default:
 			return 0, ""
 		}
 

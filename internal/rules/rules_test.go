@@ -137,7 +137,7 @@ func TestRuleHits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range slices.Concat(
 		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), pyMockPatchCases(),
-		tsHitCases(), tsMockOnlyCases(), commentHitCases(),
+		tsHitCases(), tsMockOnlyCases(), registryCases(), commentHitCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -749,6 +749,31 @@ func tsMockOnlyCases() []hitCase {
 			path: "value.test.ts",
 			src:  "it(\"returns\", () => {\n  expect(run()).toBe(3);\n});\n",
 			rule: mockOnly, want: 0,
+		},
+	}
+}
+
+func registryCases() []hitCase {
+	const registry = "x/single-entry-registry"
+
+	return []hitCase{
+		{
+			name: "one-entry go registry fires once",
+			path: "handlers.go",
+			src:  "package p\n\nvar handlers = map[string]Handler{\n\t\"json\": jsonHandler,\n}\n",
+			rule: registry, want: 1,
+		},
+		{
+			name: "multi-entry go registry stays quiet",
+			path: "routes.go",
+			src:  "package p\n\nvar handlers = map[string]Handler{\"a\": a, \"b\": b}\n",
+			rule: registry, want: 0,
+		},
+		{
+			name: "one-entry map with a non-registry name stays quiet",
+			path: "config.go",
+			src:  "package p\n\nvar config = map[string]int{\"a\": 1}\n",
+			rule: registry, want: 0,
 		},
 	}
 }
