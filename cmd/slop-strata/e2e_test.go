@@ -657,3 +657,56 @@ func checkExplain(t *testing.T, name string) {
 		t.Errorf("--explain %s has no explain text: %q", name, out.String())
 	}
 }
+
+func TestSnapshotRanksProductionApartFromTests(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	var table strings.Builder
+	table.WriteString("TABLE = {\n")
+	for i := range 16 {
+		fmt.Fprintf(&table, "    %d: make(%d, %d),\n", i, i, i)
+	}
+	table.WriteString("}\n")
+	heavyTest := "def helper(a):\n" + strings.Repeat("    if a:\n        a -= 1\n", 30) + "    return a\n"
+	for name, body := range map[string]string{"src/table.py": table.String(), "tests/helper.py": heavyTest} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, dir, "init", "--initial-branch=main")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "feat: init")
+
+	out, err := runCLI(t, dir, "snapshot", "--json")
+	if err != nil {
+		t.Fatalf("snapshot --json: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Dirs []struct {
+				Dir string `json:"dir"`
+			} `json:"dirs"`
+			TestDirs []struct {
+				Dir string `json:"dir"`
+			} `json:"test_dirs"`
+			Files []struct {
+				Path   string `json:"path"`
+				Test   bool   `json:"test"`
+				Tables int    `json:"tables"`
+			} `json:"files"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+	r := env.Result
+	if len(r.Dirs) != 1 || r.Dirs[0].Dir != "src" || len(r.TestDirs) != 1 || r.TestDirs[0].Dir != "tests" {
+		t.Errorf("dirs = %v, test_dirs = %v, want src and tests apart", r.Dirs, r.TestDirs)
+	}
+	if len(r.Files) != 2 || r.Files[0].Path != "src/table.py" || r.Files[0].Tables != 1 || !r.Files[1].Test {
+		t.Errorf("files = %+v, want the case table file first and the test file last", r.Files)
+	}
+}

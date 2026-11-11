@@ -26,6 +26,8 @@ type FuncMetrics struct {
 type FileMetrics struct {
 	Lang  string        `json:"lang"`
 	Funcs []FuncMetrics `json:"funcs"`
+	// Tables are the case tables, each scored as a switch with one branch per entry.
+	Tables []lang.CaseTable `json:"tables,omitempty"`
 	// ErrorCoverage is the byte share under ERROR/MISSING nodes.
 	ErrorCoverage float64 `json:"error_coverage,omitempty"`
 	Lines         int     `json:"lines"`
@@ -222,6 +224,7 @@ func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 		}
 	}
 
+	fm.Tables = lang.CaseTables(l, root)
 	lang.EachNamed(root, func(n *ts.Node) {
 		if l.FunctionKinds[n.Kind()] {
 			fm.Funcs = append(fm.Funcs, measureFunc(l, n, src, idx))

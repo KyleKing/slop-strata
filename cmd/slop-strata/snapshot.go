@@ -27,6 +27,8 @@ type snapshotResult struct {
 	Context  *contextPayload            `json:"context,omitempty"`
 	Rev      string                     `json:"rev"`
 	Dirs     []dirSnapshot              `json:"dirs"`
+	TestDirs []dirSnapshot              `json:"test_dirs,omitempty"`
+	Files    []fileSnapshot             `json:"files"`
 	Skipped  []skippedRow               `json:"skipped,omitempty"`
 	Errors   []skippedRow               `json:"errors,omitempty"`
 	Total    structure.Aggregates       `json:"total"`
@@ -38,11 +40,29 @@ type dirSnapshot struct {
 	Files       int     `json:"files"`
 	Erosion     float64 `json:"erosion"`
 	Mass        float64 `json:"mass"`
+	TableMass   float64 `json:"table_mass"`
 	Funcs       int     `json:"funcs"`
 	Over50      int     `json:"over_50"`
 	Hotspot     float64 `json:"hotspot"`
 	Findings    int     `json:"findings"`
 	Provisional bool    `json:"provisional,omitempty"`
+}
+
+// fileSnapshot is one source file's rollup, so a hot directory can be traced
+// to the file behind it.
+type fileSnapshot struct {
+	Path      string  `json:"path"`
+	Test      bool    `json:"test,omitempty"`
+	SLOC      int     `json:"sloc"`
+	Funcs     int     `json:"funcs"`
+	Mass      float64 `json:"mass"`
+	Tables    int     `json:"tables"`
+	TableMass float64 `json:"table_mass"`
+	Erosion   float64 `json:"erosion"`
+	Over50    int     `json:"over_50"`
+	MaxCC     int     `json:"max_cc"`
+	Findings  int     `json:"findings"`
+	Hotspot   float64 `json:"hotspot"`
 }
 
 func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
@@ -139,8 +159,10 @@ func (s *session) snapshotRollup(
 ) *snapshotResult {
 	res := &snapshotResult{Rev: rev, Findings: map[string][]rules.Finding{}}
 	byDir := map[string][]structure.FileMetrics{}
+	byTestDir := map[string][]structure.FileMetrics{}
 	live := map[string][]rules.Finding{}
 	var files []structure.FileMetrics
+	metrics := map[string]structure.FileMetrics{}
 	for _, r := range reports {
 		if r.Skipped != "" {
 			res.Skipped = append(res.Skipped, skippedRow{r.Path, r.Skipped})
@@ -152,7 +174,12 @@ func (s *session) snapshotRollup(
 		}
 		if r.Metrics.Lang != "" {
 			files = append(files, r.Metrics)
-			byDir[lineage.DirOf(r.Path)] = append(byDir[lineage.DirOf(r.Path)], r.Metrics)
+			metrics[r.Path] = r.Metrics
+			if lang.IsTestPath(r.Path) {
+				byTestDir[lineage.DirOf(r.Path)] = append(byTestDir[lineage.DirOf(r.Path)], r.Metrics)
+			} else {
+				byDir[lineage.DirOf(r.Path)] = append(byDir[lineage.DirOf(r.Path)], r.Metrics)
+			}
 		}
 		fs := baseline.Suppress(r.Path, r.Findings)
 		if len(fs) > 0 {
@@ -173,25 +200,73 @@ func (s *session) snapshotRollup(
 	}
 
 	res.Total = structure.Aggregate(files)
+	res.Dirs = rankDirs(byDir, live, false)
+	res.TestDirs = rankDirs(byTestDir, live, true)
+	res.Files = rankFiles(metrics, live)
 
+	return res
+}
+
+// rankDirs rolls files up per directory, ranked by hotspot. Findings count
+// only from files on the same side of the test split as the directory's files.
+func rankDirs(
+	byDir map[string][]structure.FileMetrics, live map[string][]rules.Finding, test bool,
+) []dirSnapshot {
+	dirs := make([]dirSnapshot, 0, len(byDir))
 	for _, d := range report.SortedKeys(byDir) {
 		agg := structure.Aggregate(byDir[d])
 		findings := 0
 		for p, fs := range live {
-			if lineage.DirOf(p) == d {
+			if lineage.DirOf(p) == d && lang.IsTestPath(p) == test {
 				findings += len(fs)
 			}
 		}
-		res.Dirs = append(res.Dirs, dirSnapshot{
-			Dir: d, Files: agg.Files, Erosion: agg.Erosion, Mass: agg.Mass,
+		dirs = append(dirs, dirSnapshot{
+			Dir: d, Files: agg.Files, Erosion: agg.Erosion, Mass: agg.Mass, TableMass: agg.TableMass,
 			Funcs: agg.FuncCount, Over50: agg.Over50, Findings: findings,
-			Hotspot:     agg.Mass * float64(findings+1),
+			Hotspot:     (agg.Mass + agg.TableMass) * float64(findings+1),
 			Provisional: agg.FuncCount < structure.ProvisionalFuncs,
 		})
 	}
-	sort.Slice(res.Dirs, func(i, j int) bool { return res.Dirs[i].Hotspot > res.Dirs[j].Hotspot })
+	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Hotspot > dirs[j].Hotspot })
 
-	return res
+	return dirs
+}
+
+// rankFiles scores each source file, production files first, ranked by hotspot.
+func rankFiles(metrics map[string]structure.FileMetrics, live map[string][]rules.Finding) []fileSnapshot {
+	files := make([]fileSnapshot, 0, len(metrics))
+	for path, m := range metrics {
+		agg := structure.Aggregate([]structure.FileMetrics{m})
+		maxCC := 0
+		for _, fn := range m.Funcs {
+			maxCC = max(maxCC, fn.CC)
+		}
+		findings := len(live[path])
+		files = append(files, fileSnapshot{
+			Path: path, Test: lang.IsTestPath(path), SLOC: m.SLOC, Funcs: agg.FuncCount, Mass: agg.Mass,
+			Tables: agg.Tables, TableMass: agg.TableMass, Erosion: agg.Erosion, Over50: agg.Over50,
+			MaxCC: maxCC, Findings: findings,
+			Hotspot: (agg.Mass + agg.TableMass) * float64(findings+1),
+		})
+	}
+	slices.SortFunc(files, func(a, b fileSnapshot) int {
+		return cmp.Or(
+			cmp.Compare(btoi(a.Test), btoi(b.Test)),
+			cmp.Compare(b.Hotspot, a.Hotspot),
+			strings.Compare(a.Path, b.Path),
+		)
+	})
+
+	return files
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+
+	return 0
 }
 
 // astGrepFindings folds external ast-grep pack findings into the result,
@@ -252,15 +327,13 @@ func (s *session) snapshotContext(res *snapshotResult) *contextPayload {
 func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	report.Fprintf(w, "erosion %.2f · mass %.0f · %d funcs · %d over 50 lines\n\n",
 		res.Total.Erosion, res.Total.Mass, res.Total.FuncCount, res.Total.Over50)
-	rows := make([][]string, 0, len(res.Dirs))
-	for _, d := range res.Dirs {
-		rows = append(rows, []string{
-			d.Dir, strconv.Itoa(d.Files), provisionalMarked(fmt.Sprintf("%.2f", d.Erosion), d.Provisional),
-			fmt.Sprintf("%.0f", d.Mass), strconv.Itoa(d.Over50), strconv.Itoa(d.Findings),
-		})
-	}
-	report.Table(w, []string{colDir, "files", "erosion", "mass", "over_50", "rule_hits"}, rows)
+	printDirTable(w, res.Dirs)
 	provisionalNote(w, res.Dirs, func(d dirSnapshot) bool { return d.Provisional }, structure.ProvisionalFuncs)
+	printFileTable(w, res.Files, all)
+	if len(res.TestDirs) > 0 {
+		report.Fprintf(w, "\ntests, not ranked with the above\n")
+		printDirTable(w, res.TestDirs)
+	}
 
 	if all && len(res.Findings) > 0 {
 		report.Fprintln(w)
@@ -276,4 +349,38 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	for _, er := range res.Errors {
 		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
 	}
+}
+
+func printDirTable(w io.Writer, dirs []dirSnapshot) {
+	rows := make([][]string, 0, len(dirs))
+	for _, d := range dirs {
+		rows = append(rows, []string{
+			d.Dir, strconv.Itoa(d.Files), provisionalMarked(fmt.Sprintf("%.2f", d.Erosion), d.Provisional),
+			fmt.Sprintf("%.0f", d.Mass), fmt.Sprintf("%.0f", d.TableMass),
+			strconv.Itoa(d.Over50), strconv.Itoa(d.Findings),
+		})
+	}
+	report.Table(w, []string{colDir, "files", "erosion", colMass, "table_mass", "over_50", "rule_hits"}, rows)
+}
+
+// topFiles is how many ranked files the text view lists without --all.
+const topFiles = 10
+
+// printFileTable lists the highest-hotspot production files, all of them with --all.
+func printFileTable(w io.Writer, files []fileSnapshot, all bool) {
+	var rows [][]string
+	for _, f := range files {
+		if f.Test || (!all && len(rows) >= topFiles) {
+			continue
+		}
+		rows = append(rows, []string{
+			f.Path, strconv.Itoa(f.SLOC), fmt.Sprintf("%.0f", f.Mass), fmt.Sprintf("%.0f", f.TableMass),
+			strconv.Itoa(f.MaxCC), strconv.Itoa(f.Findings),
+		})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	report.Fprintln(w)
+	report.Table(w, []string{"file", "sloc", colMass, "table_mass", "max_cc", "rule_hits"}, rows)
 }

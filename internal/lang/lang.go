@@ -71,7 +71,7 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	},
 	MethodKinds:    map[string]bool{"method_declaration": true},
 	CommentKinds:   map[string]bool{kindComment: true},
-	CallKinds:      map[string]bool{"call_expression": true},
+	CallKinds:      map[string]bool{kindCallExpression: true},
 	ParamSkipKinds: map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
 		"interpreted_string_literal": true,
@@ -167,7 +167,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	},
 	MethodKinds:    map[string]bool{kindMethodDefinition: true},
 	CommentKinds:   map[string]bool{kindComment: true},
-	CallKinds:      map[string]bool{"call_expression": true},
+	CallKinds:      map[string]bool{kindCallExpression: true},
 	ClassKinds:     map[string]bool{"class_declaration": true, "class": true, "abstract_class_declaration": true},
 	ParamSkipKinds: map[string]bool{kindComment: true},
 	LiteralKinds: map[string]bool{
@@ -290,9 +290,29 @@ func (l *Language) IsTestFile(path string) bool {
 	}
 }
 
-// IsTestPath reports whether a path looks like a test file in any supported
-// language, falling back to generic naming for paths with no grammar.
+// testDirs are directory names whose contents are tests or their fixtures.
+var testDirs = map[string]bool{ //nolint:gochecknoglobals // a fixed vocabulary
+	"__tests__": true, "fixtures": true, "test": true, "testdata": true, "tests": true,
+}
+
+// inTestDir reports whether any directory in the path is a test directory.
+func inTestDir(path string) bool {
+	dir := filepath.Dir(path)
+	for _, part := range strings.Split(filepath.ToSlash(dir), "/") {
+		if testDirs[part] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsTestPath reports whether a path is a test file or sits in a test directory,
+// falling back to generic naming for paths with no grammar.
 func IsTestPath(path string) bool {
+	if inTestDir(path) {
+		return true
+	}
 	if l := ByPath(path); l != nil {
 		return l.IsTestFile(path)
 	}
@@ -300,6 +320,5 @@ func IsTestPath(path string) bool {
 
 	return strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") ||
 		strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.go") ||
-		strings.HasSuffix(base, "_test.py") || strings.Contains(path, "__tests__/") ||
-		strings.Contains(path, "/tests/") || strings.Contains(path, "/test/")
+		strings.HasSuffix(base, "_test.py")
 }

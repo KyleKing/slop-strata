@@ -3,6 +3,7 @@ package rules
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -98,6 +99,19 @@ func singleEntryRegistry(ctx *Ctx, findings *[]Finding) {
 		}
 		*findings = append(*findings, Finding{Rule: "x/single-entry-registry", Line: lineOf(n), Match: name})
 	})
+}
+
+// caseTable flags a hand-written table that grows one record per case, which a
+// general rule should replace.
+func caseTable(ctx *Ctx, findings *[]Finding) {
+	if ctx.Test {
+		return
+	}
+	for _, t := range lang.CaseTables(ctx.Lang, ctx.Root) {
+		*findings = append(*findings, Finding{
+			Rule: "x/case-table", Line: t.StartLine, Match: strconv.Itoa(t.Entries) + " entries",
+		})
+	}
 }
 
 // registryEntries counts the entries in a map literal bound to a name, per

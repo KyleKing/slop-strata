@@ -3,6 +3,8 @@ package structure
 import (
 	"math"
 	"slices"
+
+	"github.com/kyleking/slop-strata/internal/lang"
 )
 
 // ProvisionalFuncs is the function count under which a directory's erosion is
@@ -28,6 +30,8 @@ type Aggregates struct {
 	P90Cognitive   int     `json:"p90_cognitive"`
 	MaxCognitive   int     `json:"max_cognitive"`
 	Over50         int     `json:"over_50"`
+	Tables         int     `json:"tables"`
+	TableMass      float64 `json:"table_mass"`
 	Files          int     `json:"files"`
 	FilesParsedBad int     `json:"files_parse_error"`
 }
@@ -36,6 +40,12 @@ type Aggregates struct {
 // per the paper.
 func Mass(f FuncMetrics) float64 {
 	return float64(f.CC) * math.Sqrt(float64(f.SLOC))
+}
+
+// TableMass is a case table's complexity mass, kept apart from erosion's mass:
+// a switch with one branch per entry, sized by the lines it spans.
+func TableMass(t lang.CaseTable) float64 {
+	return float64(t.Entries) * math.Sqrt(float64(t.EndLine-t.StartLine+1))
 }
 
 // p90Rank is the percentile the aggregates report.
@@ -63,6 +73,10 @@ func Aggregate(files []FileMetrics) Aggregates {
 		agg.Files++
 		if f.ParseError {
 			agg.FilesParsedBad++
+		}
+		for _, t := range f.Tables {
+			agg.Tables++
+			agg.TableMass += TableMass(t)
 		}
 		for _, fn := range f.Funcs {
 			lens = append(lens, fn.EndLine-fn.StartLine+1)

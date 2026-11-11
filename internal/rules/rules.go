@@ -82,6 +82,7 @@ var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile 
 	{ID: "ts/mock-only-assert", TestOnly: true, Apply: tsMockOnlyAssert, Experimental: true},
 	{ID: "ts/constant-echo", TestOnly: true, Apply: tsConstantEcho},
 	{ID: "ts/timing-hack", TestOnly: true, Apply: tsTimingHack},
+	{ID: "x/case-table", Apply: caseTable},
 	{ID: "x/single-entry-registry", Apply: singleEntryRegistry, Experimental: true},
 	{ID: ruleXNarratingComment, Apply: narratingComment, Experimental: true},
 	{ID: "x/comment-density", Apply: commentDensity, Experimental: true},

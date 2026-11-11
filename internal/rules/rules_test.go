@@ -3,6 +3,7 @@ package rules_test
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -906,5 +907,39 @@ func registryCases() []hitCase {
 			src:  "package p\n\nvar config = map[string]int{\"a\": 1}\n",
 			rule: registry, want: 0,
 		},
+	}
+}
+
+func TestCaseTable(t *testing.T) {
+	t.Parallel()
+	entries := func(n int, line string) string {
+		var b strings.Builder
+		for i := range n {
+			fmt.Fprintf(&b, line, i)
+		}
+
+		return b.String()
+	}
+	goTable := "package f\n\nvar t = map[int]T{\n" + entries(16, "\t%d: {A: 1},\n") + "}\n"
+	cases := []struct {
+		name string
+		path string
+		src  string
+		want int
+	}{
+		{"python records", "f.py", "T = {\n" + entries(16, "    %d: make(%d),\n") + "}\n", 1},
+		{"python scalars are data", "f.py", "T = {\n" + entries(16, "    %d: 'x',\n") + "}\n", 0},
+		{"python below the bar", "f.py", "T = {\n" + entries(14, "    %d: make(%d),\n") + "}\n", 0},
+		{"typescript records", "f.ts", "const t = {\n" + entries(16, "  k%d: make(1),\n") + "};\n", 1},
+		{"go records", "f.go", goTable, 1},
+		{"tests may tabulate", "f_test.go", goTable, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := countRule(findingsOf(t, tc.path, tc.src, false), "x/case-table"); got != tc.want {
+				t.Errorf("x/case-table hits = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }

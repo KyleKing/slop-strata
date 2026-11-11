@@ -42,6 +42,7 @@
     "s_90d": "Survival at 90 days, on the same basis as s_30d.",
     "skipped": "Files excluded by config, size, binary content, minified shape, or generated code, each named with its reason. Generated means a generator marker in the first five lines, or linguist-generated in the working tree's root .gitattributes.",
     "survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity. Null when too few lines in the cohort have run as long as the horizon.",
+    "table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ structured entries scores as a switch with one branch per entry, entries x sqrt(lines). Snapshot hotspots rank by mass plus table_mass, times rule hits plus one.",
     "test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count. Live files younger than a horizon are left out, and the share is null when none is old enough.",
     "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands.",
     "within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week."

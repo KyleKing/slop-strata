@@ -32,6 +32,7 @@ var errUnknownCmd = errors.New("unknown subcommand")
 const (
 	colDir   = "dir"
 	colAdded = "added"
+	colMass  = "mass"
 )
 
 // session bundles what every subcommand needs.

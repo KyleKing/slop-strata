@@ -502,7 +502,7 @@ func printWeeks(w io.Writer, res *historyResult) {
 				fmt.Sprintf("-%d", wk.Removed), mass,
 			})
 		}
-		report.Table(w, []string{"week", "commits", colAdded, "removed", "mass"}, rows)
+		report.Table(w, []string{"week", "commits", colAdded, "removed", colMass}, rows)
 		if noisy {
 			report.Fprintf(w, "%s within one noise floor (%.0f) of the median week\n", noiseMark, res.NoiseFloor)
 		}

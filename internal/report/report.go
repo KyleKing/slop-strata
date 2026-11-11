@@ -102,6 +102,9 @@ var Docs = map[string]string{
 	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). " +
 		"Gross added/removed/net are reported separately; a refactor that removes mass differs " +
 		"from one that adds it.",
+	"table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ " +
+		"structured entries scores as a switch with one branch per entry, entries x sqrt(lines). " +
+		"Snapshot hotspots rank by mass plus table_mass, times rule hits plus one.",
 	"mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row " +
 		"scales to its own minimum and maximum, so it shows shape, not sign or size.",
 	"mass_grown": "Function-matched growth: for each function present after the change, " +

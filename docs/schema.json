@@ -138,6 +138,8 @@
       "properties": {
         "erosion": {"type": "number"},
         "mass": {"type": "number"},
+        "tables": {"type": "integer"},
+        "table_mass": {"type": "number"},
         "func_count": {"type": "integer"},
         "files": {"type": "integer"},
         "files_parse_error": {"type": "integer"},
@@ -152,25 +154,51 @@
         "max_cognitive": {"type": "integer"}
       }
     },
+    "snapshotDir": {
+      "type": "object",
+      "required": ["dir", "files", "erosion", "mass", "table_mass", "funcs", "over_50", "hotspot", "findings"],
+      "properties": {
+        "dir": {"type": "string"},
+        "files": {"type": "integer"},
+        "erosion": {"type": "number"},
+        "mass": {"type": "number"},
+        "table_mass": {"type": "number"},
+        "funcs": {"type": "integer"},
+        "over_50": {"type": "integer"},
+        "hotspot": {"type": "number"},
+        "findings": {"type": "integer"},
+        "provisional": {"type": "boolean"}
+      }
+    },
     "snapshotResult": {
       "type": "object",
       "required": ["rev", "dirs", "findings", "total"],
       "properties": {
         "rev": {"type": "string"},
-        "dirs": {
+        "dirs": {"type": "array", "items": {"$ref": "#/$defs/snapshotDir"}},
+        "test_dirs": {
+          "description": "Directories of test files, ranked among themselves and kept out of dirs.",
+          "type": "array", "items": {"$ref": "#/$defs/snapshotDir"}
+        },
+        "files": {
+          "description": "Every scored file, production files first, ranked by hotspot.",
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["dir", "files", "erosion", "mass", "funcs", "over_50", "hotspot", "findings"],
+            "required": ["path", "sloc", "funcs", "mass", "tables", "table_mass", "erosion", "over_50", "max_cc", "findings", "hotspot"],
             "properties": {
-              "dir": {"type": "string"},
-              "files": {"type": "integer"},
-              "erosion": {"type": "number"},
-              "mass": {"type": "number"},
+              "path": {"type": "string"},
+              "test": {"type": "boolean"},
+              "sloc": {"type": "integer"},
               "funcs": {"type": "integer"},
+              "mass": {"type": "number"},
+              "tables": {"type": "integer"},
+              "table_mass": {"type": "number"},
+              "erosion": {"type": "number"},
               "over_50": {"type": "integer"},
-              "hotspot": {"type": "number"},
-              "findings": {"type": "integer"}
+              "max_cc": {"type": "integer"},
+              "findings": {"type": "integer"},
+              "hotspot": {"type": "number"}
             }
           }
         },

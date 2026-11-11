@@ -51,7 +51,7 @@ erosion           0.63 → 0.43
 lines             +178 −35
 ```
 
-`snapshot` scores the whole tree at a revision, with directories ranked by hotspot:
+`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot. Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. `--json` lists every file under `files`:
 
 ```bash
 slop-strata snapshot
