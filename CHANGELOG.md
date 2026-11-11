@@ -1,3 +1,9 @@
+## v0.12.0 (2026-11-11)
+
+### Feat
+
+- **snapshot**: rank tests apart, list files, and score case tables
+
 ## v0.11.4 (2026-11-10)
 
 ### Fix
