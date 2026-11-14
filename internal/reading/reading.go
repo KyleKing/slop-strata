@@ -26,30 +26,31 @@ func (d Dir) moved() bool {
 
 // Fields is what a reading is built from.
 type Fields struct {
+	LeadHighFunc    string // the function over CC 10 that grew most, already formatted
 	Intent          intent.Intent
 	Dirs            []Dir
-	MassAdded       float64
-	MassRemoved     float64
-	MassGrown       float64
+	MassRemoved     float64 // gross mass the change removed
 	ErosionBefore   float64
 	ErosionAfter    float64
-	FuncHighAdded   int // functions over CC 10 that the change introduced
-	FuncHighTouched int // functions over CC 10 that existed before and changed
-	FuncHighGone    int // functions over CC 10 that disappeared
+	FuncHighAdded   int     // functions over CC 10 that the change introduced
+	FuncHighTouched int     // functions over CC 10 that existed before and changed
+	FuncHighGone    int     // functions over CC 10 that disappeared
+	MassGrown       float64 // gross mass the change added
 	FindingsNew     int
 	FindingsGone    int
+	TestsOnly       bool // the figures are test mass because no production mass moved
 }
 
 // Disagreement reports whether the numbers argue against the stated intent.
 func (f Fields) Disagreement() string {
 	switch {
-	case f.Intent.Kind == intent.Refactor && f.MassAdded > f.MassRemoved:
+	case f.Intent.Kind == intent.Refactor && f.MassGrown > f.MassRemoved:
 		return "a refactor that adds mass"
 	case f.Intent.Kind == intent.Refactor && f.ErosionAfter > f.ErosionBefore:
 		return "a refactor that raises erosion"
-	case f.Intent.Kind == intent.Fix && f.MassAdded > 2*f.MassRemoved && f.MassRemoved > 0:
+	case f.Intent.Kind == intent.Fix && f.MassGrown > 2*f.MassRemoved && f.MassRemoved > 0:
 		return "a fix that adds far more than it touches"
-	case f.Intent.Kind == intent.Test && f.MassAdded > 0:
+	case f.Intent.Kind == intent.Test && !f.TestsOnly && f.MassGrown > 0:
 		return "a test change that adds production mass"
 	default:
 		return ""
@@ -82,6 +83,17 @@ func functions(n int) string {
 	return fmt.Sprintf("%d functions", n)
 }
 
+func (f Fields) massClause() string {
+	switch {
+	case f.MassGrown == 0 && f.MassRemoved == 0:
+		return "no complexity mass moved"
+	case f.TestsOnly:
+		return fmt.Sprintf("tests only, net %+.1f mass, %.1f grown", f.MassGrown-f.MassRemoved, f.MassGrown)
+	default:
+		return fmt.Sprintf("net %+.1f mass, %.1f grown", f.MassGrown-f.MassRemoved, f.MassGrown)
+	}
+}
+
 // Sentence renders the one-line reading.
 func (f Fields) Sentence() string {
 	var b strings.Builder
@@ -99,11 +111,7 @@ func (f Fields) Sentence() string {
 	}
 	fmt.Fprintf(&b, "%s%s: ", strings.ToUpper(label[:1])+label[1:], where)
 
-	if f.MassAdded == 0 && f.MassRemoved == 0 {
-		b.WriteString("no complexity mass moved")
-	} else {
-		fmt.Fprintf(&b, "net %+.1f mass, %.1f grown", f.MassAdded-f.MassRemoved, f.MassGrown)
-	}
+	b.WriteString(f.massClause())
 
 	if f.FuncHighAdded > 0 {
 		fmt.Fprintf(&b, "; added %s over CC 10", functions(f.FuncHighAdded))
@@ -115,6 +123,9 @@ func (f Fields) Sentence() string {
 		fmt.Fprintf(&b, "; removed %s over CC 10", functions(f.FuncHighGone))
 	}
 
+	if f.LeadHighFunc != "" {
+		fmt.Fprintf(&b, "; most grown over CC 10: %s", f.LeadHighFunc)
+	}
 	if f.ErosionBefore != f.ErosionAfter {
 		fmt.Fprintf(&b, "; erosion %.2f → %.2f", f.ErosionBefore, f.ErosionAfter)
 	}

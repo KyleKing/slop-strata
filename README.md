@@ -39,16 +39,23 @@ slop-strata change --rev 00b5c3b375856a0387ef4a149fc53f918d9ef259 --base 00b5c3b
 ```
 
 ```text
-Refactor in `calcipy`: net +48.6 mass, 68.6 grown; touched 1 function over CC 10; erosion 0.63 → 0.43 — reads as a refactor that adds mass
+Refactor in `calcipy`: net +34.8 mass, 35.7 grown; touched 1 function over CC 10; erosion 0.63 → 0.43 — reads as a refactor that adds mass
 
-delta             value
-mass added        159.8
-mass removed      111.2
-mass net          +48.6
-mass grown        68.6
-grown over CC 10  0.0
-erosion           0.63 → 0.43
-lines             +178 −35
+delta                   value
+mass grown              35.7
+mass removed            0.9
+mass net                +34.8
+grown over CC 10        0.0
+tests mass grown        32.9
+tests mass removed      19.1
+tests mass net          +13.8
+tests grown over CC 10  0.0
+erosion                 0.63 → 0.43
+lines                   +178 −35
+
+top functions                                           grown
+calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
+calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
 ```
 
 `snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot. Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. `--json` lists every file under `files`:
@@ -101,7 +108,8 @@ Add `--all` to `change` or `snapshot` to show every number, including the ones t
 Each name below has a full definition. Run `slop-strata --explain NAME` to read it, or `slop-strata --explain` with no name to list them all.
 
 - `mass` is the sum of CC times the square root of SLOC over each function. `--explain mass`
-- `mass grown` is how much a change adds to the functions it touches, with new functions counted in full. `--explain mass_grown`
+- `mass grown` and `mass removed` are the gross mass a change added to and took from its functions, new and deleted functions counted in full, for production and for tests apart. `--explain mass_grown`, `--explain mass_removed`
+- `top_functions` names the functions that grew most, with file, line, and CC before and after. `--explain top_functions`
 - `erosion` is the share of mass held by functions with cyclomatic complexity over 10. `--explain erosion`
 - `over_limit` is the share of mass grown that lands in functions already over CC 10. `--explain over_limit`
 - `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written, credited to the directory they were written in. `--explain churn_30d`

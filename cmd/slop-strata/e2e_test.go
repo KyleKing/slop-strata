@@ -178,7 +178,7 @@ func TestChangeWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("change: %v", err)
 	}
-	if !strings.Contains(out, `"mass_added"`) || !strings.Contains(out, "go/silent-error") {
+	if !strings.Contains(out, `"top_functions"`) || !strings.Contains(out, "go/silent-error") {
 		t.Fatalf("unexpected change output: %s", out)
 	}
 }

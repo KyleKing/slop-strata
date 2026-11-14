@@ -42,33 +42,38 @@ type side struct {
 
 // changeResult is the change subcommand's JSON shape.
 type changeResult struct {
-	beforeByPath map[string]structure.FileMetrics
 	Context      *contextPayload     `json:"context,omitempty"`
 	Dirs         map[string]dirDelta `json:"dirs"`
 	dirTouches   map[string]int
 	afterByPath  map[string]structure.FileMetrics
+	beforeByPath map[string]structure.FileMetrics
+	leadHigh     string
 	Base         string        `json:"base"`
 	End          string        `json:"end"`
 	Reading      string        `json:"reading"`
 	Intent       intent.Intent `json:"intent"`
-	Findings     []findingRow  `json:"findings"`
 	Errors       []skippedRow  `json:"errors,omitempty"`
 	Skipped      []skippedRow  `json:"skipped,omitempty"`
 	Files        []fileDelta   `json:"files"`
+	TopFunctions []topFunc     `json:"top_functions"`
+	Findings     []findingRow  `json:"findings"`
 	Delta        deltaSummary  `json:"delta"`
 	highFuncs    funcCounts
 }
 
 type deltaSummary struct {
-	MassAdded     float64 `json:"mass_added"`
-	MassRemoved   float64 `json:"mass_removed"`
-	MassNet       float64 `json:"mass_net"`
-	MassGrown     float64 `json:"mass_grown"`
-	OverLimit     float64 `json:"over_limit"`
-	ErosionBefore float64 `json:"erosion_before"`
-	ErosionAfter  float64 `json:"erosion_after"`
-	LinesAdded    int     `json:"lines_added"`
-	LinesDeleted  int     `json:"lines_deleted"`
+	MassRemoved     float64 `json:"mass_removed"`
+	MassNet         float64 `json:"mass_net"`
+	MassGrown       float64 `json:"mass_grown"`
+	OverLimit       float64 `json:"over_limit"`
+	TestMassRemoved float64 `json:"test_mass_removed"`
+	TestMassNet     float64 `json:"test_mass_net"`
+	TestMassGrown   float64 `json:"test_mass_grown"`
+	TestOverLimit   float64 `json:"test_over_limit"`
+	ErosionBefore   float64 `json:"erosion_before"`
+	ErosionAfter    float64 `json:"erosion_after"`
+	LinesAdded      int     `json:"lines_added"`
+	LinesDeleted    int     `json:"lines_deleted"`
 }
 
 type dirDelta struct {
@@ -76,6 +81,7 @@ type dirDelta struct {
 	ErosionBefore float64 `json:"erosion_before"`
 	ErosionAfter  float64 `json:"erosion_after"`
 	Hotspot       bool    `json:"hotspot"`
+	Provisional   bool    `json:"provisional,omitempty"`
 }
 
 type findingRow struct {
@@ -370,39 +376,19 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 		}
 		res.Files = append(res.Files, sf.delta)
 	}
-	// A function absent from its own file's before side falls back to an
-	// exact (name, complexity, size) match anywhere on the old side, so code
-	// moved between files does not read as fresh mass.
-	moved := map[funcKey]float64{}
-	for i := range scored {
-		if scored[i].before == nil {
-			continue
-		}
-		for _, fn := range scored[i].before.Funcs {
-			moved[funcKey{fn.Name, fn.CC, fn.SLOC}] = structure.Mass(fn)
-		}
-	}
-	for i := range scored {
-		grown, over := funcGrowth(scored[i].before, scored[i].after, moved)
-		res.Files[i].MassGrown = grown
-		res.Files[i].OverLimit = over
-		res.Delta.MassGrown += grown
-		res.Delta.OverLimit += over
-		res.highFuncs.add(highFuncChanges(scored[i].before, scored[i].after, moved))
-	}
+	res.applyFuncChanges(scored)
 
 	markFindingsOld(old, res)
 	s.crossFileFindings(ctx, base, end, files, newSides, scored, baseline, res)
 
 	aggBefore := structure.Aggregate(before)
 	aggAfter := structure.Aggregate(after)
-	res.Delta.MassNet = res.Delta.MassAdded - res.Delta.MassRemoved
 	res.Delta.ErosionBefore = aggBefore.Erosion
 	res.Delta.ErosionAfter = aggAfter.Erosion
 
 	branch, _ := s.ops.GetCurrentBranch(ctx, s.root) //nolint:errcheck // detached HEAD leaves intent to subjects
 	res.Intent = s.changeIntent(ctx, base, end, branch)
-	if err := s.dirDeltas(ctx, res); err != nil {
+	if err := s.dirDeltas(ctx, res, scored); err != nil {
 		return nil, err
 	}
 	res.Reading = readingFor(res, aggBefore, aggAfter)
@@ -472,7 +458,6 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 		sf.beforePrint = rep.Print
 		res.beforeByPath[oldPathOf(*f)] = rep.Metrics
 		sf.delta.MassBefore = fileMass(rep.Metrics)
-		res.Delta.MassRemoved += sf.delta.MassBefore
 		for _, fn := range rep.Findings {
 			old[fn.Rule+"\x00"+fn.Match] = true
 			oldAt[ruleLine(fn.Rule, fn.Line)] = true
@@ -499,7 +484,6 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	res.afterByPath[f.Path] = rep.Metrics
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
-	res.Delta.MassAdded += sf.delta.MassAfter
 	added := addedLines(f.Hunks)
 	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
 		row := findingRow{Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
@@ -552,50 +536,6 @@ func addedLines(hunks []vcs.DiffHunk) map[int]int {
 // ruleLine keys a finding by its rule and line on one side of a file.
 func ruleLine(rule string, line int) string {
 	return rule + "\x00" + strconv.Itoa(line)
-}
-
-// funcKey identifies a moved function exactly: a move keeps its name and
-// shape, so (name, complexity, size) matches it on the other side.
-type funcKey struct {
-	name string
-	cc   int
-	sloc int
-}
-
-// funcGrowth matches functions between the two sides of one file by funcKeys
-// and returns the mass the change grew (per-function positive deltas summed)
-// and the part of that growth sitting in functions over the CC limit. A
-// function missing from its own file's before side falls back to an exact
-// moved-code match; a nil before side counts every function not matched
-// elsewhere.
-func funcGrowth(before, after *structure.FileMetrics, moved map[funcKey]float64) (float64, float64) {
-	if after == nil {
-		return 0, 0
-	}
-	var grown, overLimit float64
-	prev := map[string]float64{}
-	if before != nil {
-		for i, key := range funcKeys(before.Funcs) {
-			prev[key] = structure.Mass(before.Funcs[i])
-		}
-	}
-	for i, key := range funcKeys(after.Funcs) {
-		fn := after.Funcs[i]
-		matched, ok := prev[key]
-		if !ok {
-			matched = moved[funcKey{fn.Name, fn.CC, fn.SLOC}]
-		}
-		g := structure.Mass(fn) - matched
-		if g <= 0 {
-			continue
-		}
-		grown += g
-		if fn.CC > structure.CCLimit {
-			overLimit += g
-		}
-	}
-
-	return grown, overLimit
 }
 
 // funcKeys names each function of one file side for matching. A function
@@ -794,18 +734,45 @@ func (s *session) changeIntent(ctx context.Context, base, end, branch string) in
 	return intent.ForChange(intents)
 }
 
-// readingFor composes the one-line reading.
+// applyFuncChanges folds the paired functions' mass movement into the file rows and the delta.
+func (res *changeResult) applyFuncChanges(scored []scoredFile) {
+	sides := make([]funcSides, len(scored))
+	for i := range scored {
+		sides[i] = funcSides{path: scored[i].delta.Path, before: scored[i].before, after: scored[i].after}
+	}
+	changes := pairFuncs(sides)
+	byPath, prod, tests := totalsByPath(changes)
+	for i := range res.Files {
+		res.Files[i].MassGrown = byPath[res.Files[i].Path].grown
+		res.Files[i].OverLimit = byPath[res.Files[i].Path].overLimit
+	}
+	res.Delta.MassGrown, res.Delta.MassRemoved = prod.grown, prod.removed
+	res.Delta.MassNet, res.Delta.OverLimit = prod.net(), prod.overLimit
+	res.Delta.TestMassGrown, res.Delta.TestMassRemoved = tests.grown, tests.removed
+	res.Delta.TestMassNet, res.Delta.TestOverLimit = tests.net(), tests.overLimit
+	res.highFuncs = highFuncChanges(changes)
+	ranked := rankFunctions(changes)
+	res.leadHigh = leadHighFunc(ranked)
+	res.TopFunctions = ranked[:min(len(ranked), topFunctionLimit)]
+}
+
+// readingFor composes the one-line reading from production figures, or test figures when only tests moved.
 func readingFor(res *changeResult, before, after structure.Aggregates) string {
+	d := res.Delta
 	f := reading.Fields{
 		Intent:          res.Intent,
-		MassAdded:       res.Delta.MassAdded,
-		MassRemoved:     res.Delta.MassRemoved,
-		MassGrown:       res.Delta.MassGrown,
+		MassGrown:       d.MassGrown,
+		MassRemoved:     d.MassRemoved,
 		ErosionBefore:   before.Erosion,
 		ErosionAfter:    after.Erosion,
 		FuncHighAdded:   res.highFuncs.added,
 		FuncHighTouched: res.highFuncs.touched,
 		FuncHighGone:    res.highFuncs.gone,
+		LeadHighFunc:    res.leadHigh,
+	}
+	if d.MassGrown == 0 && d.MassRemoved == 0 && (d.TestMassGrown != 0 || d.TestMassRemoved != 0) {
+		f.TestsOnly = true
+		f.MassGrown, f.MassRemoved = d.TestMassGrown, d.TestMassRemoved
 	}
 	for _, fn := range res.Findings {
 		if fn.New {
@@ -816,70 +783,13 @@ func readingFor(res *changeResult, before, after structure.Aggregates) string {
 	for i := range res.Files {
 		grown[lineage.DirOf(res.Files[i].Path)] += res.Files[i].MassGrown
 	}
-	for name, d := range res.Dirs {
-		f.Dirs = append(f.Dirs, reading.Dir{Name: name, MassNet: d.MassNet, MassGrown: grown[name], Hotspot: d.Hotspot})
+	for name, dd := range res.Dirs {
+		f.Dirs = append(f.Dirs, reading.Dir{
+			Name: name, MassNet: dd.MassNet, MassGrown: grown[name], Hotspot: dd.Hotspot,
+		})
 	}
 
 	return f.Sentence()
-}
-
-// funcCounts tallies a change's functions over the CC limit by how the change
-// reached them.
-type funcCounts struct {
-	added   int
-	touched int
-	gone    int
-}
-
-func (c *funcCounts) add(o funcCounts) {
-	c.added += o.added
-	c.touched += o.touched
-	c.gone += o.gone
-}
-
-// highFuncChanges counts one file's functions over the CC limit: added when
-// they match nothing on the before side, touched when they match and their
-// shape changed, gone when a before-side function over the limit has no match
-// after. A function matched by moved code is neither added nor touched.
-func highFuncChanges(before, after *structure.FileMetrics, moved map[funcKey]float64) funcCounts {
-	var c funcCounts
-	prev := map[string]structure.FuncMetrics{}
-	var beforeKeys []string
-	if before != nil {
-		beforeKeys = funcKeys(before.Funcs)
-		for i, key := range beforeKeys {
-			prev[key] = before.Funcs[i]
-		}
-	}
-	matched := map[string]bool{}
-	if after != nil {
-		for i, key := range funcKeys(after.Funcs) {
-			fn := after.Funcs[i]
-			matched[key] = true
-			old, ok := prev[key]
-			_, isMoved := moved[funcKey{fn.Name, fn.CC, fn.SLOC}]
-			switch {
-			case fn.CC <= structure.CCLimit:
-			case !ok && !isMoved:
-				c.added++
-			case ok && !sameShape(old, fn):
-				c.touched++
-			}
-		}
-	}
-	for i, key := range beforeKeys {
-		if before.Funcs[i].CC > structure.CCLimit && !matched[key] {
-			c.gone++
-		}
-	}
-
-	return c
-}
-
-// sameShape reports whether two versions of a function measure the same.
-func sameShape(a, b structure.FuncMetrics) bool {
-	return a.CC == b.CC && a.SLOC == b.SLOC && a.Cognitive == b.Cognitive &&
-		a.Nesting == b.Nesting && a.Params == b.Params && a.Comments == b.Comments
 }
 
 // markFindingsOld clears New on hits whose (rule,match) pair exists on the
@@ -893,13 +803,21 @@ func markFindingsOld(old map[string]bool, res *changeResult) {
 	}
 }
 
-// dirDeltas rolls the change up per directory and flags hotspots.
-func (s *session) dirDeltas(ctx context.Context, res *changeResult) error {
-	// Roll per-dir mass deltas from the file deltas.
+// dirDeltas rolls the change up per directory; erosion is provisional when
+// either side has under structure.ProvisionalFuncs functions.
+func (s *session) dirDeltas(ctx context.Context, res *changeResult, scored []scoredFile) error {
 	massNet := map[string]float64{}
-	for _, fd := range res.Files {
-		d := lineage.DirOf(fd.Path)
-		massNet[d] += fd.MassAfter - fd.MassBefore
+	before := map[string][]structure.FileMetrics{}
+	after := map[string][]structure.FileMetrics{}
+	for i := range scored {
+		d := lineage.DirOf(scored[i].delta.Path)
+		massNet[d] += scored[i].delta.MassAfter - scored[i].delta.MassBefore
+		if scored[i].before != nil {
+			before[d] = append(before[d], *scored[i].before)
+		}
+		if scored[i].after != nil {
+			after[d] = append(after[d], *scored[i].after)
+		}
 	}
 	hotspots, touches, err := s.hotspotDirs(ctx, mapKeys(massNet))
 	if err != nil {
@@ -907,7 +825,11 @@ func (s *session) dirDeltas(ctx context.Context, res *changeResult) error {
 	}
 	res.dirTouches = touches
 	for d, net := range massNet {
-		res.Dirs[d] = dirDelta{MassNet: net, Hotspot: hotspots[d]}
+		b, a := structure.Aggregate(before[d]), structure.Aggregate(after[d])
+		res.Dirs[d] = dirDelta{
+			MassNet: net, Hotspot: hotspots[d], ErosionBefore: b.Erosion, ErosionAfter: a.Erosion,
+			Provisional: min(b.FuncCount, a.FuncCount) < structure.ProvisionalFuncs,
+		}
 	}
 
 	return nil
@@ -1096,35 +1018,17 @@ func snippetLine(root, path string, line int) string {
 	return lines[line-1]
 }
 
-// printChange renders the human form: reading, delta table, findings.
+// topProductionFunctions is how many production functions the text view lists without --all.
+const topProductionFunctions = 3
+
+// printChange renders the human form: reading, delta table, top functions,
+// directories, findings.
 func printChange(w io.Writer, res *changeResult, all bool) {
 	report.Fprintln(w, res.Reading)
 	report.Fprintln(w)
-
-	rows := [][]string{
-		{"mass added", fmt.Sprintf("%.1f", res.Delta.MassAdded)},
-		{"mass removed", fmt.Sprintf("%.1f", res.Delta.MassRemoved)},
-		{"mass net", fmt.Sprintf("%+.1f", res.Delta.MassNet)},
-		{"mass grown", fmt.Sprintf("%.1f", res.Delta.MassGrown)},
-		{"grown over CC " + strconv.Itoa(structure.CCLimit), fmt.Sprintf("%.1f", res.Delta.OverLimit)},
-		{"erosion", fmt.Sprintf("%.2f → %.2f", res.Delta.ErosionBefore, res.Delta.ErosionAfter)},
-		{"lines", fmt.Sprintf("+%d −%d", res.Delta.LinesAdded, res.Delta.LinesDeleted)},
-	}
-	report.Table(w, []string{"delta", "value"}, rows)
-
-	if len(res.Dirs) > 0 {
-		report.Fprintln(w)
-		rows := make([][]string, 0, len(res.Dirs))
-		for _, d := range report.SortedKeys(res.Dirs) {
-			dd := res.Dirs[d]
-			hot := ""
-			if dd.Hotspot {
-				hot = "hotspot"
-			}
-			rows = append(rows, []string{d, fmt.Sprintf("%+.1f", dd.MassNet), hot})
-		}
-		report.Table(w, []string{colDir, "mass net", ""}, rows)
-	}
+	report.Table(w, []string{"delta", "value"}, deltaRows(res.Delta, all))
+	printTopFunctions(w, res.TopFunctions, all)
+	printDirDeltas(w, res.Dirs)
 
 	newOnly := res.Findings
 	if !all {
@@ -1153,6 +1057,83 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 	}
 	for _, er := range res.Errors {
 		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
+	}
+}
+
+// deltaRows lists the delta table: production mass, test mass when tests moved
+// any (or with --all), then erosion and lines.
+func deltaRows(d deltaSummary, all bool) [][]string {
+	limit := "grown over CC " + strconv.Itoa(structure.CCLimit)
+	rows := [][]string{
+		{"mass grown", fmt.Sprintf("%.1f", d.MassGrown)},
+		{"mass removed", fmt.Sprintf("%.1f", d.MassRemoved)},
+		{"mass net", fmt.Sprintf("%+.1f", d.MassNet)},
+		{limit, fmt.Sprintf("%.1f", d.OverLimit)},
+	}
+	if all || d.TestMassGrown != 0 || d.TestMassRemoved != 0 {
+		rows = append(rows,
+			[]string{"tests mass grown", fmt.Sprintf("%.1f", d.TestMassGrown)},
+			[]string{"tests mass removed", fmt.Sprintf("%.1f", d.TestMassRemoved)},
+			[]string{"tests mass net", fmt.Sprintf("%+.1f", d.TestMassNet)},
+			[]string{"tests " + limit, fmt.Sprintf("%.1f", d.TestOverLimit)},
+		)
+	}
+
+	return append(rows,
+		[]string{colErosion, fmt.Sprintf("%.2f → %.2f", d.ErosionBefore, d.ErosionAfter)},
+		[]string{"lines", fmt.Sprintf("+%d −%d", d.LinesAdded, d.LinesDeleted)},
+	)
+}
+
+// printTopFunctions lists the production functions the change grew most, plus
+// the test functions with --all.
+func printTopFunctions(w io.Writer, top []topFunc, all bool) {
+	var rows [][]string
+	for _, f := range top {
+		if (f.Test && !all) || (!all && len(rows) >= topProductionFunctions) {
+			continue
+		}
+		before := "new"
+		if f.CCBefore > 0 {
+			before = strconv.Itoa(f.CCBefore)
+		}
+		name := f.Name
+		if f.Test {
+			name += " (test)"
+		}
+		rows = append(rows, []string{
+			fmt.Sprintf("%s:%d", f.File, f.Line), name,
+			fmt.Sprintf("cc %s→%d", before, f.CCAfter), fmt.Sprintf("+%.1f", f.MassGrown),
+		})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	report.Fprintln(w)
+	report.Table(w, []string{"top functions", "", "", "grown"}, rows)
+}
+
+// printDirDeltas lists the touched directories.
+func printDirDeltas(w io.Writer, dirs map[string]dirDelta) {
+	if len(dirs) == 0 {
+		return
+	}
+	rows := make([][]string, 0, len(dirs))
+	provisional := false
+	for _, d := range report.SortedKeys(dirs) {
+		dd := dirs[d]
+		hot := ""
+		if dd.Hotspot {
+			hot = "hotspot"
+		}
+		provisional = provisional || dd.Provisional
+		erosion := provisionalMarked(fmt.Sprintf("%.2f → %.2f", dd.ErosionBefore, dd.ErosionAfter), dd.Provisional)
+		rows = append(rows, []string{d, fmt.Sprintf("%+.1f", dd.MassNet), erosion, hot})
+	}
+	report.Fprintln(w)
+	report.Table(w, []string{colDir, "mass net", colErosion, ""}, rows)
+	if provisional {
+		report.Fprintf(w, "%s fewer than %d functions on a side\n", provisionalMark, structure.ProvisionalFuncs)
 	}
 }
 

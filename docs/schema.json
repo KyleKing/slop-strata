@@ -79,6 +79,22 @@
         "deleted": {"type": "integer", "minimum": 0}
       }
     },
+    "topFunction": {
+      "type": "object",
+      "required": ["file", "name", "line", "cc_before", "cc_after", "mass_before", "mass_after", "mass_grown", "test"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string"},
+        "name": {"type": "string"},
+        "line": {"type": "integer", "minimum": 1, "description": "Start line on the after side."},
+        "cc_before": {"type": "integer", "minimum": 0, "description": "0 for a new function."},
+        "cc_after": {"type": "integer", "minimum": 0},
+        "mass_before": {"type": "number"},
+        "mass_after": {"type": "number"},
+        "mass_grown": {"type": "number"},
+        "test": {"type": "boolean", "description": "True when the file is a test file."}
+      }
+    },
     "intent": {
       "type": "object",
       "required": ["kind"],
@@ -91,7 +107,7 @@
     },
     "changeResult": {
       "type": "object",
-      "required": ["base", "end", "reading", "intent", "findings", "files", "delta", "dirs"],
+      "required": ["base", "end", "reading", "intent", "findings", "files", "top_functions", "delta", "dirs"],
       "properties": {
         "base": {"type": "string", "description": "Commit the change diffs from."},
         "end": {"type": "string"},
@@ -101,15 +117,19 @@
         "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
         "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
         "files": {"type": "array", "items": {"$ref": "#/$defs/fileDelta"}},
+        "top_functions": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/topFunction"}, "description": "Functions the change grew, largest mass_grown first; see the top_functions doc."},
         "delta": {
           "type": "object",
-          "required": ["mass_added", "mass_removed", "mass_net", "mass_grown", "over_limit", "erosion_before", "erosion_after", "lines_added", "lines_deleted"],
+          "required": ["mass_removed", "mass_net", "mass_grown", "over_limit", "test_mass_removed", "test_mass_net", "test_mass_grown", "test_over_limit", "erosion_before", "erosion_after", "lines_added", "lines_deleted"],
           "properties": {
-            "mass_added": {"type": "number"},
-            "mass_removed": {"type": "number"},
-            "mass_net": {"type": "number", "description": "Gross added minus gross removed."},
-            "mass_grown": {"type": "number", "description": "Function-matched growth; see the mass_grown doc."},
-            "over_limit": {"type": "number"},
+            "mass_grown": {"type": "number", "description": "Gross mass the change added to production functions; see the mass_grown doc."},
+            "mass_removed": {"type": "number", "description": "Gross mass the change removed from production functions; see the mass_removed doc."},
+            "mass_net": {"type": "number", "description": "mass_grown minus mass_removed."},
+            "over_limit": {"type": "number", "description": "The part of mass_grown in functions over CC 10."},
+            "test_mass_grown": {"type": "number", "description": "mass_grown for test files."},
+            "test_mass_removed": {"type": "number", "description": "mass_removed for test files."},
+            "test_mass_net": {"type": "number", "description": "test_mass_grown minus test_mass_removed."},
+            "test_over_limit": {"type": "number", "description": "over_limit for test files."},
             "erosion_before": {"type": "number"},
             "erosion_after": {"type": "number"},
             "lines_added": {"type": "integer"},
@@ -125,7 +145,8 @@
               "mass_net": {"type": "number"},
               "erosion_before": {"type": "number"},
               "erosion_after": {"type": "number"},
-              "hotspot": {"type": "boolean"}
+              "hotspot": {"type": "boolean"},
+              "provisional": {"type": "boolean", "description": "Set when either side has under 5 functions; text output marks the erosion with *."}
             }
           }
         },

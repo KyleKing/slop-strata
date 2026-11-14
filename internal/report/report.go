@@ -99,21 +99,31 @@ var Docs = map[string]string{
 	"erosion": "Share of complexity mass (CC x sqrt(SLOC) per function) held by functions with " +
 		"cyclomatic complexity over 10, per arXiv 2603.24755. No target; watch direction per " +
 		"directory. When it rises on routine work, the complex functions are getting more of them.",
-	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). " +
-		"Gross added/removed/net are reported separately; a refactor that removes mass differs " +
-		"from one that adds it.",
+	"mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). A change reports the " +
+		"mass it grew and the mass it removed apart, each for production and for tests, so a " +
+		"refactor that removes mass reads differently from one that adds it.",
 	"table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ " +
 		"structured entries scores as a switch with one branch per entry, entries x sqrt(lines). " +
 		"Snapshot hotspots rank by mass plus table_mass, times rule hits plus one.",
 	"mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row " +
 		"scales to its own minimum and maximum, so it shows shape, not sign or size.",
-	"mass_grown": "Function-matched growth: for each function present after the change, " +
-		"max(0, mass_after - mass_before) summed, matched by name within the same file. New " +
-		"functions count in full. This is the mass a change actually adds, as distinct from " +
-		"mass_added which totals the after-side mass of every touched file.",
+	"mass_grown": "Gross mass the change added: for each function present after the change, " +
+		"max(0, mass_after - mass_before) summed, matched by name within the same file or, for " +
+		"code moved between files, by name, CC, and size. New functions count in full. Production " +
+		"files and test files are summed apart (test_mass_grown). A change that grows mass in " +
+		"many small functions differs from one that grows a single function.",
+	"mass_removed": "Gross mass the change removed: for each function present before the change, " +
+		"max(0, mass_before - mass_after) summed, with deleted functions counted in full and moved " +
+		"code not counted. mass_net is mass_grown minus mass_removed. Production and test files " +
+		"are summed apart (test_mass_removed). A refactor should show mass_removed near or above " +
+		"mass_grown.",
 	"over_limit": "The share of mass_grown sitting in functions whose cyclomatic complexity " +
-		"exceeds 10. A change that concentrates its growth in already-complex functions is " +
-		"the shape erosion measures.",
+		"exceeds 10, for production files (test_over_limit for tests). A change that concentrates " +
+		"its growth in already-complex functions is the shape erosion measures. Split the " +
+		"function or reduce its branches before adding to it.",
+	"top_functions": "Up to 10 functions the change grew most, largest mass_grown first, with " +
+		"file, start line, CC and mass before and after, and whether the file is a test file. " +
+		"A new function has cc_before 0. Open these first in review: they hold the growth.",
 	"p90_len": "90th percentile function length in lines. Long functions carry context a reader " +
 		"must hold; watch the max, not the mean.",
 	"max_len": "Longest function in lines.",
@@ -154,7 +164,8 @@ var Docs = map[string]string{
 	"hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
 	"provisional": "Set on a survival cohort, test class, or directory whose rate rests on too few " +
 		"samples: under 30 lines for a cohort, under 5 test files for a test class, under 5 functions " +
-		"for a directory's erosion. The rate still prints, marked * in text output.",
+		"for a directory's erosion (on the smaller side of a change). The rate still prints, " +
+		"marked * in text output.",
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +

@@ -135,28 +135,36 @@ What the split shows is one week of agent work, in a repository where the person
 [The refactor commit](https://github.com/KyleKing/calcipy/commit/00b5c3b375856a0387ef4a149fc53f918d9ef259) adds jj support and lets the tasks run from any directory. It touches three files. Here is `change` on it:
 
 ```text
-Refactor in `calcipy`: net +48.6 mass, 68.6 grown; touched 1 function over CC 10; erosion 0.63 → 0.43 — reads as a refactor that adds mass
+Refactor in `calcipy`: net +34.8 mass, 35.7 grown; touched 1 function over CC 10; erosion 0.63 → 0.43 — reads as a refactor that adds mass
 
-delta             value
-mass added        159.8
-mass removed      111.2
-mass net          +48.6
-mass grown        68.6
-grown over CC 10  0.0
-erosion           0.63 → 0.43
-lines             +178 −35
+delta                   value
+mass grown              35.7
+mass removed            0.9
+mass net                +34.8
+grown over CC 10        0.0
+tests mass grown        32.9
+tests mass removed      19.1
+tests mass net          +13.8
+tests grown over CC 10  0.0
+erosion                 0.63 → 0.43
+lines                   +178 −35
 
-dir            mass net
-calcipy        +35.7
-calcipy/tasks  -0.9
-tests/tasks    +13.8
+top functions                                           grown
+calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
+calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
+
+dir            mass net  erosion
+calcipy        +35.7     0.00 → 0.00*
+calcipy/tasks  -0.9      1.00 → 1.00*
+tests/tasks    +13.8     0.00 → 0.00
+* fewer than 5 functions on a side
 ```
 
 The reading comes from rules over these numbers, not from a model. Three things in it are worth checking against the diff.
 
-The intent is `refactor`, from the Conventional Commit type. A refactor is expected to move mass around, not add it. This one adds 48.6 net mass. Functions that grew account for 68.6 of mass, and removals elsewhere in the change bring the net down to 48.6.
+The intent is `refactor`, from the Conventional Commit type. A refactor is expected to move mass around, not add it. This one adds 34.8 net mass in production code: 35.7 grown and 0.9 removed. The test files add another 13.8 net, on their own rows, so they do not inflate the reading.
 
-The reading says it "reads as a refactor that adds mass." That is a question for the reviewer, not a verdict. The largest share of the growth is in `calcipy/invoke_helpers.py`, which went from 15.2 to 50.9 mass. The subject says the change adds jj support, which is the likely reason. Whether that code belongs in a helper module is a judgment the numbers cannot make.
+The reading says it "reads as a refactor that adds mass." That is a question for the reviewer, not a verdict. The largest share of the growth is in `calcipy/invoke_helpers.py`, which went from 15.2 to 50.9 mass, in two functions: new `find_repo_root` (+18.0) and `get_doc_subdir`, CC 2 to 5 (+17.7). The subject says the change adds jj support, which is the likely reason. Whether that code belongs in a helper module is a judgment the numbers cannot make.
 
 Erosion fell from 0.63 to 0.43, which is the same change read from the other side. Erosion here counts only the files the change touched. The one touched function over CC 10, `collect_code_tags`, is CC 11 on both sides, and `grown over CC 10` is 0.0. The new mass landed in functions under CC 10. The total grew while the over-limit mass did not, so the share dropped.
 

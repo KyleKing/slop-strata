@@ -112,9 +112,16 @@ func TestFuncGrowthMatchesSameNamedFunctionsByOwner(t *testing.T) {
 			if tc.grew != "" {
 				want = massByKey(t, after, tc.grew) - massByKey(t, before, tc.grew)
 			}
-			got, _ := funcGrowth(&before, &after, map[funcKey]float64{})
+			var got, shrunk float64
+			for _, c := range pairFuncs([]funcSides{{path: "f.py", before: &before, after: &after}}) {
+				got += c.grown()
+				shrunk += c.shrunk()
+			}
 			if math.Abs(got-want) > 1e-9 {
 				t.Fatalf("grown = %.3f, want %.3f", got, want)
+			}
+			if net := fileMass(after) - fileMass(before); math.Abs(got-shrunk-net) > 1e-9 {
+				t.Fatalf("grown - removed = %.3f, want net %.3f", got-shrunk, net)
 			}
 		})
 	}
@@ -168,6 +175,36 @@ func gitRun(t *testing.T, dir string, args ...string) {
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestChangeTextNamesFunctionsItGrew(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--initial-branch=main")
+	for name, body := range map[string]string{"svc.py": svcBefore, "README.md": "# svc\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "feat: add store")
+	for name, body := range map[string]string{"svc.py": svcAfter, "README.md": "# svc\n\nflush\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "fix: add flush")
+
+	out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD")
+	if err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	for _, want := range []string{"top functions", "svc.py:17", "flush", "cc new→"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("default output lacks %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -243,16 +280,20 @@ func TestChangeRootCommitDiffsFromEmptyTree(t *testing.T) {
 	}
 	var env struct {
 		Result struct {
+			TopFunctions []struct {
+				Name string `json:"name"`
+			} `json:"top_functions"`
 			Delta struct {
-				MassAdded float64 `json:"mass_added"`
+				MassGrown float64 `json:"mass_grown"`
 			} `json:"delta"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("parsing JSON: %v\n%s", err, out)
 	}
-	if env.Result.Delta.MassAdded == 0 {
-		t.Fatalf("root commit's function counted no mass: %s", out)
+	top := env.Result.TopFunctions
+	if env.Result.Delta.MassGrown == 0 || len(top) != 1 || top[0].Name != "run" {
+		t.Fatalf("root commit's function counted no mass or went unnamed: %s", out)
 	}
 }
 

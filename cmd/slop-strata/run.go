@@ -30,9 +30,10 @@ var errUnknownCmd = errors.New("unknown subcommand")
 
 // Table column headers shared across subcommand output.
 const (
-	colDir   = "dir"
-	colAdded = "added"
-	colMass  = "mass"
+	colDir     = "dir"
+	colAdded   = "added"
+	colMass    = "mass"
+	colErosion = "erosion"
 )
 
 // session bundles what every subcommand needs.

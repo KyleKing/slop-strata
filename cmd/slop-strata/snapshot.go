@@ -360,7 +360,7 @@ func printDirTable(w io.Writer, dirs []dirSnapshot) {
 			strconv.Itoa(d.Over50), strconv.Itoa(d.Findings),
 		})
 	}
-	report.Table(w, []string{colDir, "files", "erosion", colMass, "table_mass", "over_50", "rule_hits"}, rows)
+	report.Table(w, []string{colDir, "files", colErosion, colMass, "table_mass", "over_50", "rule_hits"}, rows)
 }
 
 // topFiles is how many ranked files the text view lists without --all.
