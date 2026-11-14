@@ -100,7 +100,8 @@ func lastSegment(callee string) string {
 }
 
 // goTypeAny flags `any` and the empty `interface{}` in signatures: the type
-// system has stopped describing what flows through.
+// system has stopped describing what flows through. A generic constraint and a
+// variadic `...any` the function forwards whole are not flagged.
 func goTypeAny(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Go {
 		return
@@ -108,11 +109,54 @@ func goTypeAny(ctx *Ctx, findings *[]Finding) {
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		switch {
 		case n.Kind() == kindTypeIdentifier && ctx.Text(n) == textAny:
-			*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: textAny})
+			if !ctx.anyIsExempt(n) {
+				*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: textAny})
+			}
 		case n.Kind() == "interface_type" && n.NamedChildCount() == 0:
-			*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: "interface{}"})
+			if !ctx.anyIsExempt(n) {
+				*findings = append(*findings, Finding{Rule: ruleGoTypeAny, Line: lineOf(n), Match: "interface{}"})
+			}
 		}
 	})
+}
+
+// anyIsExempt reports whether an any type is a generic constraint or the type
+// of a variadic parameter that the function passes on as name....
+func (c *Ctx) anyIsExempt(n *ts.Node) bool {
+	parent := n.Parent()
+	if parent == nil {
+		return false
+	}
+	switch parent.Kind() {
+	case "type_constraint":
+		return true
+	case "variadic_parameter_declaration":
+		name := parent.ChildByFieldName("name")
+
+		return name != nil && c.forwardsSpread(parent, c.Text(name))
+	}
+
+	return false
+}
+
+// forwardsSpread reports whether the function holding node spreads the
+// variadic name into a call.
+func (c *Ctx) forwardsSpread(node *ts.Node, name string) bool {
+	fn := node
+	for fn != nil && !c.Lang.FunctionKinds[fn.Kind()] {
+		fn = fn.Parent()
+	}
+	if fn == nil {
+		return false
+	}
+	forwarded := false
+	lang.EachNamed(fn, func(n *ts.Node) {
+		if n.Kind() == "variadic_argument" && n.NamedChildCount() == 1 && c.Text(n.NamedChild(0)) == name {
+			forwarded = true
+		}
+	})
+
+	return forwarded
 }
 
 // goTestReadsSource flags tests that read repository source, config, or docs.

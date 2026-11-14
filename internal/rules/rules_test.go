@@ -1122,3 +1122,28 @@ func TestInlineIgnores(t *testing.T) {
 		})
 	}
 }
+
+func TestGoTypeAnySkipsConstraintsAndForwardedVariadics(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want int
+	}{
+		{name: "generic constraint", body: "func F[V any](v V) V { return v }", want: 0},
+		{name: "variadic forwarded whole", body: "func F(args ...any) { fmt.Println(args...) }", want: 0},
+		{name: "variadic read but not forwarded", body: "func F(args ...any) int { return len(args) }", want: 1},
+		{name: "parameter", body: "func F(v any) any { return v }", want: 2},
+		{name: "empty interface", body: "func F(v interface{}) {}", want: 1},
+		{name: "constraint beside a parameter", body: "func F[V any](v any) {}", want: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			src := "package p\n\n" + tc.body + "\n"
+			if got := countRule(findingsOf(t, "a.go", src, true), "go/type-any"); got != tc.want {
+				t.Errorf("go/type-any hits = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
