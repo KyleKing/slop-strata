@@ -15,6 +15,9 @@ import (
 // idLen is how many hex characters of the hash a finding ID keeps.
 const idLen = 10
 
+// anchorLen is how many hex characters of the line hash a finding keeps.
+const anchorLen = 8
+
 // funcSpan is one named function's line range.
 type funcSpan struct {
 	name  string
@@ -57,16 +60,28 @@ func (c *Ctx) setScopes(findings []Finding) {
 		return
 	}
 	spans := c.funcSpans()
+	lines := strings.Split(string(c.Src), "\n")
 	for i := range findings {
 		findings[i].Scope = scopeAt(spans, findings[i].Line)
+		if n := findings[i].Line; n >= 1 && n <= len(lines) {
+			findings[i].Anchor = anchorOf(lines[n-1])
+		}
 	}
 }
 
+// anchorOf hashes a source line's trimmed text.
+func anchorOf(line string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(line)))
+
+	return hex.EncodeToString(sum[:])[:anchorLen]
+}
+
 // FindingID names a finding by what survives a line move: the rule, the path,
-// the enclosing function, the matched text, and which of the findings sharing
-// those four it is, counted from the top of the file.
-func FindingID(rule, path, scope, match string, occurrence int) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{rule, path, scope, match, strconv.Itoa(occurrence)}, "\x00")))
+// the enclosing function, the matched text, the text of its line, and which of
+// the findings sharing those five it is, counted from the top of the file.
+func FindingID(rule, path, scope, match, anchor string, occurrence int) string {
+	parts := []string{rule, path, scope, match, anchor, strconv.Itoa(occurrence)}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 
 	return hex.EncodeToString(sum[:])[:idLen]
 }
@@ -82,8 +97,8 @@ func Identify(path string, fs []Finding) []Finding {
 	seen := map[string]int{}
 	for _, i := range order {
 		f := &out[i]
-		key := strings.Join([]string{f.Rule, f.Scope, f.Match}, "\x00")
-		f.ID = FindingID(f.Rule, path, f.Scope, f.Match, seen[key])
+		key := strings.Join([]string{f.Rule, f.Scope, f.Match, f.Anchor}, "\x00")
+		f.ID = FindingID(f.Rule, path, f.Scope, f.Match, f.Anchor, seen[key])
 		seen[key]++
 	}
 

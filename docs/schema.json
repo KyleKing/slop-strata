@@ -96,7 +96,7 @@
       "required": ["id", "path", "rule", "line", "new"],
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, enclosing function, matched text, and an occurrence index. Survives line moves."},
+        "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, enclosing function, matched text, line text, and an occurrence index. Survives line moves."},
         "path": {"type": "string"},
         "rule": {"type": "string"},
         "match": {"type": "string"},
@@ -307,10 +307,11 @@
               "required": ["rule", "id", "line"],
               "properties": {
                 "rule": {"type": "string"},
-                "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, scope, matched text, and an occurrence index. Survives line moves."},
+                "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, scope, matched text, line text, and an occurrence index. Survives line moves."},
                 "line": {"type": "integer"},
                 "match": {"type": "string"},
                 "scope": {"type": "string", "description": "The enclosing function, when the rule reads one."},
+                "anchor": {"type": "string", "description": "Eight hex characters hashed from the trimmed text of the finding's line. Part of the id."},
                 "note": {"type": "string"}
               }
             }

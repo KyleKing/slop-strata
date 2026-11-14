@@ -1006,6 +1006,20 @@ func TestFindingIDsSurviveLineMovesAndBreakTies(t *testing.T) {
 	if renamed := at("b.py", body); renamed[0].ID == base[0].ID {
 		t.Errorf("the same hit in another path shares id %s", renamed[0].ID)
 	}
+	newHit := "def f(x):\n    try:\n        k(x)\n    except KeyError:\n        pass\n"
+	above := at("a.py", newHit+body[len("def f(x):\n"):])
+	if len(above) != 3 {
+		t.Fatalf("want three findings with a hit added above, got %d", len(above))
+	}
+	ids := map[string]bool{}
+	for _, f := range above {
+		ids[f.ID] = true
+	}
+	for _, f := range base {
+		if !ids[f.ID] {
+			t.Errorf("id %s of the hit on line %d changed when a hit with other text landed above it", f.ID, f.Line)
+		}
+	}
 }
 
 type ignoreCase struct {

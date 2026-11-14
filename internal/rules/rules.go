@@ -44,7 +44,10 @@ type Finding struct {
 	Note  string `json:"note,omitempty"`
 	Match string `json:"match,omitempty"`
 	Scope string `json:"scope,omitempty"`
-	Line  int    `json:"line"`
+	// Anchor hashes the trimmed text of the finding's line, so an ID keeps to its line when a
+	// hit with the same rule, scope, and match appears above it.
+	Anchor string `json:"anchor,omitempty"`
+	Line   int    `json:"line"`
 }
 
 // Ctx is what a per-blob rule sees.

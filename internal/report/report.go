@@ -270,7 +270,8 @@ var Docs = map[string]string{
 		"are not the corpus the 80% bar is set on.",
 	"findings": "New rule hits attributable to this change, after the baseline, ignored, and labeled " +
 		"hits and the pre-existing hits are excluded. Each has an id, a short hash of the rule, path, " +
-		"enclosing function, and matched text, so it survives line moves, and a scope naming the function. " +
+		"enclosing function, matched text, and line text, so it survives line moves and new hits above it, and " +
+		"a scope naming the function. Editing the line changes the id. " +
 		"To suppress a hit inline, write slop-strata:ignore RULE-ID REASON in a comment on its line or the " +
 		"line above, in the file's comment syntax: // or # in code, # in TOML and YAML, and an HTML comment " +
 		"in Markdown outside code blocks. In Go, //nolint:errcheck // REASON also suppresses go/silent-error. " +
