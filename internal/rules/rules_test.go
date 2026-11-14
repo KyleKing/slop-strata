@@ -611,6 +611,11 @@ func staleProseCases() []crossCase {
 			rule: stale, want: 0,
 		},
 		{
+			name:  "name inside a fenced code block stays quiet",
+			files: map[string]string{"README.md": "Example:\n\n```go\nfetchRecords()\n```\n"},
+			rule:  stale, want: 0,
+		},
+		{
 			name:  "name after a negator stays quiet",
 			files: map[string]string{"README.md": "Use `httputil`, not\n`http_util`.\n"},
 			rule:  stale, want: 0,

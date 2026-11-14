@@ -23,7 +23,7 @@ func CollectText(path string, content []byte) *Fingerprint {
 	fp := &Fingerprint{}
 	switch lang.TextKind(path) {
 	case lang.TextProse:
-		fp.ProseRefs = proseTokens(string(content), 0)
+		fp.ProseRefs = proseTokens(outsideFences(string(content)), 0)
 	case lang.TextConfig:
 		fp.ConfigKeys = configKeys(path, content)
 	}
@@ -126,6 +126,26 @@ func stringLeaves(v any) []string {
 	}
 
 	return out
+}
+
+// outsideFences blanks the lines of fenced code blocks, which hold sample code
+// and command output rather than claims about the tree, and keeps line numbers.
+func outsideFences(text string) string {
+	lines := strings.Split(text, "\n")
+	fenced := false
+	for i, l := range lines {
+		if isFence(l) {
+			fenced = !fenced
+			lines[i] = ""
+
+			continue
+		}
+		if fenced {
+			lines[i] = ""
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // collectProse pulls code-shaped names out of a comment node's text.
