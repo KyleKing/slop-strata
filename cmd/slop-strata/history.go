@@ -149,14 +149,17 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 		viral: map[string]*viralRow{}, ruleFirst: map[string]string{}, liveMass: map[string]float64{},
 		gaps: newScoreGaps(),
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var window []vcs.CommitRecord
 	files := 0
-	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
+	for item := range s.streamLog(ctx, vcs.LogOptions{
 		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
 	}) {
-		if err != nil {
-			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", err), reader.Close())
+		if item.err != nil {
+			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", item.err), reader.Close())
 		}
+		rec := item.rec
 		window = append(window, rec)
 		files += len(rec.Files)
 		if len(window) < windowCommits && files < windowBlobs {
@@ -166,6 +169,9 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 			return nil, nil, errors.Join(err, reader.Close())
 		}
 		window, files = window[:0], 0
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("walking history: %w", err), reader.Close())
 	}
 	if err := s.walkWindow(ctx, hw, window, reader); err != nil {
 		return nil, nil, errors.Join(err, reader.Close())
@@ -180,6 +186,31 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 	res.Hotspots = hotspotScores(res.Lineage, hw.liveMass)
 
 	return res, hw.gaps, nil
+}
+
+// logItem is one step of a log walk: a commit, or the error that ended it.
+type logItem struct {
+	err error
+	rec vcs.CommitRecord
+}
+
+// streamLog runs a log walk on its own goroutine, a window ahead of the caller,
+// so git keeps writing commits while the caller scores the ones it has. The walk
+// stops when ctx is canceled.
+func (s *session) streamLog(ctx context.Context, opts vcs.LogOptions) <-chan logItem {
+	out := make(chan logItem, windowCommits)
+	go func() {
+		defer close(out)
+		for rec, err := range s.ops.LogHistory(ctx, s.root, opts) {
+			select {
+			case out <- logItem{rec: rec, err: err}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out
 }
 
 // walkWindow scores a window's blobs, then applies its commits in order.
