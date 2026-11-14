@@ -40,9 +40,8 @@ type Baseline map[string]bool
 // baselinePerm is the mode for the baseline file: owner-only.
 const baselinePerm = 0o600
 
-// ReadBaseline loads a baseline file; a missing file is an empty baseline. A
-// file in an older format is an error, since reading it as empty would report
-// every accepted finding as new.
+// ReadBaseline loads a baseline file; a missing file is empty.
+// An older format is an error, so accepted findings never read as new.
 func ReadBaseline(path string) (Baseline, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // the path is the repo's own config'd baseline file
 	if err != nil {

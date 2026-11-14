@@ -99,9 +99,7 @@ func lastSegment(callee string) string {
 	return callee[strings.LastIndexByte(callee, '.')+1:]
 }
 
-// goTypeAny flags `any` and the empty `interface{}` in signatures: the type
-// system has stopped describing what flows through. A generic constraint and a
-// variadic `...any` the function forwards whole are not flagged.
+// goTypeAny flags `any` and the empty `interface{}` in signatures, except generic constraints and spread variadics.
 func goTypeAny(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Go {
 		return

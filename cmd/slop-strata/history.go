@@ -135,7 +135,7 @@ type historyWalk struct {
 	pairs     map[string]*pairRow
 	viral     map[string]*viralRow
 	ruleFirst map[string]string
-	liveMass  map[string]float64 // path -> mass of its latest after-blob
+	liveMass  map[string]float64
 	osc       *oscillation
 	gaps      *scoreGaps
 	progress  *progress
@@ -638,9 +638,7 @@ func printHistory(w io.Writer, res *historyResult) {
 	}
 }
 
-// printDeaths renders how young lines died: shares of the churn_30d lines per
-// directory with enough of them, plus an overall row. The self column drops out
-// when the window has one author, since it would read 1.00 everywhere.
+// printDeaths renders the young-death shares per directory. The self column drops out for a one-author window.
 func printDeaths(w io.Writer, res *historyResult) {
 	lin := res.Lineage
 	if lin.Deaths30.Total == 0 {

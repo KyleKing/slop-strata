@@ -26,9 +26,7 @@ type Counts struct {
 	Skipped    int        `json:"skipped"`
 }
 
-// Suppressed tallies the findings a run set aside, so a hit that never printed
-// is still counted: accepted in the baseline, ignored inline with a reason, or
-// labeled a false positive.
+// Suppressed tallies the findings a run set aside: baseline, inline ignore, or false-positive label.
 type Suppressed struct {
 	Baseline  int `json:"baseline"`
 	Ignored   int `json:"ignored"`
@@ -76,9 +74,7 @@ func NewEnvelope(command, repo string, result any, counts Counts, warnings []str
 	}
 }
 
-// WarnCounts prints a line to w when a run skipped or failed to parse a file,
-// and another when it set findings aside, so text output says what its numbers
-// leave out.
+// WarnCounts prints a line when a run skipped or failed a file, and another when it set findings aside.
 func WarnCounts(w io.Writer, c Counts) {
 	if c.Skipped != 0 || c.Errors != 0 {
 		Fprintf(w, "slop-strata: %d skipped, %d with parse errors (--json names each)\n", c.Skipped, c.Errors)

@@ -64,7 +64,7 @@ type args struct {
 type command struct {
 	name       string
 	summary    string
-	positional string // placeholder for the arguments after the name, empty when it takes none
+	positional string
 	flags      []string
 }
 

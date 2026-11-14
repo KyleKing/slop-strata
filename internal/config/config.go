@@ -110,9 +110,8 @@ type Config struct {
 	// the repository treats as application config. Only they feed the
 	// stale-config read, so tool and CI config stays out of it.
 	ConfigPaths []string `toml:"config_paths"`
-	// MaxFileBytes skips blobs above the cap; minified bundles and vendored
-	// output trip it and are reported by name rather than parsed. History
-	// tracks no lines of a file while it is over the cap.
+	// MaxFileBytes skips blobs above the cap and names them in a warning.
+	// History tracks no lines of a file while it is over the cap.
 	MaxFileBytes int64 `toml:"max_file_bytes"`
 	// MinifiedAvgLine marks a blob minified when its average line length
 	// passes this; those are skipped with the same warning as oversize files.

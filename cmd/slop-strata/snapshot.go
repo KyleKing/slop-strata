@@ -177,9 +177,8 @@ type touchCounts struct {
 	files map[string]int
 }
 
-// snapshotTouches counts the commits that touched each directory and file in
-// the recentSnapshotDays days ending at the scored revision's commit date, so an
-// old revision reads its own recent history.
+// snapshotTouches counts the commits touching each directory and file in the
+// recentSnapshotDays before the scored commit.
 func (s *session) snapshotTouches(ctx context.Context, rev string) (touchCounts, error) {
 	cmd := exec.CommandContext(ctx, "git", "log", "-1", "--format=%ct", rev) // #nosec G204 -- rev is the caller's
 	cmd.Dir = s.root
@@ -354,10 +353,8 @@ func btoi(b bool) int {
 	return 0
 }
 
-// astGrepFindings folds external ast-grep pack findings into the result,
-// suppressed by the baseline and the labels file. Inline ignores do not reach
-// them, since ast-grep has its own suppression comment. Packs scan the working tree, so they only
-// apply when the scored revision is what's checked out.
+// astGrepFindings folds ast-grep findings in, set aside by the baseline and labels but not by inline ignores.
+// Packs scan the working tree, so they apply only when the scored revision is checked out.
 func (s *session) astGrepFindings(ctx context.Context, rev string, res *snapshotResult,
 	live map[string][]rules.Finding, sup *rules.Suppressor,
 ) {
@@ -377,9 +374,8 @@ func (s *session) astGrepFindings(ctx context.Context, rev string, res *snapshot
 	}
 }
 
-// writeBaseline records the current findings as the accepted baseline. Findings
-// ignored inline or labeled false positives stay out, so removing the ignore or
-// the label brings the hit back.
+// writeBaseline records the current findings. Ignored and fp-labeled ones stay out,
+// so removing the mark brings the hit back.
 func (s *session) writeBaseline(reports []*engine.FileReport) error {
 	labels, err := s.readLabels()
 	if err != nil {

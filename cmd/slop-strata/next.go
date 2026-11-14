@@ -33,11 +33,7 @@ type nextItem struct {
 	endLine int
 }
 
-// nextItems applies the worth-a-look rule to a scored change and returns up to
-// nextLimit items. The change is worth a look exactly when the list is not
-// empty. Items come in a fixed order: production functions over CC 10 that grew
-// or were added, by mass grown, then new findings by path and line, then a
-// stated intent the numbers argue against.
+// nextItems returns up to nextLimit items: grown functions over CC 10, new findings, then a contradicted intent.
 func nextItems(res *changeResult) []nextItem {
 	items := []nextItem{}
 	for _, f := range res.grownFuncs {

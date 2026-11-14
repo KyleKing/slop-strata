@@ -76,9 +76,8 @@ func anchorOf(line string) string {
 	return hex.EncodeToString(sum[:])[:anchorLen]
 }
 
-// FindingID names a finding by what survives a line move: the rule, the path,
-// the enclosing function, the matched text, the text of its line, and which of
-// the findings sharing those five it is, counted from the top of the file.
+// FindingID names a finding by what survives a line move: rule, path, scope, match, line text,
+// and its order among findings sharing those.
 func FindingID(rule, path, scope, match, anchor string, occurrence int) string {
 	parts := []string{rule, path, scope, match, anchor, strconv.Itoa(occurrence)}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))

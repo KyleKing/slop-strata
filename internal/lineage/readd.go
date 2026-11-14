@@ -11,9 +11,8 @@ import (
 // counts as the line coming back.
 const ReaddDays = 30
 
-// ReaddTextFloor is the fewest trimmed bytes a line needs before an added line
-// matching a dead one reads as a re-addition. Below it, idioms like "return nil"
-// recur across a file by habit.
+// ReaddTextFloor is the fewest trimmed bytes a line needs to read as a re-addition.
+// Shorter idioms like "return nil" recur by habit.
 const ReaddTextFloor = 30
 
 // pendingDeath is a young death still open to a re-addition, credited to the
@@ -129,9 +128,7 @@ func (r *readdTracker) match(path, line string, day int, revert bool) {
 	}
 }
 
-// matchReadds closes the open deaths a commit's added lines bring back. It runs
-// before the commit's own deaths open, so a line removed and added in one commit
-// is never a re-addition, and a moved line is never one either.
+// matchReadds runs before the commit's own deaths open, so a line removed and added in one commit is no re-addition.
 func (w *Walker) matchReadds(rec vcs.CommitRecord, mv *moves, day int, revert bool) {
 	w.readd.evict(day)
 	if len(w.readd.pending) == 0 {
@@ -150,10 +147,8 @@ func (w *Walker) matchReadds(rec vcs.CommitRecord, mv *moves, day int, revert bo
 	}
 }
 
-// foldReadds adds the re-addition tallies of the deaths that had ReaddDays of
-// walk after them to their directories' deaths. A death nearer the walk's end
-// is left out of every count, the way survival leaves out a line too young to
-// have reached its horizon.
+// foldReadds counts only deaths that had ReaddDays of walk after them,
+// the way survival drops lines too young for a horizon.
 func (w *Walker) foldReadds() {
 	for dir, byDay := range w.readd.days {
 		for day, t := range byDay {

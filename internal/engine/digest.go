@@ -53,9 +53,8 @@ func grammarModules() string {
 	return b.String()
 }
 
-// pathClass names the slice of paths whose findings a blob's content shares: a
-// language and whether the path is a test, which test-only rules key off, or a
-// text kind and the shape of the path its fingerprint reads.
+// pathClass names the slice of paths whose findings a blob shares: a language and test flag,
+// or a text kind and the path shape its fingerprint reads.
 func pathClass(path string) string {
 	if l := lang.ByPath(path); l != nil {
 		if l.IsTestFile(path) {

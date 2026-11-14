@@ -102,12 +102,7 @@ func funcsOf(m *structure.FileMetrics) []structure.FuncMetrics {
 	return m.Funcs
 }
 
-// pairFuncs matches every function of a change across its two sides. A function
-// pairs with the same key in its own file's before side first. One left over
-// then pairs with a removed function of any file that has the same name,
-// complexity, and size, so code moved between files reads as moved. Each
-// before-side function pairs at most once, so grown minus removed over the
-// pairs equals the change in total mass exactly.
+// pairFuncs pairs each before-side function at most once, so grown minus removed equals the net mass change.
 func pairFuncs(files []funcSides) []funcChange {
 	var changes, orphans, removed []funcChange
 	for _, f := range files {
@@ -227,10 +222,7 @@ func totalsByPath(changes []funcChange) (map[string]massTotals, massTotals, mass
 	return byPath, prod, tests
 }
 
-// highFuncChanges counts the production functions over the CC limit: added when
-// they match nothing on the before side, touched when they match and their
-// shape changed, gone when a before-side function over the limit has no match
-// after. A moved function is none of these.
+// highFuncChanges counts production functions over the CC limit that were added, touched, or gone. A move is none.
 func highFuncChanges(changes []funcChange) funcCounts {
 	var c funcCounts
 	for _, ch := range changes {

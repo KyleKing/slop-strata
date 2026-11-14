@@ -26,19 +26,19 @@ func (d Dir) moved() bool {
 
 // Fields is what a reading is built from.
 type Fields struct {
-	LeadHighFunc    string // the function over CC 10 that grew most, already formatted
+	LeadHighFunc    string
 	Intent          intent.Intent
 	Dirs            []Dir
-	MassRemoved     float64 // gross mass the change removed
+	MassRemoved     float64
 	ErosionBefore   float64
 	ErosionAfter    float64
-	FuncHighAdded   int     // functions over CC 10 that the change introduced
-	FuncHighTouched int     // functions over CC 10 that existed before and changed
-	FuncHighGone    int     // functions over CC 10 that disappeared
-	MassGrown       float64 // gross mass the change added
+	FuncHighAdded   int
+	FuncHighTouched int
+	FuncHighGone    int
+	MassGrown       float64
 	FindingsNew     int
 	FindingsGone    int
-	TestsOnly       bool // the figures are test mass because no production mass moved
+	TestsOnly       bool
 }
 
 // Disagreement reports whether the numbers argue against the stated intent.

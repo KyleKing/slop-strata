@@ -21,10 +21,8 @@ const (
 	ruleXSpentTest      = "x/spent-test"
 )
 
-// crossRules lists the rules the cross-file passes and the path-only rules
-// emit with their tier. CrossFile and PathFindings gate on it through
-// crossEnabled, so a rule runs in the tier Catalog lists it under. Per-blob
-// rules come from the registry.
+// crossRules lists the cross-file and path-only rules with their tier.
+// CrossFile and PathFindings gate on it through crossEnabled.
 var crossRules = []RuleInfo{ //nolint:gochecknoglobals // a fixed vocabulary
 	{ID: ruleXCloneFunction, Experimental: true},
 	{ID: ruleXCouldBePrivate, Experimental: true},

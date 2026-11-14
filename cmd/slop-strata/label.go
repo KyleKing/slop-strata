@@ -30,9 +30,7 @@ func checkLabelArgs(a *args) error {
 	return nil
 }
 
-// labelCmd records a verdict on a finding of the scored tree, or lists the
-// verdicts. It runs every rule, experimental ones included, because the labels
-// exist to measure them.
+// labelCmd runs every rule, experimental ones included, because the labels exist to measure them.
 func (s *session) labelCmd(ctx context.Context, a *args, w io.Writer) error {
 	labels, err := s.readLabels()
 	if err != nil {

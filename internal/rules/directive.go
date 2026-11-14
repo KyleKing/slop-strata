@@ -99,9 +99,8 @@ func (c *Ctx) commentDirectives() []Directive {
 	return c.directives
 }
 
-// textDirectives reads the directives of a prose or config file: HTML comments
-// in Markdown outside code, and `#` or `//` comments in TOML, YAML, and Pkl.
-// JSON has no comments.
+// textDirectives reads the directives of a prose or config file: HTML comments in Markdown outside code,
+// and # or // comments in TOML, YAML, and Pkl.
 func textDirectives(path string, content []byte) []Directive {
 	re := hashIgnore
 	prose := lang.TextKind(path) == lang.TextProse

@@ -109,12 +109,7 @@ type Survival struct {
 	Provisional bool        `json:"provisional,omitempty"`
 }
 
-// Deaths counts the lines that died within 30 days of being written, so Total
-// equals churn_30d. Self, Pure, WholeFile, and InRevert are independent splits
-// of Total, and the three age buckets partition it. ByClass is birth class,
-// then the class of the commit that removed the line. ReaddAtRisk counts the
-// deaths of lines long enough to match that had 30 days of walk left, and
-// Readded and ReaddedByRevert split off the ones a later commit added back.
+// Deaths counts the lines that died within 30 days of being written, so Total equals churn_30d.
 type Deaths struct {
 	ByClass         map[string]map[string]int `json:"by_class,omitempty"`
 	Total           int                       `json:"total"`
@@ -202,18 +197,17 @@ func (d *Deaths) merge(o Deaths) {
 
 // DirStats is a directory's aggregate over the range.
 type DirStats struct {
-	Deaths30 Deaths `json:"deaths_30d"` // how the churn_30d lines died
+	Deaths30 Deaths `json:"deaths_30d"`
 	Added    int    `json:"added"`
 	Removed  int    `json:"removed"`
-	Churn14  int    `json:"churn_14d"` // added lines killed within 14 days
-	Churn30  int    `json:"churn_30d"` // within 30
-	Rework   int    `json:"rework"`    // young lines killed by fix commits
+	Churn14  int    `json:"churn_14d"`
+	Churn30  int    `json:"churn_30d"`
+	Rework   int    `json:"rework"`
 	Touches  int    `json:"touches"`
 }
 
-// TestSurvival is one author class's share of test files deleted within 30
-// and 90 days of being added. Only adds observed inside the walked range
-// count; a test file older than the range has no measurable birth.
+// TestSurvival is one author class's share of test files deleted within 30 and 90 days of being added.
+// Only adds observed inside the walked range count.
 type TestSurvival struct {
 	S30         *float64 `json:"s_30d"`
 	S90         *float64 `json:"s_90d"`
@@ -499,9 +493,8 @@ func (mv *moves) take(path string, idx int) (tag, bool) {
 	return t, ok
 }
 
-// dropFile stops tracking a modified file whose diff came with no hunks, which
-// happens past the size cap. Its lines leave without dying and survival
-// censors them at this day. The lines the file has afterward start unattributed.
+// dropFile stops tracking a modified file whose diff has no hunks, as past the size cap.
+// Its lines leave without dying and survival censors them at this day.
 func (w *Walker) dropFile(f *vcs.CommitFile, day int) {
 	tagPath := f.Path
 	if f.Status == vcs.StatusRenamed && f.OldPath != "" {
@@ -608,9 +601,8 @@ func lineAt(lines []string, i int) string {
 	return ""
 }
 
-// insertTags builds the line tags a hunk adds: a moved line claims its stashed
-// tag, anything else is a birth at this commit. It answers the tags and the
-// true birth count for the cohort tally.
+// insertTags builds the tags a hunk adds: a moved line claims its stashed tag, anything else is a birth.
+// It answers the tags and the true birth count.
 func insertTags(edit hunkEdit, cohort, birth int, klass string,
 	rec vcs.CommitRecord, mv *moves,
 ) (fileLines, int) {

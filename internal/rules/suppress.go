@@ -1,8 +1,6 @@
 package rules
 
-// Suppressor sets findings aside and counts why: an inline ignore with a
-// reason, a false-positive label, or the baseline. Each finding counts once,
-// under the first reason in that order.
+// Suppressor sets findings aside and counts each once: ignore first, then label, then baseline.
 type Suppressor struct {
 	baseline Baseline
 	labels   Labels

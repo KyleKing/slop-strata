@@ -286,10 +286,8 @@ func proseTokens(text string, baseLine int) map[string]int {
 	return out
 }
 
-// lineTokens pulls the code-shaped tokens from one line: backticked spans,
-// call shapes (name(), dotted paths, camelCase and snake_case words. Bare
-// PascalCase words are left out — proper nouns like GitHub share that shape.
-// A span that opens its line reads its negator from the end of prev.
+// lineTokens pulls code-shaped tokens from a line: backticked spans, call shapes, camelCase and snake_case words.
+// A span that opens its line reads its negator from the end of prev, and bare PascalCase words are left out.
 func lineTokens(line, prev string) []string {
 	var toks []string
 	var b strings.Builder
@@ -355,9 +353,8 @@ func isWordRune(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_'
 }
 
-// codeToken keeps a backticked span only when it could not be a plain English
-// word or a command name: it must carry a dot, an underscore, a capital, or
-// digits.
+// codeToken keeps a backticked span only when it could not be a plain word or command name:
+// it carries a dot, an underscore, a capital, or digits.
 func codeToken(tok string) string {
 	tok = strings.TrimSuffix(tok, "()")
 	if len(tok) < 3 || allCaps(tok) || notSymbol[tok] || !codeShape(tok) || !letterLead(tok) {

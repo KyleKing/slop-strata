@@ -101,9 +101,7 @@ func proseExempt(path string) bool {
 	return slices.Contains(dirs, "adr")
 }
 
-// proseIndex gathers what a prose token can name: declared, referenced, and
-// imported names, plus short string contents, which carry config keys and
-// struct-tag keys.
+// proseIndex gathers what a prose token can name: declared, referenced, and imported names, and short string contents.
 func proseIndex(blobs []BlobPrint) map[string]bool {
 	names := map[string]bool{}
 	for _, b := range blobs {

@@ -75,9 +75,7 @@ func (o *oscillation) rename(oldPath, path string) {
 	}
 }
 
-// observe records the day on every function of a modified file whose lines a
-// hunk touched and that the before side already had, once per qualified name
-// however many same-named functions share it.
+// observe records the day on each function a hunk touched that the before side had, once per qualified name.
 func (o *oscillation) observe(f *vcs.CommitFile, before, after *engine.FileReport, day int) {
 	if before == nil || before.Skipped != "" || len(f.Hunks) == 0 {
 		return
@@ -107,9 +105,8 @@ func keySet(keys []string) map[string]bool {
 	return set
 }
 
-// touched reports whether a hunk adds a line inside the function or removes one
-// from between its lines. A hunk with no new lines sits between lines NewStart-1
-// and NewStart. Hunks arrive in file order.
+// touched reports whether a hunk adds a line inside fn or removes one from between its lines.
+// A hunk with no new lines sits between lines NewStart-1 and NewStart, and hunks arrive in file order.
 func touched(hunks []vcs.DiffHunk, fn structure.FuncMetrics) bool {
 	last := func(h vcs.DiffHunk) int { return h.NewStart + max(h.NewLines, 1) - 1 }
 	i := sort.Search(len(hunks), func(i int) bool { return last(hunks[i]) >= fn.StartLine })
