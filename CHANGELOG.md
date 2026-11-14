@@ -1,3 +1,53 @@
+## v0.13.0 (2026-11-14)
+
+### Feat
+
+- **rules**: suppress a finding inline with slop-strata:ignore or nolint and a reason
+- **rules**: give findings stable ids, key the baseline by id, and record verdicts in a labels file
+- **history**: count functions whose body changed in three commits within 14 days
+- **history**: count young deaths that a later commit added back to the same file
+- **history**: show commits done out of the total on a terminal after two seconds
+- **history**: print young-death shares per directory and hide self on solo-author windows
+- **history**: count how young lines die by author, edit shape, file, age, and revert
+- **snapshot**: rank by recent touches times mass, list the heaviest functions, and drop --context
+- **change**: rank a next list in the JSON and attach each function's source with --context
+- **change**: add --brief and --exit-code for hooks and agent loops
+- **change**: hide one-directory tables, all-zero columns, and unsupported-file skips from the default text
+- **change**: name the functions a change grew, report gross mass per function, split tests from production, and compute directory erosion
+
+### Fix
+
+- **rules**: skip generic constraints and spread variadics in go/type-any
+- **rules**: write the baseline and labels files through a temp file and rename
+- **rules**: hash the finding's line text into its id so a hit added above keeps the old id
+- **history**: check a death's age when matching a re-addition
+- **change**: sum mass in sorted path order so the JSON repeats to the last digit
+- **history**: key oscillating functions by their parent-qualified names
+- **history**: drop a file's tracked lines without deaths when it crosses max_file_bytes
+- **change**: pass last-ref findings through the baseline, labels, and ignores
+- **snapshot**: rewrite an old-format baseline instead of reading it first
+- **rules**: skip fenced code blocks when reading prose for stale names
+- **rules**: resolve types, struct-tag keys, and negated names in stale-prose and name the narrating phrase
+- **deps**: bump aragonite to v1.17.0 for the long-lived blob reader and size-capped history diffs
+- **cache**: key text fingerprints by the extension and manifest name they read
+- **history**: order coupling pairs and hotspot sums deterministically
+- **change**: name the busiest directory and stop reading docs and perf as test and refactor
+
+### Refactor
+
+- **rules**: make the labels format error private since nothing checks it
+- **rules**: gate cross-file and path rules on the catalog's tier table
+
+### Perf
+
+- **history**: leave cached fingerprints undecoded on lookups
+- **history**: read the log a window ahead while scoring
+- **history**: score blobs in windows of commits with one cache transaction each way
+- **history**: answer cached and path-skipped blobs before reading them
+- **history**: read every commit's blobs through one cat-file process
+- **history**: diff files over max_file_bytes as binary instead of line by line
+- **history**: rewrite a file's line tags in one pass per commit
+
 ## v0.12.0 (2026-11-11)
 
 ### Feat
