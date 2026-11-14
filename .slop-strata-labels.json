@@ -1,0 +1,554 @@
+{
+  "labels": [
+    {
+      "id": "afcb54c395",
+      "rule": "go/silent-error",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/change.go",
+      "match": "countTouches(commits)",
+      "note": "the blank target is a map, not an error",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "0f1ce9857a",
+      "rule": "go/silent-error",
+      "verdict": "fp",
+      "path": "internal/rules/typescript.go",
+      "match": "expectChain(ctx, c)",
+      "note": "the blank target is a node, not an error",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "7585d96fd9",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/change.go",
+      "match": "any",
+      "note": "generic constraint, not a loosened type",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "c6c039ec73",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/golden_test.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "0f353beeca",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/history.go",
+      "match": "any",
+      "note": "generic constraint, not a loosened type",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "03d5527760",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "variadic wrapper over fmt, which takes any",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "2684f9a4f6",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "envelope result holds a different type per command",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "6b105c52e6",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "variadic wrapper over fmt, which takes any",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "6dac8a576f",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "generic constraint, not a loosened type",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "b5a8b56d96",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "variadic wrapper over fmt, which takes any",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "c447e31a2b",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "envelope result holds a different type per command",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "f1ef3f3e85",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/report/report.go",
+      "match": "any",
+      "note": "envelope result holds a different type per command",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "0e6239c50e",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "17317a3c37",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "1e7a53cabe",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "53351b965d",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "634df8ce64",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "a4bfa33b9b",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "bff1c3d878",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "c222510fb4",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "d10a35e3e3",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "ece5e4463d",
+      "rule": "go/type-any",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "any",
+      "note": "decodes JSON of unknown shape",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "0c4b8a51d6",
+      "rule": "x/case-table",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/cli.go",
+      "match": "15 entries",
+      "note": "flag documentation, one entry per flag by design",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "3a9aa47552",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "cmd/slop-strata/change.go",
+      "match": "mapKeys",
+      "note": "report.SortedKeys duplicates mapKeys",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "c05e8b4a13",
+      "rule": "x/clone-function",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/change.go",
+      "match": "\u003canonymous\u003e",
+      "note": "sort comparators on different fields look alike once names are normalized",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "e50a6eb631",
+      "rule": "x/clone-function",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/funcdelta.go",
+      "match": "\u003canonymous\u003e",
+      "note": "sort comparators on different fields look alike once names are normalized",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "43493f70d0",
+      "rule": "x/clone-function",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/snapshot.go",
+      "match": "\u003canonymous\u003e",
+      "note": "sort comparators on different fields look alike once names are normalized",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "989e3e977d",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "internal/engine/engine_test.go",
+      "match": "countRule",
+      "note": "the same helper in two test packages",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "b099c48655",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "internal/report/report.go",
+      "match": "SortedKeys",
+      "note": "report.SortedKeys duplicates mapKeys",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "99ab370f38",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "internal/rules/golang.go",
+      "match": "\u003canonymous\u003e",
+      "note": "the go and ts test-reads-source scans repeat one callback",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "96c8b6351b",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "internal/rules/rules_test.go",
+      "match": "countRule",
+      "note": "the same helper in two test packages",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "9ee91c8714",
+      "rule": "x/clone-function",
+      "verdict": "tp",
+      "path": "internal/rules/typescript.go",
+      "match": "\u003canonymous\u003e",
+      "note": "the go and ts test-reads-source scans repeat one callback",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "372083203e",
+      "rule": "x/narrating-comment",
+      "verdict": "fp",
+      "path": "internal/lineage/lineage.go",
+      "match": "moved from",
+      "note": "describes what a moved line is, not a change",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "017d02eec3",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "user.go",
+      "note": "example file name",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "177978e4ba",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "my_go_template",
+      "note": "link text naming an external repository",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "276690e8c0",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "workflow_call",
+      "note": "GitHub Actions keyword, external to the tree",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "4fd6cab5cf",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "ServeHTTP",
+      "note": "naming example",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "76cb333fbf",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "TestQuit_RestoresCursorOnCtrlC",
+      "note": "example test name",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "8d115f1101",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "_skip_if_exists",
+      "note": "copier option, not a name in the tree",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "9ba5db9a4e",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "userID",
+      "note": "naming example",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "a95b53daab",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "AGENTS.local.md",
+      "note": "optional file named on purpose",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "b8c8e7eea9",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "tea.Model",
+      "note": "type from an external library",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "d1c7a190f5",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "_test",
+      "note": "package suffix convention",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "d2dc26bd40",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "GetHTTPClient",
+      "note": "naming example",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "de7304bfa4",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "AGENTS.md",
+      "match": "user_test.go",
+      "note": "example file name",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "7323061eb8",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "CONTRIBUTING.md",
+      "match": "project.toml",
+      "note": "example file name in the mise load order",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "837f90984a",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "CONTRIBUTING.md",
+      "match": "macOS",
+      "note": "proper noun",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "aa50f54c11",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "CONTRIBUTING.md",
+      "match": "user.toml",
+      "note": "example file name in the mise load order",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "36a04d8e8d",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "DESIGN.md",
+      "match": "read_text",
+      "note": "API that the rule watches for",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "3b86710f74",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "DESIGN.md",
+      "match": "my_go_template",
+      "note": "link text naming an external repository",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "4749e64302",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "DESIGN.md",
+      "match": "__all__",
+      "note": "Python language feature",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "c3b31c62e1",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "DESIGN.md",
+      "match": "arXiv",
+      "note": "proper noun",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "2ca170f93f",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "cmd/slop-strata/funcdelta.go",
+      "match": "sqrt",
+      "note": "math function in a formula",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "03a8346834",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "docs/examples/calcipy.md",
+      "match": "get_doc_subdir",
+      "note": "function in another repository",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "44341e4a54",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "docs/examples/calcipy.md",
+      "match": "collect_code_tags",
+      "note": "function in another repository",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "da5bfb4c6e",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "docs/examples/calcipy.md",
+      "match": "find_repo_root",
+      "note": "function in another repository",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "b691eda0a9",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "docs/go-best-practices.md",
+      "match": "user_test.go",
+      "note": "example file name",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "d128a216ed",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "docs/go-best-practices.md",
+      "match": "user.go",
+      "note": "example file name",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "03d71c07b2",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "internal/rules/astgrep.go",
+      "match": "camelCase",
+      "note": "naming style term",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "47f2dd1194",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "camelCase",
+      "note": "naming style term",
+      "tool_version": "0.11.4"
+    },
+    {
+      "id": "8ea0edd77b",
+      "rule": "x/stale-prose",
+      "verdict": "fp",
+      "path": "internal/rules/textprint.go",
+      "match": "snake_case",
+      "note": "naming style term",
+      "tool_version": "0.11.4"
+    }
+  ],
+  "version": 1
+}
