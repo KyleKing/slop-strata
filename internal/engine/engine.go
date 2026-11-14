@@ -31,6 +31,14 @@ type FileReport struct {
 	Metrics  structure.FileMetrics `json:"metrics,omitempty"`
 }
 
+// cachedScores is cached with the fingerprint left undecoded.
+type cachedScores struct {
+	Print    *rules.Fingerprint    `json:"-"`
+	Skipped  string                `json:"skipped,omitempty"`
+	Findings []rules.Finding       `json:"findings"`
+	Metrics  structure.FileMetrics `json:"metrics"`
+}
+
 // cached is the stored payload per blob: its analysis, or the reason its
 // content was skipped.
 type cached struct {
@@ -169,7 +177,7 @@ func (a *Analyzer) analyzeOne(ctx context.Context, r Request) *FileReport {
 		return rep
 	}
 	class := pathClass(r.Path)
-	if payload, ok := a.store.Get(ctx, r.SHA, class, a.analysis); ok && a.apply(rep, payload, r.Text) {
+	if payload, ok := a.store.Get(ctx, r.SHA, class, a.analysis); ok && a.apply(rep, payload, r.Text, true) {
 		return rep
 	}
 	reason, j := a.back(rep, r, class)
@@ -202,13 +210,14 @@ type Blob struct {
 }
 
 // Lookup answers the code blobs whose reports follow from their paths and the
-// cache alone, without their content, reading the cache in one transaction.
+// cache alone, without their content, reading the cache in one transaction. Its
+// reports carry no Print, which only the cross-file passes read.
 func (a *Analyzer) Lookup(ctx context.Context, blobs []Blob) map[Blob]*FileReport {
 	reqs := make([]Request, len(blobs))
 	for i, b := range blobs {
 		reqs[i] = Request{Path: b.Path, SHA: b.SHA}
 	}
-	out, pending := a.answerAll(ctx, reqs)
+	out, pending := a.answerAll(ctx, reqs, false)
 	for _, p := range pending {
 		delete(out, p.blob)
 	}
@@ -228,7 +237,7 @@ func (a *Analyzer) Prefetch(ctx context.Context, reqs []Request) {
 // answer on one worker per CPU. The calling goroutine alone reads and writes the
 // cache, one transaction each way, so no lock is needed.
 func (a *Analyzer) AnalyzeAll(ctx context.Context, reqs []Request) map[Blob]*FileReport {
-	out, pending := a.answerAll(ctx, reqs)
+	out, pending := a.answerAll(ctx, reqs, true)
 	var entries []cache.Entry
 	var jobs []*job
 	for _, p := range pending {
@@ -257,7 +266,8 @@ type pendingReq struct {
 
 // answerAll fills a report for every distinct request, answering what the path
 // and the cache can and listing the rest, whose reports still need content.
-func (a *Analyzer) answerAll(ctx context.Context, reqs []Request) (map[Blob]*FileReport, []pendingReq) {
+func (a *Analyzer) answerAll(ctx context.Context, reqs []Request, withPrint bool,
+) (map[Blob]*FileReport, []pendingReq) {
 	out := make(map[Blob]*FileReport, len(reqs))
 	var pending []pendingReq
 	var keys []cache.Key
@@ -277,7 +287,7 @@ func (a *Analyzer) answerAll(ctx context.Context, reqs []Request) (map[Blob]*Fil
 	payloads := a.store.GetMany(ctx, a.analysis, keys)
 	unanswered := pending[:0]
 	for i, p := range pending {
-		if payload, ok := payloads[keys[i]]; ok && a.apply(out[p.blob], payload, p.req.Text) {
+		if payload, ok := payloads[keys[i]]; ok && a.apply(out[p.blob], payload, p.req.Text, withPrint) {
 			continue
 		}
 		unanswered = append(unanswered, p)
@@ -378,10 +388,17 @@ func (a *Analyzer) front(r Request) (*FileReport, bool) {
 }
 
 // apply fills a report from a stored payload, a skip verdict or an analysis, and
-// reports whether the payload decoded.
-func (a *Analyzer) apply(rep *FileReport, payload []byte, text bool) bool {
+// reports whether the payload decoded. Without withPrint the fingerprint, most of
+// a payload's bytes, is skipped undecoded.
+func (a *Analyzer) apply(rep *FileReport, payload []byte, text, withPrint bool) bool {
 	var c cached
-	if err := json.Unmarshal(payload, &c); err != nil {
+	var err error
+	if withPrint {
+		err = json.Unmarshal(payload, &c)
+	} else {
+		err = json.Unmarshal(payload, (*cachedScores)(&c))
+	}
+	if err != nil {
 		return false
 	}
 	rep.Skipped = c.Skipped
