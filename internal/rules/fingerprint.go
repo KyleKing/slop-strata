@@ -71,6 +71,12 @@ type Fingerprint struct {
 	Ifaces      []IfaceDecl           `json:"ifaces,omitempty"`
 }
 
+// referenceKinds are the node kinds whose text counts as a use of a name.
+var referenceKinds = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
+	kindIdentifier: true, kindTypeIdentifier: true, "field_identifier": true, "property_identifier": true,
+	"shorthand_property_identifier": true, "shorthand_property_identifier_pattern": true,
+}
+
 // Collect builds a blob's fingerprint from its parsed tree.
 func Collect(ctx *Ctx) *Fingerprint {
 	fp := &Fingerprint{}
@@ -89,8 +95,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 			collectImports(ctx, n, fp)
 		case kind == "expression_statement" && ctx.Lang == lang.Python:
 			collectDocstring(ctx, n, fp)
-		case kind == kindIdentifier || kind == "field_identifier" || kind == "property_identifier" ||
-			kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern":
+		case referenceKinds[kind]:
 			if fp.Referenced == nil {
 				fp.Referenced = map[string]int{}
 			}

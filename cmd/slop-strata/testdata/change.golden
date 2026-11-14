@@ -102,7 +102,7 @@
     "findings": [
       {
         "line": 17,
-        "match": "narration",
+        "match": "no longer",
         "new": true,
         "path": "tally.go",
         "rule": "x/narrating-comment"

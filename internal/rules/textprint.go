@@ -189,15 +189,43 @@ func collectShortString(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 		return
 	}
 	text := strings.Trim(ctx.Text(n), "\"'`")
+	if p := n.Parent(); p != nil && p.Kind() == "field_declaration" {
+		for _, key := range structTagKeys(text) {
+			addString(fp, key, lineOf(n))
+		}
+
+		return
+	}
 	if text == "" || len(text) > maxStringLen || !keyShape(text) {
 		return
 	}
+	addString(fp, text, lineOf(n))
+}
+
+// addString records a string content with its first line.
+func addString(fp *Fingerprint, text string, line int) {
 	if fp.Strings == nil {
 		fp.Strings = map[string]int{}
 	}
 	if _, ok := fp.Strings[text]; !ok {
-		fp.Strings[text] = lineOf(n)
+		fp.Strings[text] = line
 	}
+}
+
+// structTag matches one `name:"value"` pair of a Go struct tag.
+var structTag = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*:"([^",]*)`) //nolint:gochecknoglobals // a compiled pattern
+
+// structTagKeys answers the field names a Go struct tag gives to encoders:
+// the value of each pair, without its options.
+func structTagKeys(tag string) []string {
+	var keys []string
+	for _, m := range structTag.FindAllStringSubmatch(tag, -1) {
+		if m[1] != "" && keyShape(m[1]) {
+			keys = append(keys, m[1])
+		}
+	}
+
+	return keys
 }
 
 // keyShape reports whether text can be a config key or module path segment.
@@ -224,12 +252,14 @@ var linkTarget = regexp.MustCompile( //nolint:gochecknoglobals // a compiled pat
 func proseTokens(text string, baseLine int) map[string]int {
 	out := map[string]int{}
 	text = linkTarget.ReplaceAllString(text, " ")
+	prev := ""
 	for i, l := range strings.Split(text, "\n") {
-		for _, tok := range lineTokens(l) {
+		for _, tok := range lineTokens(l, prev) {
 			if _, ok := out[tok]; !ok {
 				out[tok] = baseLine + i + 1
 			}
 		}
+		prev = l
 	}
 
 	return out
@@ -238,13 +268,14 @@ func proseTokens(text string, baseLine int) map[string]int {
 // lineTokens pulls the code-shaped tokens from one line: backticked spans,
 // call shapes (name(), dotted paths, camelCase and snake_case words. Bare
 // PascalCase words are left out — proper nouns like GitHub share that shape.
-func lineTokens(line string) []string {
+// A span that opens its line reads its negator from the end of prev.
+func lineTokens(line, prev string) []string {
 	var toks []string
 	var b strings.Builder
 	for i := 0; i < len(line); i++ {
 		if line[i] == '`' {
 			if end := strings.IndexByte(line[i+1:], '`'); end > 0 {
-				if tok := codeToken(line[i+1 : i+1+end]); tok != "" {
+				if tok := codeToken(line[i+1 : i+1+end]); tok != "" && !negatedBefore(lead(line[:i], prev)) {
 					toks = append(toks, tok)
 				}
 				i += end + 1
@@ -256,13 +287,51 @@ func lineTokens(line string) []string {
 	}
 	rest := b.String()
 	for _, loc := range wordRef.FindAllStringIndex(rest, -1) {
-		if loc[0] > 0 && rest[loc[0]-1] == ']' {
+		if loc[0] > 0 && (rest[loc[0]-1] == ']' || rest[loc[0]-1] == '-') {
 			continue
 		}
 		toks = appendToken(toks, strings.TrimSuffix(rest[loc[0]:loc[1]], "("))
 	}
 
 	return toks
+}
+
+// negators are the phrases that turn the name after them into a counterexample:
+// the prose says what not to write, so the name is not supposed to resolve.
+var negators = []string{ //nolint:gochecknoglobals // fixed vocabulary
+	"not", "never", "avoid", "instead of", "rather than",
+}
+
+// lead answers the text a span follows: its own line's head, or the previous
+// line when the span opens its line past any comment markers.
+func lead(head, prev string) string {
+	if strings.TrimLeft(head, " \t/#*>-") == "" {
+		return prev
+	}
+
+	return head
+}
+
+// negatedBefore reports whether the text ahead of a backticked span ends in a
+// negator, as in "(`httputil`, not `http_util`)".
+func negatedBefore(before string) bool {
+	before = strings.ToLower(strings.TrimRight(before, " \t"))
+	for _, neg := range negators {
+		if !strings.HasSuffix(before, neg) {
+			continue
+		}
+		head := before[:len(before)-len(neg)]
+		if head == "" || !isWordRune(head[len(head)-1]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isWordRune reports whether b can be part of an English word.
+func isWordRune(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_'
 }
 
 // codeToken keeps a backticked span only when it could not be a plain English

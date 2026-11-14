@@ -32,12 +32,16 @@ func narratingComment(ctx *Ctx, findings *[]Finding) {
 			return
 		}
 		text := ctx.Text(n)
-		switch {
-		case narrationWords.MatchString(text):
-			*findings = append(*findings, Finding{Rule: ruleXNarratingComment, Line: lineOf(n), Match: "narration"})
-		case ticketRef.MatchString(text) && !forwardWords.MatchString(text):
+		if phrase := narrationWords.FindString(text); phrase != "" {
 			*findings = append(*findings, Finding{
-				Rule: ruleXNarratingComment, Line: lineOf(n), Match: "ticket-as-history",
+				Rule: ruleXNarratingComment, Line: lineOf(n), Match: phrase, Note: "narrates the change that added it",
+			})
+
+			return
+		}
+		if ref := ticketRef.FindString(text); ref != "" && !forwardWords.MatchString(text) {
+			*findings = append(*findings, Finding{
+				Rule: ruleXNarratingComment, Line: lineOf(n), Match: ref, Note: "cites a ticket as history",
 			})
 		}
 	})

@@ -128,7 +128,8 @@
         },
         {
           "line": 17,
-          "match": "narration",
+          "match": "no longer",
+          "note": "narrates the change that added it",
           "rule": "x/narrating-comment"
         }
       ]

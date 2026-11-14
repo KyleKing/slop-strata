@@ -144,7 +144,9 @@ type hitCase struct {
 	path string
 	src  string
 	rule string
-	want int
+	// match, when set, is the Match text a finding of the rule must carry.
+	match string
+	want  int
 }
 
 func TestRuleHits(t *testing.T) {
@@ -156,9 +158,12 @@ func TestRuleHits(t *testing.T) {
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := countRule(findingsOf(t, tc.path, tc.src, true), tc.rule)
-			if got != tc.want {
+			fs := findingsOf(t, tc.path, tc.src, true)
+			if got := countRule(fs, tc.rule); got != tc.want {
 				t.Errorf("%s hits = %d, want %d", tc.rule, got, tc.want)
+			}
+			if tc.match != "" && !slices.ContainsFunc(fs, func(f rules.Finding) bool { return f.Match == tc.match }) {
+				t.Errorf("no finding matched %q: %+v", tc.match, fs)
 			}
 		})
 	}
@@ -399,7 +404,7 @@ func crossHitCases() []crossCase {
 	}
 }
 
-func pyOrDefaultCases() []hitCase { //nolint:dupl // a case table repeats its shape by design
+func pyOrDefaultCases() []hitCase {
 	const orDefault = "py/or-default"
 
 	return []hitCase{
@@ -591,6 +596,31 @@ func staleProseCases() []crossCase {
 			rule:  stale, want: 0,
 		},
 		{
+			name: "go type declared in the tree stays quiet",
+			files: map[string]string{
+				"README.md": "A `pageResult` holds one page.\n", "store.go": "package p\n\ntype pageResult struct{}\n",
+			},
+			rule: stale, want: 0,
+		},
+		{
+			name: "struct tag key stays quiet",
+			files: map[string]string{
+				"README.md": "Set `entry_points` to skip files.\n",
+				"cfg.go":    "package p\n\ntype Config struct {\n\tE []int `toml:\"entry_points,omitempty\"`\n}\n",
+			},
+			rule: stale, want: 0,
+		},
+		{
+			name:  "name after a negator stays quiet",
+			files: map[string]string{"README.md": "Use `httputil`, not\n`http_util`.\n"},
+			rule:  stale, want: 0,
+		},
+		{
+			name:  "hyphenated file name stays quiet",
+			files: map[string]string{"README.md": "Config lives in .slop-strata.toml at the root.\n"},
+			rule:  stale, want: 0,
+		},
+		{
 			name:  "changelog stays quiet",
 			files: map[string]string{"CHANGELOG.md": "Renamed away from `fetchRecords()`.\n"},
 			rule:  stale, want: 0,
@@ -728,7 +758,7 @@ func cloneCases() []crossCase {
 	}
 }
 
-func commentHitCases() []hitCase { //nolint:dupl // a case table repeats its shape by design
+func commentHitCases() []hitCase {
 	const narrating = "x/narrating-comment"
 
 	return []hitCase{
@@ -736,7 +766,7 @@ func commentHitCases() []hitCase { //nolint:dupl // a case table repeats its sha
 			name: "change narration phrase fires",
 			path: "cache.go",
 			src:  "package p\n\n// now uses a map for lookups\nvar cache = map[string]int{}\n",
-			rule: narrating, want: 1,
+			rule: narrating, match: "now uses", want: 1,
 		},
 		{
 			name: "used to phrase fires",
@@ -766,7 +796,7 @@ func commentHitCases() []hitCase { //nolint:dupl // a case table repeats its sha
 			name: "ticket cited as history fires",
 			path: "rollout.go",
 			src:  "package p\n\n// see ABC-123 for the rollout\nvar rollout = 1\n",
-			rule: narrating, want: 1,
+			rule: narrating, match: "ABC-123", want: 1,
 		},
 		{
 			name: "ticket pointing at its retirement stays quiet",
