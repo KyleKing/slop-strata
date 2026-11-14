@@ -484,62 +484,63 @@ type hunkEdit struct {
 	h     vcs.DiffHunk
 }
 
-// applyHunks rewrites a file's line tags through its hunks, last hunk first so
-// earlier offsets stay valid.
+// applyHunks rewrites a file's line tags through its hunks in one pass over the
+// old lines, so a commit costs the file's length plus its hunks.
 func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
 	rec vcs.CommitRecord, dc deathCtx, mv *moves,
 ) {
 	ds := dc.ds
-	lines := w.files[f.Path]
 	edits := make([]hunkEdit, len(f.Hunks))
-	cur := 0
+	cur, need, grow := 0, 0, 0
 	for i, h := range f.Hunks {
 		edits[i] = hunkEdit{f.Path, cur, h}
 		cur += h.NewLines
+		need = max(need, max(h.OldStart-1, 0)+h.OldLines)
+		grow += h.NewLines - h.OldLines
 	}
-	sort.Slice(edits, func(i, j int) bool { return edits[i].h.OldStart > edits[j].h.OldStart })
+	sort.SliceStable(edits, func(i, j int) bool { return edits[i].h.OldStart < edits[j].h.OldStart })
+	lines := padPreRange(w.files[f.Path], need)
 	exempt := mv.exempt[f.Path]
+	out := make(fileLines, 0, max(len(lines)+grow, 0))
+	at := 0
 	for _, edit := range edits {
 		h := edit.h
 		idx := max(h.OldStart-1, 0)
+		out = append(out, lines[at:idx]...)
 		dc.pure = h.NewLines == 0
-		lines = w.killRange(lines, idx, h.OldLines, exempt, dc)
+		w.killRange(lines, idx, h.OldLines, exempt, dc)
 		mid, births := insertTags(edit, cohort, birth, klass, rec, mv)
-		out := make(fileLines, 0, len(lines)-h.OldLines+h.NewLines)
-		out = append(out, lines[:idx]...)
 		out = append(out, mid...)
-		out = append(out, lines[min(idx+h.OldLines, len(lines)):]...)
-		lines = out
+		at = idx + h.OldLines
 		ds.Added += h.NewLines
 		w.births[cohort] += births
 	}
-	w.files[f.Path] = lines
+	w.files[f.Path] = append(out, lines[at:]...)
 }
 
-// killRange records deaths over [idx, idx+oldLines), padding pre-range files
-// whose true state the walk never saw. It answers the padded line state.
-func (w *Walker) killRange(lines fileLines, idx, oldLines int, exempt map[int]bool,
-	dc deathCtx,
-) fileLines {
-	if need := idx + oldLines; need > len(lines) {
-		// The file predates the walked range, so its line provenance is
-		// unknown: grow the state with pre-range tags. Their deaths count
-		// as removed lines, but a negative birth keeps them out of the
-		// young-churn windows, and a negative cohort out of survival.
-		pad := make(fileLines, need-len(lines))
-		for i := range pad {
-			pad[i] = tag{birthDays: -1, cohort: -1, class: "pre-range"}
-		}
-		lines = append(lines, pad...)
+// padPreRange grows a file's line state to need lines. A file that predates the
+// walked range has unknown provenance, so the walk fills it with pre-range
+// tags: their deaths count as removed lines, but a negative birth keeps them out
+// of the young-churn windows, and a negative cohort out of survival.
+func padPreRange(lines fileLines, need int) fileLines {
+	if need <= len(lines) {
+		return lines
 	}
-	end := min(idx+oldLines, len(lines))
-	for p, t := range lines[idx:end] {
+	pad := make(fileLines, need-len(lines))
+	for i := range pad {
+		pad[i] = tag{birthDays: -1, cohort: -1, class: "pre-range"}
+	}
+
+	return append(lines, pad...)
+}
+
+// killRange records deaths over [idx, idx+oldLines) of the padded old lines.
+func (w *Walker) killRange(lines fileLines, idx, oldLines int, exempt map[int]bool, dc deathCtx) {
+	for p, t := range lines[idx : idx+oldLines] {
 		if !exempt[idx+p] {
 			w.recordDeath(t, dc)
 		}
 	}
-
-	return lines
 }
 
 // insertTags builds the line tags a hunk adds: a moved line claims its stashed
