@@ -182,8 +182,9 @@ var Docs = map[string]string{
 		"bot author class do not count. A function rewritten again and again in two weeks means its shape " +
 		"was not settled before the code: decide the interface first, or split the function so the unstable " +
 		"part is small. A formatting commit can supply all three changes, a red-green test loop on one " +
-		"function reads as oscillation though it is deliberate, a squash merge hides the changes inside a " +
-		"branch, and a small function has little to change except all of it. A file renamed through git's " +
+		"function reads as oscillation though it is deliberate, a function that gains one entry per feature, " +
+		"such as a key map or a command table, counts on every addition, a squash merge hides the changes " +
+		"inside a branch, and a small function has little to change except all of it. A file renamed through git's " +
 		"rename detection keeps its history, and a function renamed or moved to another file starts again. " +
 		"Same-named functions in one file count once per commit, and anonymous functions are not followed.",
 	"self": "Share of young deaths removed by the author who wrote the line, compared by commit author " +
