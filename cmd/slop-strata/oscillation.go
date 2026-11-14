@@ -76,34 +76,35 @@ func (o *oscillation) rename(oldPath, path string) {
 }
 
 // observe records the day on every function of a modified file whose lines a
-// hunk touched and that the before side already had, once per name however
-// many same-named functions the file holds.
+// hunk touched and that the before side already had, once per qualified name
+// however many same-named functions share it.
 func (o *oscillation) observe(f *vcs.CommitFile, before, after *engine.FileReport, day int) {
 	if before == nil || before.Skipped != "" || len(f.Hunks) == 0 {
 		return
 	}
 	var had map[string]bool
-	for _, fn := range after.Metrics.Funcs {
+	keys := funcKeys(after.Metrics.Funcs)
+	for i, fn := range after.Metrics.Funcs {
 		if fn.Name == lang.AnonymousName || !touched(f.Hunks, fn) {
 			continue
 		}
 		if had == nil {
-			had = funcNames(before.Metrics.Funcs)
+			had = keySet(funcKeys(before.Metrics.Funcs))
 		}
-		if had[fn.Name] {
-			o.record(f.Path, fn, day)
-			had[fn.Name] = false
+		if had[keys[i]] {
+			o.record(f.Path, keys[i], fn, day)
+			had[keys[i]] = false
 		}
 	}
 }
 
-func funcNames(fns []structure.FuncMetrics) map[string]bool {
-	names := make(map[string]bool, len(fns))
-	for _, fn := range fns {
-		names[fn.Name] = true
+func keySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
 	}
 
-	return names
+	return set
 }
 
 // touched reports whether a hunk adds a line inside the function or removes one
@@ -124,14 +125,14 @@ func touched(hunks []vcs.DiffHunk, fn structure.FuncMetrics) bool {
 	return false
 }
 
-func (o *oscillation) record(path string, fn structure.FuncMetrics, day int) {
+func (o *oscillation) record(path, key string, fn structure.FuncMetrics, day int) {
 	if o.files[path] == nil {
 		o.files[path] = map[string]*funcState{}
 	}
-	st := o.files[path][fn.Name]
+	st := o.files[path][key]
 	if st == nil {
 		st = &funcState{}
-		o.files[path][fn.Name] = st
+		o.files[path][key] = st
 	}
 	keep := slices.IndexFunc(st.recent, func(d int) bool { return day-d <= oscillationDays })
 	if keep < 0 {

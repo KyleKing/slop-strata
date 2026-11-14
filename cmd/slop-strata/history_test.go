@@ -68,11 +68,36 @@ func TestOscillationCountsBodyChangesInAnyTwoWeeks(t *testing.T) {
 			{path: "a.go", day: 14, hunk: hunks[2]},
 		}
 	}
+	nested := []structure.FuncMetrics{
+		{Name: "outer1", StartLine: 1, EndLine: 20},
+		{Name: "wrapper", StartLine: 5, EndLine: 10},
+		{Name: "outer2", StartLine: 21, EndLine: 40},
+		{Name: "wrapper", StartLine: 25, EndLine: 30},
+	}
+	inFirstWrapper, inSecondWrapper := vcs.DiffHunk{NewStart: 6, NewLines: 1}, vcs.DiffHunk{NewStart: 26, NewLines: 1}
 	cases := []struct {
 		name  string
+		funcs []structure.FuncMetrics
 		edits []bodyEdit
 		want  oscillationResult
 	}{
+		{
+			name: "same-named nested functions of different parents stay apart", funcs: nested, edits: three(
+				inFirstWrapper, inFirstWrapper, inSecondWrapper,
+			),
+		},
+		{
+			name: "a nested function is reported under its parent", funcs: nested, edits: three(
+				inSecondWrapper, inSecondWrapper, inSecondWrapper,
+			),
+			want: oscillationResult{
+				Funcs: 2, Dirs: map[string]oscillationDir{".": {Funcs: 2}},
+				Top: []oscillatingFunc{
+					{Path: "a.go", Name: "outer2", Line: 21, Changes: 3, SpanDays: 14},
+					{Path: "a.go", Name: "outer2/wrapper", Line: 25, Changes: 3, SpanDays: 14},
+				},
+			},
+		},
 		{
 			name: "three edits in 14 days, one a pure deletion", edits: three(inF, deleteInF, inF),
 			want: oscillationResult{
@@ -110,9 +135,13 @@ func TestOscillationCountsBodyChangesInAnyTwoWeeks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			osc := newOscillation()
-			after := &engine.FileReport{Metrics: structure.FileMetrics{Funcs: []structure.FuncMetrics{
-				{Name: "f", StartLine: 10, EndLine: 20}, {Name: "g", StartLine: 30, EndLine: 40},
-			}}}
+			funcs := tc.funcs
+			if funcs == nil {
+				funcs = []structure.FuncMetrics{
+					{Name: "f", StartLine: 10, EndLine: 20}, {Name: "g", StartLine: 30, EndLine: 40},
+				}
+			}
+			after := &engine.FileReport{Metrics: structure.FileMetrics{Funcs: funcs}}
 			for _, e := range tc.edits {
 				before := after
 				if e.unseen {
