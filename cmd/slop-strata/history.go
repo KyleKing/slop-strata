@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -95,53 +96,10 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 		rangeSpec = defaultRev
 	}
 
-	walker := lineage.NewWalker(s.cfg.Classify)
-	weeks := map[string]*weekRow{}
-	pairs := map[string]*pairRow{}
-	viral := map[string]*viralRow{}
-	ruleFirst := map[string]string{}
-	liveMass := map[string]float64{} // path -> mass of its latest after-blob
-	gaps := newScoreGaps()
-	changes := 0
-
-	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
-		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
-	}) {
-		if err != nil {
-			return fmt.Errorf("walking history: %w", err)
-		}
-		changes++
-		in := intent.Of(rec.Subject, "", rec.Body)
-		klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
-			rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
-		// Week buckets by Monday: truncate to weekday.
-		monday := rec.AuthorTime.AddDate(0, 0, -int((rec.AuthorTime.Weekday()+daysPerWeek-1)%daysPerWeek))
-		week := monday.Format(weekLayout)
-
-		walker.Commit(rec, in.Kind == intent.Fix, in.Revert)
-
-		if weeks[week] == nil {
-			weeks[week] = &weekRow{Week: week, Kinds: map[string]int{}}
-		}
-		wk := weeks[week]
-		wk.Commits++
-		wk.Kinds[string(in.Kind)]++
-		for i := range rec.Files {
-			wk.Added += rec.Files[i].LinesAdded()
-			wk.Removed += rec.Files[i].LinesDeleted()
-		}
-
-		// Score this commit's new blobs for mass delta and rule hits.
-		s.scoreCommit(ctx, rec, &commitScore{
-			wk: wk, pairs: pairs, viral: viral, ruleFirst: ruleFirst,
-			liveMass: liveMass, klass: klass, week: week, gaps: gaps,
-		})
+	res, gaps, err := s.walkHistory(ctx, rangeSpec, since)
+	if err != nil {
+		return err
 	}
-
-	res := &historyResult{Range: rangeSpec, Lineage: walker.Finish(), Changes: changes}
-	collectRollups(res, weeks, pairs, viral)
-	markNoise(res)
-	res.Hotspots = hotspotScores(res.Lineage, liveMass)
 
 	if a.json {
 		if err := report.WriteJSON(w, "history", s.root, res, gaps.counts(), nil); err != nil {
@@ -155,6 +113,74 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	report.WarnCounts(s.stderr, gaps.counts())
 
 	return nil
+}
+
+// walkHistory walks the range oldest first, feeding each commit to the lineage
+// walker, the week rows, and the blob scoring, and rolls the result up.
+func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*historyResult, *scoreGaps, error) {
+	blobs, err := s.ops.OpenBlobReader(ctx, s.root)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading blobs: %w", err)
+	}
+	walker := lineage.NewWalker(s.cfg.Classify)
+	weeks := map[string]*weekRow{}
+	pairs := map[string]*pairRow{}
+	viral := map[string]*viralRow{}
+	ruleFirst := map[string]string{}
+	liveMass := map[string]float64{} // path -> mass of its latest after-blob
+	gaps := newScoreGaps()
+	changes := 0
+
+	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
+		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
+	}) {
+		if err != nil {
+			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", err), blobs.Close())
+		}
+		changes++
+		in := intent.Of(rec.Subject, "", rec.Body)
+		klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
+			rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
+		walker.Commit(rec, in.Kind == intent.Fix, in.Revert)
+		week := mondayOf(rec.AuthorTime)
+		wk := weekCell(weeks, week)
+		wk.Commits++
+		wk.Kinds[string(in.Kind)]++
+		for i := range rec.Files {
+			wk.Added += rec.Files[i].LinesAdded()
+			wk.Removed += rec.Files[i].LinesDeleted()
+		}
+		if err := s.scoreCommit(ctx, rec, &commitScore{
+			wk: wk, pairs: pairs, viral: viral, ruleFirst: ruleFirst, blobs: blobs,
+			liveMass: liveMass, klass: klass, week: week, gaps: gaps,
+		}); err != nil {
+			return nil, nil, errors.Join(err, blobs.Close())
+		}
+	}
+	if err := blobs.Close(); err != nil {
+		return nil, nil, fmt.Errorf("reading blobs: %w", err)
+	}
+
+	res := &historyResult{Range: rangeSpec, Lineage: walker.Finish(), Changes: changes}
+	collectRollups(res, weeks, pairs, viral)
+	markNoise(res)
+	res.Hotspots = hotspotScores(res.Lineage, liveMass)
+
+	return res, gaps, nil
+}
+
+// mondayOf names the Monday week a commit's author date falls in.
+func mondayOf(t time.Time) string {
+	return t.AddDate(0, 0, -int((t.Weekday()+daysPerWeek-1)%daysPerWeek)).Format(weekLayout)
+}
+
+// weekCell returns a week's row, creating it on first use.
+func weekCell(weeks map[string]*weekRow, week string) *weekRow {
+	if weeks[week] == nil {
+		weeks[week] = &weekRow{Week: week, Kinds: map[string]int{}}
+	}
+
+	return weeks[week]
 }
 
 // collectRollups folds the accumulated maps into res's sorted slices.
@@ -282,6 +308,7 @@ type commitScore struct {
 	ruleFirst map[string]string
 	liveMass  map[string]float64
 	gaps      *scoreGaps
+	blobs     *vcs.BlobReader
 	klass     string
 	week      string
 }
@@ -313,7 +340,7 @@ func (g *scoreGaps) counts() report.Counts {
 
 // scoreCommit analyzes both sides of a commit's changed blobs for mass
 // delta, findings, and the per-class pairing.
-func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *commitScore) {
+func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *commitScore) error {
 	var shas []string
 	for i := range rec.Files {
 		f := &rec.Files[i]
@@ -324,9 +351,9 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 			shas = append(shas, f.OldSHA)
 		}
 	}
-	blobs, err := s.ops.BlobContents(ctx, s.root, shas)
+	blobs, err := cs.blobs.Read(shas)
 	if err != nil {
-		return
+		return fmt.Errorf("reading blobs of %s: %w", rec.Hash, err)
 	}
 	s.eng.Prefetch(ctx, commitRequests(rec.Files, blobs))
 	for i := range rec.Files {
@@ -346,6 +373,8 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 		}
 		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs, cs.gaps))
 	}
+
+	return nil
 }
 
 // commitRequests lists the blobs scoreCommit will analyze: each changed file's
