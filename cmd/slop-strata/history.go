@@ -134,7 +134,22 @@ type historyWalk struct {
 	ruleFirst map[string]string
 	liveMass  map[string]float64 // path -> mass of its latest after-blob
 	gaps      *scoreGaps
+	progress  *progress
 	changes   int
+}
+
+// historyProgress starts the walk's progress line when stderr is a terminal, and
+// a silent one otherwise.
+func (s *session) historyProgress(ctx context.Context, opts vcs.LogOptions) (*progress, error) {
+	if !isTerminal(s.stderr) {
+		return &progress{}, nil
+	}
+	total, err := s.ops.CountCommits(ctx, s.root, opts)
+	if err != nil {
+		return nil, fmt.Errorf("counting commits: %w", err)
+	}
+
+	return newProgress(s.stderr, total), nil
 }
 
 // walkHistory walks the range oldest first, feeding each commit to the lineage
@@ -144,18 +159,24 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading blobs: %w", err)
 	}
+	opts := vcs.LogOptions{
+		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
+	}
+	prog, err := s.historyProgress(ctx, opts)
+	if err != nil {
+		return nil, nil, errors.Join(err, reader.Close())
+	}
+	defer prog.clear()
 	hw := &historyWalk{
 		walker: lineage.NewWalker(s.cfg.Classify), weeks: map[string]*weekRow{}, pairs: map[string]*pairRow{},
 		viral: map[string]*viralRow{}, ruleFirst: map[string]string{}, liveMass: map[string]float64{},
-		gaps: newScoreGaps(),
+		gaps: newScoreGaps(), progress: prog,
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var window []vcs.CommitRecord
 	files := 0
-	for item := range s.streamLog(ctx, vcs.LogOptions{
-		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
-	}) {
+	for item := range s.streamLog(ctx, opts) {
 		if item.err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", item.err), reader.Close())
 		}
@@ -232,6 +253,7 @@ func (s *session) walkWindow(ctx context.Context, hw *historyWalk, window []vcs.
 // blob scoring.
 func (s *session) walkCommit(hw *historyWalk, rec *vcs.CommitRecord, reports map[engine.Blob]*engine.FileReport) {
 	hw.changes++
+	hw.progress.step()
 	in := intent.Of(rec.Subject, "", rec.Body)
 	klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
 		rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)

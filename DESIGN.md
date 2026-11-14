@@ -182,7 +182,7 @@ What a mature product does that v1 will not, measured against CodeScene and Sona
 - Precision first: each rule ships only with a measured false-positive rate on the corpus below a set bar, and a rule that drifts above it is turned off by default. Not built yet, beyond the gate itself
 - Every finding explains itself in one screen: the rule, the line that triggered it, a minimal before and after, and how to suppress it inline with a reason. Not built yet
 - Stable output: a JSON schema version (shipped, `docs/schema.json`), finding IDs that survive line moves (keyed by function and rule, not line number, not built yet), and a changelog entry for every change to a threshold
-- Fast first run: a full history of a 3,000-commit repository in minutes on a laptop, with progress and a resumable cache. Parsing is parallel. Progress and resume are not built yet
+- Fast first run: a full history of a 3,000-commit repository in minutes on a laptop, with progress and a resumable cache. Parsing is parallel, and `history` prints a commits done/total line to a terminal once a run passes two seconds. Resume is not built yet
 - Zero-config start: language detection, vendored and generated file detection, and author classes guessed from known bot logins, with `init` writing what it guessed for review. Shipped
 - Trends people trust: a noise floor and provisional markers on the trend tables. Shipped; the charts are text tables for now
 
