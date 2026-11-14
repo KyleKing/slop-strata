@@ -161,9 +161,8 @@ type Entry struct {
 	Payload []byte
 }
 
-// GetMany returns the payloads stored for keys under an analysis key, all read
-// in one transaction. A key with no payload, or one a failed read lost, is
-// absent from the result.
+// GetMany returns the payloads stored for keys under an analysis key, read in
+// one transaction. A key with no payload, or a failed read, is absent.
 func (s *Store) GetMany(ctx context.Context, analysis string, keys []Key) map[Key][]byte {
 	out := make(map[Key][]byte, len(keys))
 	if s.db == nil || len(keys) == 0 {

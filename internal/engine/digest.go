@@ -22,11 +22,8 @@ var sources embed.FS
 // Digest identifies this package's source, for cache keys.
 var Digest = srcdigest.Of(sources) //nolint:gochecknoglobals // computed once from embedded sources
 
-// analysisKey names the code, rule set, and config a payload was computed by. It
-// hashes every package that shapes a payload, the tree-sitter grammar modules,
-// whether experimental rules ran, and the size and minified limits a stored skip
-// verdict depends on, so a cached answer is only ever reused under the same code
-// and limits.
+// analysisKey hashes every package and grammar that shapes a payload, the
+// experimental flag, and the size and minified limits a stored verdict reads.
 func analysisKey(cfg *config.Config) string {
 	h := sha256.New()
 	for _, part := range []string{

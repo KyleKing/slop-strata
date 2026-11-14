@@ -40,8 +40,7 @@ var entryManifests = map[string]func([]byte) []string{ //nolint:gochecknoglobals
 }
 
 // TextShape names what CollectText reads from a path besides its content: the
-// extension that picks the config format, and the manifest name that picks the
-// entry-point reader. Two paths with the same shape fingerprint alike.
+// extension that picks the config format and the manifest name, if any.
 func TextShape(path string) string {
 	base := filepath.Base(path)
 	if _, ok := entryManifests[base]; !ok {

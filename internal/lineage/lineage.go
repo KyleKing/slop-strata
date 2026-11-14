@@ -518,10 +518,8 @@ func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
 	w.files[f.Path] = append(out, lines[at:]...)
 }
 
-// padPreRange grows a file's line state to need lines. A file that predates the
-// walked range has unknown provenance, so the walk fills it with pre-range
-// tags: their deaths count as removed lines, but a negative birth keeps them out
-// of the young-churn windows, and a negative cohort out of survival.
+// padPreRange grows a file's line state to need lines of unknown provenance,
+// whose negative birth and cohort keep them out of churn windows and survival.
 func padPreRange(lines fileLines, need int) fileLines {
 	if need <= len(lines) {
 		return lines

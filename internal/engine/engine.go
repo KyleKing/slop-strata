@@ -209,9 +209,8 @@ type Blob struct {
 	SHA  string
 }
 
-// Lookup answers the code blobs whose reports follow from their paths and the
-// cache alone, without their content, reading the cache in one transaction. Its
-// reports carry no Print, which only the cross-file passes read.
+// Lookup answers the code blobs their paths and the cache answer without content.
+// Its reports carry no Print, which only the cross-file passes read.
 func (a *Analyzer) Lookup(ctx context.Context, blobs []Blob) map[Blob]*FileReport {
 	reqs := make([]Request, len(blobs))
 	for i, b := range blobs {
@@ -233,9 +232,8 @@ func (a *Analyzer) Prefetch(ctx context.Context, reqs []Request) {
 	}
 }
 
-// AnalyzeAll answers every request's report, parsing the ones the cache cannot
-// answer on one worker per CPU. The calling goroutine alone reads and writes the
-// cache, one transaction each way, so no lock is needed.
+// AnalyzeAll answers every request, parsing cache misses on one worker per CPU.
+// Only the calling goroutine touches the cache, so no lock is needed.
 func (a *Analyzer) AnalyzeAll(ctx context.Context, reqs []Request) map[Blob]*FileReport {
 	out, pending := a.answerAll(ctx, reqs, true)
 	var entries []cache.Entry
@@ -387,9 +385,8 @@ func (a *Analyzer) front(r Request) (*FileReport, bool) {
 	return rep, false
 }
 
-// apply fills a report from a stored payload, a skip verdict or an analysis, and
-// reports whether the payload decoded. Without withPrint the fingerprint, most of
-// a payload's bytes, is skipped undecoded.
+// apply fills a report from a stored payload and reports whether it decoded.
+// Without withPrint the fingerprint, most of a payload's bytes, stays undecoded.
 func (a *Analyzer) apply(rep *FileReport, payload []byte, text, withPrint bool) bool {
 	var c cached
 	var err error

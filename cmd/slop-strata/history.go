@@ -116,9 +116,8 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	return nil
 }
 
-// Scoring runs over windows of commits, so one parse batch and one cache
-// transaction cover many commits: a window closes at windowCommits commits or
-// windowBlobs changed files, whichever comes first.
+// A scoring window closes at windowCommits commits or windowBlobs changed files,
+// so one parse batch and one cache transaction cover many commits.
 const (
 	windowCommits = 256
 	windowBlobs   = 2048
@@ -216,8 +215,7 @@ type logItem struct {
 }
 
 // streamLog runs a log walk on its own goroutine, a window ahead of the caller,
-// so git keeps writing commits while the caller scores the ones it has. The walk
-// stops when ctx is canceled.
+// so git keeps writing while the caller scores. It stops when ctx is canceled.
 func (s *session) streamLog(ctx context.Context, opts vcs.LogOptions) <-chan logItem {
 	out := make(chan logItem, windowCommits)
 	go func() {
@@ -402,9 +400,8 @@ func hotspotScores(lin *lineage.Result, liveMass map[string]float64) map[string]
 	return out
 }
 
-// commitScore is what one commit's blob scoring reads, its window's reports, and
-// feeds: the week row, the pairing maps, the virality trackers, and each path's
-// latest live mass.
+// commitScore is what one commit's scoring reads, its window's reports, and the
+// week row, pairing, virality, and live mass it feeds.
 type commitScore struct {
 	wk        *weekRow
 	pairs     map[string]*pairRow
@@ -464,10 +461,8 @@ func scoreCommit(rec *vcs.CommitRecord, cs *commitScore) {
 	}
 }
 
-// windowReports answers the report of every blob a window's commits score: each
-// changed file's new side and, when that exists, its old side. Only the blobs
-// the engine cannot answer from their path or the cache are read. A blob git
-// does not have gets no report.
+// windowReports answers the reports a window's commits score, reading only the
+// blobs the path and the cache cannot answer. A blob git lacks gets none.
 func (s *session) windowReports(ctx context.Context, window []vcs.CommitRecord, reader *vcs.BlobReader,
 ) (map[engine.Blob]*engine.FileReport, error) {
 	var asks []engine.Blob
