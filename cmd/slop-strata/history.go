@@ -341,17 +341,7 @@ func (g *scoreGaps) counts() report.Counts {
 // scoreCommit analyzes both sides of a commit's changed blobs for mass
 // delta, findings, and the per-class pairing.
 func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *commitScore) error {
-	var shas []string
-	for i := range rec.Files {
-		f := &rec.Files[i]
-		if f.NewSHA != "" {
-			shas = append(shas, f.NewSHA)
-		}
-		if f.OldSHA != "" {
-			shas = append(shas, f.OldSHA)
-		}
-	}
-	blobs, err := cs.blobs.Read(shas)
+	blobs, err := s.commitBlobs(ctx, rec.Files, cs.blobs)
 	if err != nil {
 		return fmt.Errorf("reading blobs of %s: %w", rec.Hash, err)
 	}
@@ -365,31 +355,78 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 		}
 		pairCell(cs.pairs, cs.week, d).ClassCommits[cs.klass]++
 
-		content, ok := blobs[f.NewSHA]
-		if !ok {
+		if !blobs.present[f.NewSHA] {
 			delete(cs.liveMass, f.Path)
 
 			continue
 		}
-		s.scoreBlob(ctx, cs, *f, content, s.oldMass(ctx, *f, blobs, cs.gaps))
+		s.scoreBlob(ctx, cs, *f, blobs.content[f.NewSHA], s.oldMass(ctx, *f, blobs, cs.gaps))
 	}
 
 	return nil
 }
 
-// commitRequests lists the blobs scoreCommit will analyze: each changed file's
-// new side, and its old side when the new side is present, matching the reads
-// scoreCommit makes.
-func commitRequests(files []vcs.CommitFile, blobs map[string][]byte) []engine.Request {
+// blobSet is what a commit's scoring knows of its blobs: every sha known to
+// exist, and the content of those the engine could not answer without it.
+type blobSet struct {
+	content map[string][]byte
+	present map[string]bool
+}
+
+// commitBlobs reads the blobs scoreCommit analyzes, each changed file's new side
+// and, when that exists, its old side, skipping any the engine answers from its
+// path or the cache.
+func (s *session) commitBlobs(ctx context.Context, files []vcs.CommitFile, reader *vcs.BlobReader,
+) (*blobSet, error) {
+	present := map[string]bool{}
+	var need []string
+	ask := func(path, sha string) {
+		switch {
+		case !isBlobSHA(sha):
+		case s.eng.Known(ctx, path, sha):
+			present[sha] = true
+		default:
+			need = append(need, sha)
+		}
+	}
+	for i := range files {
+		f := &files[i]
+		if isBlobSHA(f.NewSHA) {
+			ask(f.Path, f.NewSHA)
+			ask(oldPathOf(*f), f.OldSHA)
+		}
+	}
+	content, err := reader.Read(need)
+	if err != nil {
+		return nil, fmt.Errorf("reading blobs: %w", err)
+	}
+	for sha := range content {
+		present[sha] = true
+	}
+
+	return &blobSet{content: content, present: present}, nil
+}
+
+// isBlobSHA reports whether a diff side names a blob, as opposed to the empty
+// or all-zero id of a side that does not exist.
+func isBlobSHA(sha string) bool {
+	return strings.Trim(sha, "0") != ""
+}
+
+// commitRequests lists the blobs scoreCommit will analyze that the engine needs
+// content for: each changed file's new side, and its old side when the new side
+// is present.
+func commitRequests(files []vcs.CommitFile, blobs *blobSet) []engine.Request {
 	var reqs []engine.Request
 	for i := range files {
 		f := &files[i]
-		content, ok := blobs[f.NewSHA]
-		if !ok {
+		if !blobs.present[f.NewSHA] {
 			continue
 		}
-		reqs = append(reqs, engine.Request{Path: f.Path, SHA: f.NewSHA, Content: content})
-		if old, ok := blobs[f.OldSHA]; ok && f.OldSHA != "" {
+		if content, ok := blobs.content[f.NewSHA]; ok {
+			reqs = append(reqs, engine.Request{Path: f.Path, SHA: f.NewSHA, Content: content})
+		}
+		if old, ok := blobs.content[f.OldSHA]; ok {
 			reqs = append(reqs, engine.Request{Path: oldPathOf(*f), SHA: f.OldSHA, Content: old})
 		}
 	}
@@ -413,13 +450,11 @@ func pairCell(pairs map[string]*pairRow, week, d string) *pairRow {
 
 // oldMass is a file's before-side function mass, zero when no before blob
 // exists or it does not analyze.
-func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs map[string][]byte, gaps *scoreGaps,
-) float64 {
-	old, ok := blobs[f.OldSHA]
-	if f.OldSHA == "" || !ok {
+func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs *blobSet, gaps *scoreGaps) float64 {
+	if !blobs.present[f.OldSHA] {
 		return 0
 	}
-	rep := s.eng.Analyze(ctx, oldPathOf(f), f.OldSHA, old)
+	rep := s.eng.Analyze(ctx, oldPathOf(f), f.OldSHA, blobs.content[f.OldSHA])
 	gaps.note(oldPathOf(f), f.OldSHA, rep)
 	if rep.Skipped != "" {
 		return 0

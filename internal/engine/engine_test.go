@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/cache"
@@ -138,5 +139,38 @@ func TestSameTextBlobUnderOtherNameKeepsItsOwnPrint(t *testing.T) {
 	}
 	if len(copied.Print.EntryRefs) != 0 {
 		t.Errorf("docs/sample.toml entry refs = %v, want none", copied.Print.EntryRefs)
+	}
+}
+
+func TestStoredSkipVerdictFollowsTheLimits(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store, err := cache.Open(ctx, filepath.Join(t.TempDir(), "blobs.db"))
+	if err != nil {
+		t.Fatalf("opening cache: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("closing cache: %v", err)
+		}
+	})
+	const sha = "0123456789abcdef"
+	packed := []byte("package p\n\nvar x = \"" + strings.Repeat("a", 1000) + "\"\n")
+	strict := config.Default()
+	loose := config.Default()
+	loose.MinifiedAvgLine = 0
+
+	if rep := engine.New(strict, store).Analyze(ctx, "p.go", sha, packed); rep.Skipped != "minified" {
+		t.Fatalf("first read Skipped = %q, want minified", rep.Skipped)
+	}
+	again := engine.New(strict, store)
+	if !again.Known(ctx, "p.go", sha) {
+		t.Fatal("a stored verdict under the same limits should answer without content")
+	}
+	if rep := again.Analyze(ctx, "p.go", sha, nil); rep.Skipped != "minified" {
+		t.Errorf("verdict Skipped = %q, want minified", rep.Skipped)
+	}
+	if engine.New(loose, store).Known(ctx, "p.go", sha) {
+		t.Error("a verdict stored under other limits should not answer")
 	}
 }

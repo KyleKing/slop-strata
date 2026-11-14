@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kyleking/slop-strata/internal/config"
 	"github.com/kyleking/slop-strata/internal/lang"
 	"github.com/kyleking/slop-strata/internal/rules"
 	"github.com/kyleking/slop-strata/internal/srcdigest"
@@ -21,14 +22,16 @@ var sources embed.FS
 // Digest identifies this package's source, for cache keys.
 var Digest = srcdigest.Of(sources) //nolint:gochecknoglobals // computed once from embedded sources
 
-// analysisKey names the code and rule set a payload was computed by. It hashes
-// every package that shapes a payload, the tree-sitter grammar modules, and
-// whether experimental rules ran, so a cached answer is only ever reused under
-// the same code.
-func analysisKey(experimental bool) string {
+// analysisKey names the code, rule set, and config a payload was computed by. It
+// hashes every package that shapes a payload, the tree-sitter grammar modules,
+// whether experimental rules ran, and the size and minified limits a stored skip
+// verdict depends on, so a cached answer is only ever reused under the same code
+// and limits.
+func analysisKey(cfg *config.Config) string {
 	h := sha256.New()
 	for _, part := range []string{
-		lang.Digest, structure.Digest, rules.Digest, Digest, grammarModules(), strconv.FormatBool(experimental),
+		lang.Digest, structure.Digest, rules.Digest, Digest, grammarModules(), strconv.FormatBool(cfg.Experimental),
+		strconv.FormatInt(cfg.MaxFileBytes, 10), strconv.Itoa(cfg.MinifiedAvgLine),
 	} {
 		h.Write([]byte(part + "\x00"))
 	}

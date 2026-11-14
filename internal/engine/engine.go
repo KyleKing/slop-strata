@@ -31,9 +31,11 @@ type FileReport struct {
 	Metrics  structure.FileMetrics `json:"metrics,omitempty"`
 }
 
-// cached is the stored payload per blob.
+// cached is the stored payload per blob: its analysis, or the reason its
+// content was skipped.
 type cached struct {
 	Print    *rules.Fingerprint    `json:"print"`
+	Skipped  string                `json:"skipped,omitempty"`
 	Findings []rules.Finding       `json:"findings"`
 	Metrics  structure.FileMetrics `json:"metrics"`
 }
@@ -80,7 +82,7 @@ type job struct {
 func New(cfg *config.Config, store *cache.Store, opts ...Option) *Analyzer {
 	a := &Analyzer{
 		memo: map[string]*FileReport{}, store: store, cfg: cfg,
-		analysis: analysisKey(cfg.Experimental),
+		analysis: analysisKey(cfg),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -262,56 +264,103 @@ func memoKey(path, sha string) string {
 	return path + "\x00" + sha
 }
 
-// begin answers a code blob that needs no parse, either skipped or read from the
-// cache, and otherwise returns the job that scores it.
-func (a *Analyzer) begin(ctx context.Context, path, sha string, content []byte) (*FileReport, *job) {
+// Known reports whether a code blob's report follows from its path and the
+// cache alone, without its content, and holds that report for the next Analyze.
+func (a *Analyzer) Known(ctx context.Context, path, sha string) bool {
+	rep, ok := a.answer(ctx, path, sha)
+	if ok {
+		a.memo[memoKey(path, sha)] = rep
+	}
+
+	return ok
+}
+
+// answer resolves a code blob from its path and the cache, without its content.
+func (a *Analyzer) answer(ctx context.Context, path, sha string) (*FileReport, bool) {
 	rep := &FileReport{Path: path, SHA: sha}
 	if reason := a.skip(path); reason != "" {
 		rep.Skipped = reason
 
-		return rep, nil
+		return rep, true
 	}
-	l := lang.ByPath(path)
 	if a.generated != nil && a.generated(path) {
 		rep.Skipped = ReasonGenerated
 
-		return rep, nil
+		return rep, true
 	}
-	if int64(len(content)) > a.cfg.MaxFileBytes {
-		rep.Skipped = "oversize"
-
-		return rep, nil
+	c, ok := a.lookup(ctx, sha, pathClass(path))
+	if !ok {
+		return rep, false
 	}
-	if bytes.IndexByte(content, 0) >= 0 {
-		rep.Skipped = "binary"
+	if c.Skipped != "" {
+		rep.Skipped = c.Skipped
 
-		return rep, nil
+		return rep, true
 	}
-	if minified(content, a.cfg.MinifiedAvgLine) {
-		rep.Skipped = "minified"
+	rep.Metrics = c.Metrics
+	rep.Findings = c.Findings
+	rep.Print = c.Print
+	rep.Lang = c.Metrics.Lang
+	a.addPathFindings(rep)
 
-		return rep, nil
+	return rep, true
+}
+
+// lookup reads a blob's stored payload under a path class.
+func (a *Analyzer) lookup(ctx context.Context, sha, class string) (cached, bool) {
+	var c cached
+	payload, ok := a.store.Get(ctx, sha, class, a.analysis)
+	if !ok {
+		return c, false
 	}
-	if generatedMarker(content) {
-		rep.Skipped = ReasonGenerated
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return c, false
+	}
 
+	return c, true
+}
+
+// verdict stores why a blob's content was skipped, so a later run skips it
+// without reading it, and answers the reason.
+func (a *Analyzer) verdict(ctx context.Context, sha, class, reason string) string {
+	if payload, err := json.Marshal(cached{Skipped: reason}); err == nil {
+		a.store.Put(ctx, sha, class, a.analysis, payload)
+	}
+
+	return reason
+}
+
+// begin answers a code blob that needs no parse, either skipped or read from the
+// cache, and otherwise returns the job that scores it.
+func (a *Analyzer) begin(ctx context.Context, path, sha string, content []byte) (*FileReport, *job) {
+	rep, ok := a.answer(ctx, path, sha)
+	if ok {
 		return rep, nil
 	}
 	class := pathClass(path)
-	if payload, ok := a.store.Get(ctx, sha, class, a.analysis); ok {
-		var c cached
-		if err := json.Unmarshal(payload, &c); err == nil {
-			rep.Metrics = c.Metrics
-			rep.Findings = c.Findings
-			rep.Print = c.Print
-			rep.Lang = c.Metrics.Lang
-			a.addPathFindings(rep)
+	if reason := a.codeSkip(content); reason != "" {
+		rep.Skipped = a.verdict(ctx, sha, class, reason)
 
-			return rep, nil
-		}
+		return rep, nil
 	}
 
-	return rep, &job{rep: rep, lang: l, sha: sha, class: class, content: content}
+	return rep, &job{rep: rep, lang: lang.ByPath(path), sha: sha, class: class, content: content}
+}
+
+// codeSkip names why a code blob's content is not scored, or "" when it is.
+func (a *Analyzer) codeSkip(content []byte) string {
+	switch {
+	case int64(len(content)) > a.cfg.MaxFileBytes:
+		return "oversize"
+	case bytes.IndexByte(content, 0) >= 0:
+		return "binary"
+	case minified(content, a.cfg.MinifiedAvgLine):
+		return "minified"
+	case generatedMarker(content):
+		return ReasonGenerated
+	default:
+		return ""
+	}
 }
 
 // beginText is begin for prose and config blobs, which have no parse and no
@@ -325,24 +374,22 @@ func (a *Analyzer) beginText(ctx context.Context, path, sha string, content []by
 			return rep, nil
 		}
 	}
-	if int64(len(content)) > a.cfg.MaxFileBytes {
-		rep.Skipped = "oversize"
-
-		return rep, nil
-	}
-	if bytes.IndexByte(content, 0) >= 0 {
-		rep.Skipped = "binary"
-
-		return rep, nil
-	}
 	class := pathClass(path)
-	if payload, ok := a.store.Get(ctx, sha, class, a.analysis); ok {
-		var c cached
-		if err := json.Unmarshal(payload, &c); err == nil {
-			rep.Print = c.Print
+	if c, ok := a.lookup(ctx, sha, class); ok {
+		rep.Skipped = c.Skipped
+		rep.Print = c.Print
 
-			return rep, nil
-		}
+		return rep, nil
+	}
+	switch {
+	case int64(len(content)) > a.cfg.MaxFileBytes:
+		rep.Skipped = a.verdict(ctx, sha, class, "oversize")
+
+		return rep, nil
+	case bytes.IndexByte(content, 0) >= 0:
+		rep.Skipped = a.verdict(ctx, sha, class, "binary")
+
+		return rep, nil
 	}
 
 	return rep, &job{rep: rep, sha: sha, class: class, content: content}
