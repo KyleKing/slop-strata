@@ -213,15 +213,15 @@ logins = ["release-bot"]
 
 These are one run each on an Apple M4 Pro with 12 cores. A cold run starts with an empty blob cache. I set that up by pointing `HOME` at a fresh directory. A warm run is the next run against that same cache.
 
-| Repository  | Files | Command              | Cold    | Warm    | Peak memory (cold) |
-| ----------- | ----- | -------------------- | ------- | ------- | ------------------ |
-| calcipy     | 142   | `snapshot`           | 0.07 s  | 0.03 s  | 29 MB              |
-| aragonite   | 162   | `snapshot`           | 0.18 s  | 0.04 s  | 41 MB              |
-| second-look | 584   | `snapshot`           | 0.44 s  | 0.07 s  | 67 MB              |
-| calcipy     | 142   | `history` (365 days) | 1.56 s  | 1.27 s  | 42 MB              |
-| second-look | 584   | `history` (365 days) | 15.70 s | 5.74 s  | 95 MB              |
+| Repository  | Files | Command              | Cold   | Warm   | Peak memory (cold) |
+| ----------- | ----- | -------------------- | ------ | ------ | ------------------ |
+| calcipy     | 142   | `snapshot`           | 0.13 s | 0.06 s | 30 MB              |
+| aragonite   | 169   | `snapshot`           | 0.35 s | 0.11 s | 44 MB              |
+| second-look | 590   | `snapshot`           | 0.63 s | 0.18 s | 71 MB              |
+| calcipy     | 142   | `history` (365 days) | 0.22 s | 0.08 s | 59 MB              |
+| second-look | 590   | `history` (365 days) | 7.91 s | 0.49 s | 275 MB             |
 
-Parsing runs one worker per CPU core (GOMAXPROCS), with one parser per worker. A warm `snapshot` skips parsing for every blob it has already seen. `history` still walks every commit and reads each changed blob, so a warm history run stays much slower than a warm snapshot. These are small repositories, and I have not measured one with tens of thousands of files.
+Parsing runs one worker per CPU core (GOMAXPROCS), with one parser per worker. A warm `snapshot` skips parsing for every blob it has already seen. A warm `history` also skips reading any blob the cache already answers, so what remains is `git log` and the line tracking. On a private repository with 1,529 first-parent commits in three weeks, `history` took 64 s cold and 4.5 s warm, and 2,979 commits over six weeks took 142 s cold and 9.7 s warm. On a terminal, a `history` run past two seconds prints a commits done/total line to stderr.
 
 ## Read more
 
