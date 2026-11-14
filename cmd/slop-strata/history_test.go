@@ -56,6 +56,14 @@ type bodyEdit struct {
 	unseen     bool
 }
 
+var nestedFuncs = []structure.FuncMetrics{
+	{Name: "outer1", StartLine: 1, EndLine: 20},
+	{Name: "wrapper", StartLine: 5, EndLine: 10},
+	{Name: "outer2", StartLine: 21, EndLine: 40},
+	{Name: "wrapper", StartLine: 25, EndLine: 30},
+}
+var inFirstWrapper, inSecondWrapper = vcs.DiffHunk{NewStart: 6, NewLines: 1}, vcs.DiffHunk{NewStart: 26, NewLines: 1}
+
 func TestOscillationCountsBodyChangesInAnyTwoWeeks(t *testing.T) {
 	t.Parallel()
 	inF := vcs.DiffHunk{NewStart: 12, NewLines: 1}
@@ -68,13 +76,6 @@ func TestOscillationCountsBodyChangesInAnyTwoWeeks(t *testing.T) {
 			{path: "a.go", day: 14, hunk: hunks[2]},
 		}
 	}
-	nested := []structure.FuncMetrics{
-		{Name: "outer1", StartLine: 1, EndLine: 20},
-		{Name: "wrapper", StartLine: 5, EndLine: 10},
-		{Name: "outer2", StartLine: 21, EndLine: 40},
-		{Name: "wrapper", StartLine: 25, EndLine: 30},
-	}
-	inFirstWrapper, inSecondWrapper := vcs.DiffHunk{NewStart: 6, NewLines: 1}, vcs.DiffHunk{NewStart: 26, NewLines: 1}
 	cases := []struct {
 		name  string
 		funcs []structure.FuncMetrics
@@ -82,12 +83,12 @@ func TestOscillationCountsBodyChangesInAnyTwoWeeks(t *testing.T) {
 		want  oscillationResult
 	}{
 		{
-			name: "same-named nested functions of different parents stay apart", funcs: nested, edits: three(
+			name: "same-named nested functions of different parents stay apart", funcs: nestedFuncs, edits: three(
 				inFirstWrapper, inFirstWrapper, inSecondWrapper,
 			),
 		},
 		{
-			name: "a nested function is reported under its parent", funcs: nested, edits: three(
+			name: "a nested function is reported under its parent", funcs: nestedFuncs, edits: three(
 				inSecondWrapper, inSecondWrapper, inSecondWrapper,
 			),
 			want: oscillationResult{
