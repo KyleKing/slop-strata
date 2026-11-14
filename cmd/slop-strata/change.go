@@ -1204,7 +1204,7 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 	newSides []side, scored []scoredFile, sup *rules.Suppressor, res *changeResult,
 ) {
 	if basePrints, err := s.treePrints(ctx, base); err == nil {
-		s.lastRefs(ctx, end, files, scored, basePrints, res)
+		s.lastRefs(ctx, end, files, scored, basePrints, sup, res)
 		s.removedNameProse(ctx, basePrints, files, newSides, scored, sup, res)
 	}
 	sortFindings(res.Findings)
@@ -1214,7 +1214,8 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 // declaration still stands at the end of the change, but nothing uses it now.
 // The pass is observational — a failed tree read skips it, never fails the run.
 func (s *session) lastRefs(ctx context.Context, end string,
-	files []vcs.CommitFile, scored []scoredFile, basePrints map[string]*rules.Fingerprint, res *changeResult,
+	files []vcs.CommitFile, scored []scoredFile, basePrints map[string]*rules.Fingerprint, sup *rules.Suppressor,
+	res *changeResult,
 ) {
 	tree, err := s.treePrints(ctx, end)
 	if err != nil {
@@ -1235,17 +1236,20 @@ func (s *session) lastRefs(ctx context.Context, end string,
 			continue
 		}
 		ap := scored[i].afterPrint
+		var hits []rules.Finding
 		for _, name := range mapKeys(bp.Referenced) {
 			if ap != nil && ap.Referenced[name] > 0 {
 				continue
 			}
 			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] {
-				res.Findings = append(res.Findings, findingRow{
-					ID:   rules.FindingID("x/last-ref", scored[i].delta.Path, "", name, 0),
-					Path: scored[i].delta.Path, Rule: "x/last-ref",
-					Line: removedLine(&files[i], name), Match: name, New: true,
-				})
+				hits = append(hits, rules.Finding{Rule: "x/last-ref", Line: removedLine(&files[i], name), Match: name})
 			}
+		}
+		path := scored[i].delta.Path
+		for _, f := range sup.Apply(path, ap, hits) {
+			res.Findings = append(res.Findings, findingRow{
+				ID: f.ID, Path: path, Rule: f.Rule, Line: f.Line, Match: f.Match, New: true,
+			})
 		}
 	}
 }

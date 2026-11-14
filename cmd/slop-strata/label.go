@@ -78,7 +78,8 @@ func (s *session) findingByID(ctx context.Context, rev, id string) (string, rule
 		}
 	}
 
-	return "", rules.Finding{}, fmt.Errorf("%s at %s: %w (snapshot --json lists the ids)", id, rev, errNoFinding)
+	return "", rules.Finding{}, fmt.Errorf("%s at %s: %w (snapshot --json lists the ids, "+
+		"and an x/last-ref id that only change reports cannot be labeled)", id, rev, errNoFinding)
 }
 
 // printLabels lists the verdicts, one per row.

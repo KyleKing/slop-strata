@@ -276,7 +276,9 @@ var Docs = map[string]string{
 		"in Markdown outside code blocks. In Go, //nolint:errcheck // REASON also suppresses go/silent-error. " +
 		"The reason is required. An ignore without one suppresses nothing and is reported as " +
 		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
-		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp.",
+		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp. " +
+		"The one exception is x/last-ref, which only change reports: label cannot find its id, so accept it " +
+		"with a baseline or labels file entry for the id.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
 		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +

@@ -507,30 +507,54 @@ func TestChangeLastRef(t *testing.T) {
 	run("add", "-A")
 	run("commit", "-m", "fix: drop the call")
 
-	out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
-	if err != nil {
-		t.Fatalf("change: %v", err)
-	}
-	var env struct {
+	type lastRefEnv struct {
 		Result struct {
 			Findings []struct {
+				ID    string `json:"id"`
 				Path  string `json:"path"`
 				Rule  string `json:"rule"`
 				Match string `json:"match"`
 			} `json:"findings"`
 		} `json:"result"`
+		Counts struct {
+			Suppressed report.Suppressed `json:"suppressed"`
+		} `json:"counts"`
 	}
-	if err := json.Unmarshal([]byte(out), &env); err != nil {
-		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	changeEnv := func() lastRefEnv {
+		t.Helper()
+		out, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
+		if err != nil {
+			t.Fatalf("change: %v", err)
+		}
+		var env lastRefEnv
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatalf("parsing JSON: %v\n%s", err, out)
+		}
+
+		return env
 	}
-	found := false
-	for _, f := range env.Result.Findings {
+	id := ""
+	for _, f := range changeEnv().Result.Findings {
 		if f.Rule == "x/last-ref" && f.Path == "b.go" && f.Match == "helper" {
-			found = true
+			id = f.ID
 		}
 	}
-	if !found {
-		t.Fatalf("last use of helper not flagged: %s", out)
+	if id == "" {
+		t.Fatal("last use of helper not flagged")
+	}
+
+	labels := rules.Labels{id: {ID: id, Rule: "x/last-ref", Verdict: rules.VerdictFalsePositive, Path: "b.go"}}
+	if err := rules.WriteLabels(filepath.Join(dir, ".slop-strata-labels.json"), labels); err != nil {
+		t.Fatal(err)
+	}
+	env := changeEnv()
+	for _, f := range env.Result.Findings {
+		if f.Rule == "x/last-ref" {
+			t.Errorf("fp-labeled last-ref still reported: %+v", f)
+		}
+	}
+	if env.Counts.Suppressed.LabeledFP != 1 {
+		t.Errorf("labeled_fp = %d, want 1", env.Counts.Suppressed.LabeledFP)
 	}
 }
 
