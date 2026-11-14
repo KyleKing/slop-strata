@@ -105,7 +105,7 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	changes := 0
 
 	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
-		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since,
+		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
 	}) {
 		if err != nil {
 			return fmt.Errorf("walking history: %w", err)
