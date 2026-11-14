@@ -178,7 +178,7 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func TestChangeTextNamesFunctionsItGrew(t *testing.T) {
+func TestChangeTextNamesFunctionsAndTrimsNoise(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	gitRun(t, dir, "init", "--initial-branch=main")
@@ -204,6 +204,24 @@ func TestChangeTextNamesFunctionsItGrew(t *testing.T) {
 	for _, want := range []string{"top functions", "svc.py:17", "flush", "cc new→"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("default output lacks %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"skipped README.md", "tests mass"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("default output holds %q:\n%s", unwanted, out)
+		}
+	}
+	if strings.Contains(out, "\ndir ") {
+		t.Errorf("a one-directory change prints a directory table:\n%s", out)
+	}
+
+	all, err := runCLI(t, dir, "change", "--base", "HEAD~1", "--rev", "HEAD", "--all")
+	if err != nil {
+		t.Fatalf("change --all: %v", err)
+	}
+	for _, want := range []string{"skipped README.md: unsupported", "\ndir ", "tests mass grown"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("--all output lacks %q:\n%s", want, all)
 		}
 	}
 }

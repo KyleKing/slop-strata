@@ -29,3 +29,20 @@ func TestTableAlignsMultibyteCells(t *testing.T) {
 		}
 	}
 }
+
+func TestDropZeroColumnsKeepsTheFirstAndAnyColumnWithSignal(t *testing.T) {
+	t.Parallel()
+	header, rows := report.DropZeroColumns(
+		[]string{"dir", "net", "erosion", "flag", "other"},
+		[][]string{
+			{"a", "+0.0", "0.00 → 0.00*", "", "0.00 → 0.20"},
+			{"b", "0.0", "0.00 → 0.00", "", "—"},
+		},
+	)
+	if got := strings.Join(header, ","); got != "dir,other" {
+		t.Fatalf("header = %q, want dir,other", got)
+	}
+	if len(rows[0]) != 2 || rows[1][1] != "—" {
+		t.Fatalf("rows = %v", rows)
+	}
+}

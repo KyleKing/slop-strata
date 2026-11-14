@@ -101,7 +101,7 @@ cohort   added  alive  s_30d              s_90d
 ...
 ```
 
-Add `--all` to `change` or `snapshot` to show every number, including the ones that did not move. Add `--json` to `change`, `snapshot`, or `history` for machine-readable output.
+Add `--all` to `change` or `snapshot` to show every number, including the ones that did not move. On `change` it also lists test functions, every directory, and unsupported files. Add `--json` to `change`, `snapshot`, or `history` for machine-readable output.
 
 ## What the numbers mean
 

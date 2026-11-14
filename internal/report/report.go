@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -245,6 +246,44 @@ func Table(w io.Writer, header []string, rows [][]string) {
 	for _, r := range rows {
 		line(r)
 	}
+}
+
+// DropZeroColumns removes every column after the first whose cells are all
+// blank or zero, read as numbers split on spaces and arrows, and returns the remaining header and rows.
+func DropZeroColumns(header []string, rows [][]string) ([]string, [][]string) {
+	keep := []int{0}
+	for c := 1; c < len(header); c++ {
+		if !zeroColumn(rows, c) {
+			keep = append(keep, c)
+		}
+	}
+	pick := func(cols []string) []string {
+		out := make([]string, len(keep))
+		for i, c := range keep {
+			out[i] = cols[c]
+		}
+
+		return out
+	}
+	trimmed := make([][]string, len(rows))
+	for i, r := range rows {
+		trimmed[i] = pick(r)
+	}
+
+	return pick(header), trimmed
+}
+
+func zeroColumn(rows [][]string, col int) bool {
+	isSeparator := func(c rune) bool { return c == ' ' || c == '→' || c == '*' }
+	for _, r := range rows {
+		for _, field := range strings.FieldsFunc(r[col], isSeparator) {
+			if v, err := strconv.ParseFloat(strings.TrimPrefix(field, "+"), 64); err != nil || v != 0 {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // spark ticks for trend sparklines.

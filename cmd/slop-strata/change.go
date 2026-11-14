@@ -1028,7 +1028,7 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 	report.Fprintln(w)
 	report.Table(w, []string{"delta", "value"}, deltaRows(res.Delta, all))
 	printTopFunctions(w, res.TopFunctions, all)
-	printDirDeltas(w, res.Dirs)
+	printDirDeltas(w, res.Dirs, all)
 
 	newOnly := res.Findings
 	if !all {
@@ -1053,7 +1053,9 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 		report.Table(w, []string{"rule", "at", ""}, rows)
 	}
 	for _, sk := range res.Skipped {
-		report.Fprintf(w, "skipped %s: %s\n", sk.Path, sk.Reason)
+		if all || sk.Reason != engine.ReasonUnsupported {
+			report.Fprintf(w, "skipped %s: %s\n", sk.Path, sk.Reason)
+		}
 	}
 	for _, er := range res.Errors {
 		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
@@ -1113,9 +1115,9 @@ func printTopFunctions(w io.Writer, top []topFunc, all bool) {
 	report.Table(w, []string{"top functions", "", "", "grown"}, rows)
 }
 
-// printDirDeltas lists the touched directories.
-func printDirDeltas(w io.Writer, dirs map[string]dirDelta) {
-	if len(dirs) == 0 {
+// printDirDeltas lists the touched directories, skipping a one-directory change and zero columns unless all.
+func printDirDeltas(w io.Writer, dirs map[string]dirDelta, all bool) {
+	if len(dirs) == 0 || (len(dirs) == 1 && !all) {
 		return
 	}
 	rows := make([][]string, 0, len(dirs))
@@ -1130,8 +1132,12 @@ func printDirDeltas(w io.Writer, dirs map[string]dirDelta) {
 		erosion := provisionalMarked(fmt.Sprintf("%.2f → %.2f", dd.ErosionBefore, dd.ErosionAfter), dd.Provisional)
 		rows = append(rows, []string{d, fmt.Sprintf("%+.1f", dd.MassNet), erosion, hot})
 	}
+	header, rows := []string{colDir, "mass net", colErosion, ""}, rows
+	if !all {
+		header, rows = report.DropZeroColumns(header, rows)
+	}
 	report.Fprintln(w)
-	report.Table(w, []string{colDir, "mass net", colErosion, ""}, rows)
+	report.Table(w, header, rows)
 	if provisional {
 		report.Fprintf(w, "%s fewer than %d functions on a side\n", provisionalMark, structure.ProvisionalFuncs)
 	}
