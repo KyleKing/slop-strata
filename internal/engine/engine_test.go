@@ -114,3 +114,29 @@ func TestGeneratedFilesAreSkipped(t *testing.T) {
 		})
 	}
 }
+
+func TestSameTextBlobUnderOtherNameKeepsItsOwnPrint(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store, err := cache.Open(ctx, filepath.Join(t.TempDir(), "blobs.db"))
+	if err != nil {
+		t.Fatalf("opening cache: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("closing cache: %v", err)
+		}
+	})
+	const sha = "0123456789abcdef"
+	manifest := []byte("[project.scripts]\ntool = \"pkg.cli:main\"\n")
+
+	first := engine.New(config.Default(), store).AnalyzeText(ctx, "pyproject.toml", sha, manifest)
+	copied := engine.New(config.Default(), store).AnalyzeText(ctx, "docs/sample.toml", sha, manifest)
+
+	if len(first.Print.EntryRefs) != 1 {
+		t.Fatalf("pyproject.toml entry refs = %v, want one", first.Print.EntryRefs)
+	}
+	if len(copied.Print.EntryRefs) != 0 {
+		t.Errorf("docs/sample.toml entry refs = %v, want none", copied.Print.EntryRefs)
+	}
+}

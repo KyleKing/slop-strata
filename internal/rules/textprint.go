@@ -32,18 +32,34 @@ func CollectText(path string, content []byte) *Fingerprint {
 	return fp
 }
 
+// entryManifests maps each package manifest's file name to the reader of the
+// entry points it names.
+var entryManifests = map[string]func([]byte) []string{ //nolint:gochecknoglobals // a fixed vocabulary
+	"package.json":   packageJSONEntries,
+	"pyproject.toml": pyprojectEntries,
+}
+
+// TextShape names what CollectText reads from a path besides its content: the
+// extension that picks the config format, and the manifest name that picks the
+// entry-point reader. Two paths with the same shape fingerprint alike.
+func TextShape(path string) string {
+	base := filepath.Base(path)
+	if _, ok := entryManifests[base]; !ok {
+		base = ""
+	}
+
+	return strings.ToLower(filepath.Ext(path)) + ":" + base
+}
+
 // packageEntryRefs answers the entry points a package manifest names: console
 // scripts as "module:name" targets, and package.json's main, bin, and exports
 // as file paths.
 func packageEntryRefs(path string, content []byte) []string {
-	switch filepath.Base(path) {
-	case "pyproject.toml":
-		return pyprojectEntries(content)
-	case "package.json":
-		return packageJSONEntries(content)
-	default:
-		return nil
+	if read, ok := entryManifests[filepath.Base(path)]; ok {
+		return read(content)
 	}
+
+	return nil
 }
 
 // pyprojectEntries reads the console-script and entry-point targets in [project].
