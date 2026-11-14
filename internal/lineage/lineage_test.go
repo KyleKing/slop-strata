@@ -496,6 +496,7 @@ func TestYoungDeathsComeBackToTheSameFile(t *testing.T) {
 		deathRevert  bool
 		readdRevert  bool
 		sameCommit   bool
+		skewed       bool
 		readdDay     int
 		endDay       int
 		wantAtRisk   int
@@ -506,6 +507,10 @@ func TestYoungDeathsComeBackToTheSameFile(t *testing.T) {
 		{name: "removed and added in one commit is a move", sameCommit: true, readdDay: 1, endDay: 40},
 		{name: "short line never matches", line: "return nil", readdDay: 6, endDay: 40},
 		{name: "re-added after 31 days", readdDay: 32, endDay: 40, wantAtRisk: 1},
+		{
+			name: "re-added after 31 days behind a later-dated death", readdDay: 40, endDay: 45, skewed: true,
+			wantAtRisk: 1,
+		},
 		{name: "same text in another file", readdPath: "b.go", readdDay: 6, endDay: 40, wantAtRisk: 1},
 		{
 			name: "a revert undone is deliberate", deathRevert: true, readdRevert: true, readdDay: 6, endDay: 40,
@@ -529,6 +534,17 @@ func TestYoungDeathsComeBackToTheSameFile(t *testing.T) {
 			if tc.sameCommit {
 				remove.Added = []string{line}
 				remove.Hunks[0].NewLines = 1
+			}
+			if tc.skewed {
+				other := "other := compute(first, second, third, fourth)"
+				w.Commit(commitBy("dev@x", 0, vcs.CommitFile{
+					Path: "d.go", Status: vcs.StatusAdded, Added: []string{other},
+					Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+				}), false, false)
+				w.Commit(commitBy("dev@x", 25, vcs.CommitFile{
+					Path: "d.go", Removed: []string{other},
+					Hunks: []vcs.DiffHunk{{OldStart: 1, OldLines: 1, NewStart: 1}},
+				}), false, false)
 			}
 			w.Commit(commitBy("dev@x", 1, remove), false, tc.deathRevert)
 			if !tc.sameCommit {

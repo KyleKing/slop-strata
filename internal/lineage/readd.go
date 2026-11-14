@@ -112,7 +112,7 @@ func (r *readdTracker) match(path, line string, day int, revert bool) {
 	}
 	key := r.key(path, text)
 	open := r.pending[key]
-	if len(open) == 0 || open[0].day > day {
+	if len(open) == 0 || open[0].day > day || day-open[0].day > ReaddDays {
 		return
 	}
 	d := open[0]
