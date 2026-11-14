@@ -74,7 +74,7 @@ var subcommands = []command{
 		name:    "snapshot",
 		summary: "score the whole tree at a revision",
 		flags: []string{
-			flagRev, flagJSON, flagContext, flagAll, flagWriteBaseline, flagExperimental,
+			flagRev, flagJSON, flagAll, flagWriteBaseline, flagExperimental,
 			flagRepo,
 		},
 	},
@@ -103,7 +103,7 @@ var flagUsage = map[string][2]string{
 	flagJSON:          {"", "emit JSON, the integration surface"},
 	flagBrief:         {"", "print nothing unless the change is worth a look, then the reading and up to 3 next lines"},
 	flagExitCode:      {"", "exit 1 when --brief would speak, 0 when it would not (errors exit 2)"},
-	flagContext:       {"", "add the hunks, source lines, and messages a model needs (JSON only)"},
+	flagContext:       {"", "add the hunks, source lines, and messages a model needs (change, JSON only)"},
 	flagAll:           {"", "show every number, not only what moved"},
 	flagWriteBaseline: {"", "record current findings as the baseline"},
 	flagExperimental:  {"", "also run rules below the 80% precision bar (see --explain experimental)"},

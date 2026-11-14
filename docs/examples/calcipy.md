@@ -94,13 +94,13 @@ The `~` marks a week whose net mass sits within one noise floor of the median we
 
 ### The hotspot table
 
-A hotspot score is 30-day churn times the directory's live complexity mass. The table is sorted by score, highest first.
+In `history`, a hotspot score is 30-day churn times the directory's live complexity mass. The table is sorted by score, highest first.
 
 Churn is credited to the directory where a line was written. It is not charged to the directory where the line later died. So `calcipy` scores 35,565, which is 122 churned lines times 291.5 mass, and `tests/tasks` scores 29,614, which is 249 churned lines times 118.9 mass. The two scores rank close for different reasons. One has more churn, and the other has more live mass.
 
 `calcipy/experiments` scores 2,897, which is 24 churned lines times 120.7 mass. An earlier version of slop-strata charged churn to where lines died, and it showed 381 for this directory. The difference is churn from lines written under `src/calcipy/experiments` before a rename moved them. That churn now sits on the `src` row, which shows 360.
 
-The score says where recent edits meet complexity. It does not say whether those edits were wrong, and a directory that is still being built will score high.
+The score says where recent edits meet complexity. It does not say whether those edits were wrong, and a directory that is still being built will score high. `snapshot` ranks by a different hotspot: the commits that touched a directory in the 90 days up to the revision, times its mass (`--explain hotspot`).
 
 ### Cohorts and survival
 

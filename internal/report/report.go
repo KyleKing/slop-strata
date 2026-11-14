@@ -105,7 +105,7 @@ var Docs = map[string]string{
 		"refactor that removes mass reads differently from one that adds it.",
 	"table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ " +
 		"structured entries scores as a switch with one branch per entry, entries x sqrt(lines). " +
-		"Snapshot hotspots rank by mass plus table_mass, times rule hits plus one.",
+		"A snapshot's hotspot leaves table_mass out, so a hand-written case table never ranks a directory.",
 	"mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row " +
 		"scales to its own minimum and maximum, so it shows shape, not sign or size.",
 	"mass_grown": "Gross mass the change added: for each function present after the change, " +
@@ -122,9 +122,12 @@ var Docs = map[string]string{
 		"exceeds 10, for production files (test_over_limit for tests). A change that concentrates " +
 		"its growth in already-complex functions is the shape erosion measures. Split the " +
 		"function or reduce its branches before adding to it.",
-	"top_functions": "Up to 10 functions the change grew most, largest mass_grown first, with " +
-		"file, start line, CC and mass before and after, and whether the file is a test file. " +
-		"A new function has cc_before 0. Open these first in review: they hold the growth.",
+	"top_functions": "On change, up to 10 functions the change grew most, largest mass_grown first, " +
+		"with file, start line, CC and mass before and after, and whether the file is a test file. " +
+		"A new function has cc_before 0. Open these first in review: they hold the growth. On " +
+		"snapshot, the 10 heaviest functions of the tree by mass, with file, start line, CC, SLOC, " +
+		"mass, and test; the text view lists the top 5 production functions. Split the top one " +
+		"before adding to it.",
 	"next": "result.next: up to three places to look at, in a fixed order: production functions over CC 10 " +
 		"that grew or were added (largest mass grown first), then new rule hits not in the " +
 		"baseline (by file and line), then a stated intent the numbers argue against (the " +
@@ -170,7 +173,16 @@ var Docs = map[string]string{
 		"and null in JSON.",
 	"coupling": "File pairs changed in the same commit 3+ times, skipping commits over 30 files " +
 		"(code-maat's definition of co-change).",
-	"hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
+	"hotspot": "Where recent edits meet complexity mass. On snapshot, for each directory and file, " +
+		"touches_90d times mass: the commits that touched it in the 90 days ending at the scored " +
+		"revision's commit date, times its production mass (table_mass left out). Tests rank apart, " +
+		"and ties rank by mass. On history, 30-day churned lines times live mass per directory. Read " +
+		"the top rows first when you choose what to simplify, and a directory still being built will " +
+		"score high.",
+	"touches_90d": "Commits that touched a directory or file in the 90 days ending at the scored " +
+		"revision's commit date, merges counted once through their first parent. It is the " +
+		"multiplier in a snapshot's hotspot. A change counts the last 90 days from today for its " +
+		"hotspot flag, which marks a directory with 10 or more touches.",
 	"provisional": "Set on a survival cohort, test class, or directory whose rate rests on too few " +
 		"samples: under 30 lines for a cohort, under 5 test files for a test class, under 5 functions " +
 		"for a directory's erosion (on the smaller side of a change). The rate still prints, " +

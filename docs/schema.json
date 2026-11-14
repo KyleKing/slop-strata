@@ -191,7 +191,7 @@
     },
     "snapshotDir": {
       "type": "object",
-      "required": ["dir", "files", "erosion", "mass", "table_mass", "funcs", "over_50", "hotspot", "findings"],
+      "required": ["dir", "files", "erosion", "mass", "table_mass", "funcs", "over_50", "touches_90d", "hotspot", "findings"],
       "properties": {
         "dir": {"type": "string"},
         "files": {"type": "integer"},
@@ -200,14 +200,15 @@
         "table_mass": {"type": "number"},
         "funcs": {"type": "integer"},
         "over_50": {"type": "integer"},
-        "hotspot": {"type": "number"},
+        "touches_90d": {"type": "integer", "description": "Commits that touched the directory in the 90 days ending at the scored revision; see the touches_90d doc."},
+        "hotspot": {"type": "number", "description": "touches_90d times mass; see the hotspot doc."},
         "findings": {"type": "integer"},
         "provisional": {"type": "boolean"}
       }
     },
     "snapshotResult": {
       "type": "object",
-      "required": ["rev", "dirs", "findings", "total"],
+      "required": ["rev", "dirs", "files", "top_functions", "findings", "total"],
       "properties": {
         "rev": {"type": "string"},
         "dirs": {"type": "array", "items": {"$ref": "#/$defs/snapshotDir"}},
@@ -216,11 +217,11 @@
           "type": "array", "items": {"$ref": "#/$defs/snapshotDir"}
         },
         "files": {
-          "description": "Every scored file, production files first, ranked by hotspot.",
+          "description": "Every scored file, production files first, ranked by hotspot, then mass.",
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path", "sloc", "funcs", "mass", "tables", "table_mass", "erosion", "over_50", "max_cc", "findings", "hotspot"],
+            "required": ["path", "sloc", "funcs", "mass", "tables", "table_mass", "erosion", "over_50", "max_cc", "findings", "touches_90d", "hotspot"],
             "properties": {
               "path": {"type": "string"},
               "test": {"type": "boolean"},
@@ -233,7 +234,26 @@
               "over_50": {"type": "integer"},
               "max_cc": {"type": "integer"},
               "findings": {"type": "integer"},
-              "hotspot": {"type": "number"}
+              "touches_90d": {"type": "integer"},
+              "hotspot": {"type": "number", "description": "touches_90d times mass."}
+            }
+          }
+        },
+        "top_functions": {
+          "description": "The 10 heaviest functions of the tree by mass, tests included and flagged; see the top_functions doc.",
+          "type": "array", "maxItems": 10,
+          "items": {
+            "type": "object",
+            "required": ["file", "name", "line", "cc", "sloc", "mass", "test"],
+            "additionalProperties": false,
+            "properties": {
+              "file": {"type": "string"},
+              "name": {"type": "string"},
+              "line": {"type": "integer", "minimum": 1},
+              "cc": {"type": "integer"},
+              "sloc": {"type": "integer"},
+              "mass": {"type": "number"},
+              "test": {"type": "boolean"}
             }
           }
         },
@@ -255,8 +275,7 @@
         },
         "total": {"$ref": "#/$defs/aggregates"},
         "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
-        "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
-        "context": {"type": "object"}
+        "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}}
       }
     },
     "historyResult": {

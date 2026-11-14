@@ -15,7 +15,7 @@
     "errors": "Files the parser could not fully read, with the byte share under error nodes. Metrics still count what parsed; the row is a warning, not an abort.",
     "experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the narrating-comment, dup-literal, dup-test-case, dead-export, and snapshot stale-prose rules and the type-any and test-reads-source families. Enable them per run with --experimental, or for a repository with experimental = true in .slop-strata.toml. A rule leaves this list when a labels file shows it clears the bar.",
     "findings": "New rule hits attributable to this change, after the baseline and pre-existing hits are excluded.",
-    "hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
+    "hotspot": "Where recent edits meet complexity mass. On snapshot, for each directory and file, touches_90d times mass: the commits that touched it in the 90 days ending at the scored revision's commit date, times its production mass (table_mass left out). Tests rank apart, and ties rank by mass. On history, 30-day churned lines times live mass per directory. Read the top rows first when you choose what to simplify, and a directory still being built will score high.",
     "intent": "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection. Kinds are feat, fix, refactor, perf, test, docs, chore, and unknown. Only refactor, fix, and test make a claim the numbers can contradict, so a reading that says \"reads as\" questions that claim. perf, docs, and chore never do. Use it to judge whether a mismatch between label and numbers is worth a question in review.",
     "mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). A change reports the mass it grew and the mass it removed apart, each for production and for tests, so a refactor that removes mass reads differently from one that adds it.",
     "mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row scales to its own minimum and maximum, so it shows shape, not sign or size.",
@@ -44,9 +44,10 @@
     "s_90d": "Survival at 90 days, on the same basis as s_30d.",
     "skipped": "Files excluded by config, size, binary content, minified shape, or generated code, each named with its reason. Generated means a generator marker in the first five lines, or linguist-generated in the working tree's root .gitattributes.",
     "survival": "Kaplan-Meier share of a cohort's added lines still alive at 30 and 90 days, per monthly cohort. At-risk is approximated at month granularity. Null when too few lines in the cohort have run as long as the horizon.",
-    "table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ structured entries scores as a switch with one branch per entry, entries x sqrt(lines). Snapshot hotspots rank by mass plus table_mass, times rule hits plus one.",
+    "table_mass": "Mass of case tables, kept apart from mass and erosion: a map literal of 15+ structured entries scores as a switch with one branch per entry, entries x sqrt(lines). A snapshot's hotspot leaves table_mass out, so a hand-written case table never ranks a directory.",
     "test_survival": "Share of test files added in the range that were deleted within 30 and 90 days, split by the adding commit's author class. Only adds observed inside the range count. Live files younger than a horizon are left out, and the share is null when none is old enough.",
-    "top_functions": "Up to 10 functions the change grew most, largest mass_grown first, with file, start line, CC and mass before and after, and whether the file is a test file. A new function has cc_before 0. Open these first in review: they hold the growth.",
+    "top_functions": "On change, up to 10 functions the change grew most, largest mass_grown first, with file, start line, CC and mass before and after, and whether the file is a test file. A new function has cc_before 0. Open these first in review: they hold the growth. On snapshot, the 10 heaviest functions of the tree by mass, with file, start line, CC, SLOC, mass, and test; the text view lists the top 5 production functions. Split the top one before adding to it.",
+    "touches_90d": "Commits that touched a directory or file in the 90 days ending at the scored revision's commit date, merges counted once through their first parent. It is the multiplier in a snapshot's hotspot. A change counts the last 90 days from today for its hotspot flag, which marks a directory with 10 or more touches.",
     "virality": "For each rule: the first commit that hit it, then how hits spread afterward per author class and across directories (spread_dirs). Answers whether a pattern gets copied once it lands.",
     "within_noise": "Set on a week whose net mass lies within one noise_floor of the window's median week."
   },
@@ -59,11 +60,12 @@
         "files": 2,
         "findings": 4,
         "funcs": 3,
-        "hotspot": 93.8181928856438,
+        "hotspot": 56.29091573138628,
         "mass": 18.76363857712876,
         "over_50": 0,
         "provisional": true,
-        "table_mass": 0
+        "table_mass": 0,
+        "touches_90d": 3
       }
     ],
     "files": [
@@ -71,27 +73,29 @@
         "erosion": 0,
         "findings": 2,
         "funcs": 2,
-        "hotspot": 42.874507866387546,
+        "hotspot": 28.583005244258363,
         "mass": 14.291502622129181,
         "max_cc": 3,
         "over_50": 0,
         "path": "tally.go",
         "sloc": 18,
         "table_mass": 0,
-        "tables": 0
+        "tables": 0,
+        "touches_90d": 2
       },
       {
         "erosion": 0,
         "findings": 2,
         "funcs": 1,
-        "hotspot": 13.416407864998739,
+        "hotspot": 4.47213595499958,
         "mass": 4.47213595499958,
         "max_cc": 2,
         "over_50": 0,
         "path": "config.py",
         "sloc": 5,
         "table_mass": 0,
-        "tables": 0
+        "tables": 0,
+        "touches_90d": 1
       }
     ],
     "findings": {
@@ -122,6 +126,35 @@
       ]
     },
     "rev": "HEAD",
+    "top_functions": [
+      {
+        "cc": 3,
+        "file": "tally.go",
+        "line": 6,
+        "mass": 9,
+        "name": "Sum",
+        "sloc": 9,
+        "test": false
+      },
+      {
+        "cc": 2,
+        "file": "tally.go",
+        "line": 18,
+        "mass": 5.291502622129181,
+        "name": "clamp",
+        "sloc": 7,
+        "test": false
+      },
+      {
+        "cc": 2,
+        "file": "config.py",
+        "line": 1,
+        "mass": 4.47213595499958,
+        "name": "load",
+        "sloc": 5,
+        "test": false
+      }
+    ],
     "total": {
       "erosion": 0,
       "files": 2,

@@ -330,9 +330,16 @@ func TestSnapshotMarksThinDirsProvisional(t *testing.T) {
 	var env struct {
 		Result struct {
 			Dirs []struct {
-				Dir         string `json:"dir"`
-				Provisional bool   `json:"provisional"`
+				Dir         string  `json:"dir"`
+				Mass        float64 `json:"mass"`
+				Hotspot     float64 `json:"hotspot"`
+				Touches90d  int     `json:"touches_90d"`
+				Provisional bool    `json:"provisional"`
 			} `json:"dirs"`
+			TopFunctions []struct {
+				Name string `json:"name"`
+				Test bool   `json:"test"`
+			} `json:"top_functions"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
@@ -341,12 +348,28 @@ func TestSnapshotMarksThinDirsProvisional(t *testing.T) {
 	if len(env.Result.Dirs) == 0 || !env.Result.Dirs[0].Provisional {
 		t.Errorf("fixture directories under the function floor are not provisional: %s", out)
 	}
+	if d := env.Result.Dirs[0]; d.Touches90d != 2 || d.Hotspot != float64(d.Touches90d)*d.Mass {
+		t.Errorf("hotspot = %v, want touches_90d (2 commits) x mass %v: %s", d.Hotspot, d.Mass, out)
+	}
+	if len(env.Result.TopFunctions) == 0 {
+		t.Errorf("snapshot lists no top_functions: %s", out)
+	}
+	old, err := runCLI(t, repo, "snapshot", "--json", "--rev", "HEAD~1")
+	if err != nil {
+		t.Fatalf("snapshot --rev HEAD~1: %v", err)
+	}
+	if !strings.Contains(old, `"touches_90d": 1`) {
+		t.Errorf("an older revision should count only the commits up to it: %s", old)
+	}
 	text, err := runCLI(t, repo, "snapshot")
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
 	if !strings.Contains(text, "* fewer than 5 samples") || !strings.Contains(text, "0.00*") {
 		t.Errorf("snapshot text lacks the provisional mark and footnote:\n%s", text)
+	}
+	if !strings.Contains(text, "top functions") || !strings.Contains(text, "main.go:6") {
+		t.Errorf("snapshot text lacks the top production functions:\n%s", text)
 	}
 }
 

@@ -86,7 +86,7 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 
 - `change` prints a short block: the reading, then a table of deltas, then findings by rule. It shows only what moved, and `--all` shows the rest
 - `change --brief` is the quiet mode for hooks and coding agents. It prints nothing unless the change is worth a look, then the reading and up to three `next:` lines. Worth a look is one fixed rule over existing fields, with no score: a production function over CC 10 grew or was added, a new rule hit outside the baseline appeared, or the stated intent disagrees with the numbers. `--exit-code` maps that to status 1, and errors exit 2, so a build fails only when the caller asks for it. The same items are `result.next` in the JSON, and `--context` adds the source lines of each function in them
-- `snapshot` prints a per-directory table, ranked by hotspot score
+- `snapshot` prints a per-directory table, ranked by hotspot (commits touching the directory in the 90 days up to the scored revision, times its mass), then the heaviest files and the five heaviest production functions. It takes no `--context`, because a snapshot has no change to give context for
 - `history` prints trends per directory as a table with sparklines. The per-class pairing rows are in JSON only
 - `--json` on `change`, `snapshot`, and `history` is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML
 - second-look calls `change` behind the first frame and shows the reading and deltas on the review screen

@@ -37,6 +37,7 @@ const (
 	colDir     = "dir"
 	colAdded   = "added"
 	colMass    = "mass"
+	colHotspot = "hotspot"
 	colErosion = "erosion"
 )
 

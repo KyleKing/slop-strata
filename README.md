@@ -58,7 +58,7 @@ calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
 calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
 ```
 
-`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot. Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. `--json` lists every file under `files`:
+`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. `--json` lists every file under `files`:
 
 ```bash
 slop-strata snapshot
@@ -67,12 +67,16 @@ slop-strata snapshot
 ```text
 erosion 0.18 · mass 1240 · 182 funcs · 1 over 50 lines
 
-dir                         files  erosion  mass  over_50  rule_hits
-tests/tasks                 13     0.00     119   0        6
-calcipy/tasks               13     0.23     318   1        0
-calcipy                     10     0.25     315   0        0
+dir                    files  erosion  mass  table_mass  over_50  rule_hits  hotspot
+calcipy/tasks          13     0.23     318   0           1        0          1590
+calcipy                10     0.25     315   0           0        0          1261
+calcipy/experiments    5      0.57     121   0           0        0          241
 ...
-calcipy/experiments         5      0.57     121   0        0
+
+top functions                                                                                 sloc  mass
+calcipy/cli.py:58                                     start_program                    cc 13  37    79.1
+calcipy/tasks/tags.py:31                              collect_code_tags                cc 11  46    74.6
+...
 ```
 
 `history` walks the first-parent merges in a window and reports trends:
@@ -132,13 +136,13 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 
 - `mass` is the sum of CC times the square root of SLOC over each function. `--explain mass`
 - `mass grown` and `mass removed` are the gross mass a change added to and took from its functions, new and deleted functions counted in full, for production and for tests apart. `--explain mass_grown`, `--explain mass_removed`
-- `top_functions` names the functions that grew most, with file, line, and CC before and after. `--explain top_functions`
+- `top_functions` names the functions that grew most on `change`, with file, line, and CC before and after, and the heaviest functions of the tree on `snapshot`. `--explain top_functions`
 - `next` lists up to three places to look first, with the reason for each. `--explain next`
 - `erosion` is the share of mass held by functions with cyclomatic complexity over 10. `--explain erosion`
 - `over_limit` is the share of mass grown that lands in functions already over CC 10. `--explain over_limit`
 - `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written, credited to the directory they were written in. `--explain churn_30d`
 - `rework` counts young lines removed by a fix commit. `--explain rework`
-- `hotspot` is 30-day churn times a directory's live mass. `--explain hotspot`
+- `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with a rule id, file, and line. `--explain findings`
@@ -169,7 +173,7 @@ The gate exists because a noisy rule teaches people to skip its output, and that
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero
-- `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `--json` only
+- `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
 - `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 3
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:

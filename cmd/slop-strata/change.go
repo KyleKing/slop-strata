@@ -887,32 +887,64 @@ func (s *session) startDirTouches(ctx context.Context) {
 	}
 }
 
-// recentDirTouches reads names only; LogHistory's patch parse is too slow per change.
+// recentDirTouches counts the commits of the last 90 days that touched each directory.
 func recentDirTouches(ctx context.Context, root string) (map[string]int, error) {
+	commits, err := recentCommitPaths(ctx, root, defaultRev, "90 days ago")
+	if err != nil {
+		return nil, err
+	}
+	dirs, _ := countTouches(commits)
+
+	return dirs, nil
+}
+
+// recentCommitPaths lists the paths each first-parent commit of rev touched since
+// the given git date. It reads names only; LogHistory's patch parse is too slow.
+func recentCommitPaths(ctx context.Context, root, rev, since string) ([][]string, error) {
 	args := []string{
 		"-c", "core.quotePath=false", "log", "-m", "--first-parent",
-		"--since=90 days ago", "--name-only", "--format=%x1e",
+		"--since=" + since, "--name-only", "--format=%x1e", rev,
 	}
-	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- argv is fixed
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- rev is the user's own argument
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("listing commits over 90 days: %w", err)
+		return nil, fmt.Errorf("listing commits of %s since %s: %w", rev, since, err)
 	}
-	touches := map[string]int{}
+	var commits [][]string
 	for _, rec := range strings.Split(string(out), "\x1e") {
-		dirs := map[string]bool{}
+		var paths []string
 		for _, path := range strings.Split(rec, "\n") {
 			if path != "" {
-				dirs[lineage.DirOf(path)] = true
+				paths = append(paths, path)
 			}
 		}
-		for d := range dirs {
-			touches[d]++
+		commits = append(commits, paths)
+	}
+
+	return commits, nil
+}
+
+// countTouches counts the commits that touched each directory and each file,
+// once per commit.
+func countTouches(commits [][]string) (map[string]int, map[string]int) {
+	dirs, files := map[string]int{}, map[string]int{}
+	for _, paths := range commits {
+		seenFiles, seenDirs := map[string]bool{}, map[string]bool{}
+		for _, path := range paths {
+			if seenFiles[path] {
+				continue
+			}
+			seenFiles[path] = true
+			files[path]++
+			if d := lineage.DirOf(path); !seenDirs[d] {
+				seenDirs[d] = true
+				dirs[d]++
+			}
 		}
 	}
 
-	return touches, nil
+	return dirs, files
 }
 
 func mapKeys[V any](m map[string]V) []string {
