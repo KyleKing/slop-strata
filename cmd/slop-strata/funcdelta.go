@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kyleking/slop-strata/internal/lang"
+	"github.com/kyleking/slop-strata/internal/report"
 	"github.com/kyleking/slop-strata/internal/structure"
 )
 
@@ -212,7 +213,8 @@ func totalsByPath(changes []funcChange) (map[string]massTotals, massTotals, mass
 		}
 		byPath[c.path] = t
 	}
-	for path, t := range byPath {
+	for _, path := range report.SortedKeys(byPath) {
+		t := byPath[path]
 		sum := &prod
 		if lang.IsTestPath(path) {
 			sum = &tests

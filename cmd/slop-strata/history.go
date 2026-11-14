@@ -345,8 +345,8 @@ func massSeries(res *historyResult) map[string][]float64 {
 		if out[p.Dir] == nil {
 			out[p.Dir] = make([]float64, sparkWeeks)
 		}
-		for _, m := range p.ClassMass {
-			out[p.Dir][i] += m
+		for _, class := range report.SortedKeys(p.ClassMass) {
+			out[p.Dir][i] += p.ClassMass[class]
 		}
 	}
 
