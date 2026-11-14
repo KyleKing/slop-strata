@@ -26,9 +26,11 @@ func CrossFile(
 	blobs []BlobPrint, treePaths, entryPoints, configPaths []string, experimental bool,
 ) map[string][]Finding {
 	out := map[string][]Finding{}
-	if experimental {
+	if crossEnabled(ruleXDupLiteral, experimental) {
 		dupLiterals(blobs, out)
-		deadExports(blobs, out, entryPoints)
+	}
+	deadExports(blobs, out, entryPoints, experimental)
+	if crossEnabled(ruleXStaleProse, experimental) {
 		staleProse(blobs, out, treePaths)
 	}
 	clones(blobs, out, experimental)
@@ -332,7 +334,7 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 		}
 		for _, b := range owners {
 			out[b.Path] = append(out[b.Path], Finding{
-				Rule: "x/dup-literal", Line: b.Print.Literals[lit].Line,
+				Rule: ruleXDupLiteral, Line: b.Print.Literals[lit].Line,
 				Match: short,
 				Note:  fmt.Sprintf("shared by %d files", len(owners)),
 			})
@@ -346,7 +348,7 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 // referenced. Go methods are never reported, because a method can satisfy an
 // interface declared outside the tree. Entry-point globs and test files are
 // exempt, since their exports answer a caller outside the tree.
-func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string) {
+func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string, experimental bool) {
 	refCount := referenceIndex(blobs)
 	entryNames, entryGlobs := manifestEntries(blobs, entryPoints)
 	for _, b := range blobs {
@@ -364,19 +366,26 @@ func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []stri
 			if elsewhere > 0 {
 				continue
 			}
-			finding := Finding{
-				Rule: "x/dead-export", Line: line, Match: name,
-				Note: "exported, referenced nowhere else",
-			}
-			if selfUses(b.Print, name) > 0 {
-				finding = Finding{
-					Rule: "x/could-be-private", Line: line, Match: name,
-					Note: "exported, used only inside its own file",
-				}
+			finding := exportFinding(b.Print, name, line)
+			if !crossEnabled(finding.Rule, experimental) {
+				continue
 			}
 			out[b.Path] = append(out[b.Path], finding)
 		}
 	}
+}
+
+// exportFinding names an unreferenced export dead, or could-be-private when its
+// own file still uses it.
+func exportFinding(fp *Fingerprint, name string, line int) Finding {
+	if selfUses(fp, name) > 0 {
+		return Finding{
+			Rule: ruleXCouldBePrivate, Line: line, Match: name,
+			Note: "exported, used only inside its own file",
+		}
+	}
+
+	return Finding{Rule: ruleXDeadExport, Line: line, Match: name, Note: "exported, referenced nowhere else"}
 }
 
 // referenceIndex counts the files referencing each identifier.
@@ -457,18 +466,18 @@ func clones(blobs []BlobPrint, out map[string][]Finding, experimental bool) {
 			files[o.path] = true
 		}
 		if len(files) < minCloneFiles {
-			if experimental {
+			if crossEnabled(ruleXDupTestCase, experimental) {
 				dupTestCases(hash, owners, out)
 			}
 
 			continue
 		}
-		if !experimental {
+		if !crossEnabled(ruleXCloneFunction, experimental) {
 			continue
 		}
 		for _, o := range owners {
 			out[o.path] = append(out[o.path], Finding{
-				Rule: "x/clone-function", Line: o.unit.Line,
+				Rule: ruleXCloneFunction, Line: o.unit.Line,
 				Match: o.unit.Name,
 				Note:  fmt.Sprintf("same normalized body in %d files (%s)", len(files), hash[:8]),
 			})
@@ -491,7 +500,7 @@ func dupTestCases(hash string, owners []cloneOwner, out map[string][]Finding) {
 	}
 	for _, o := range cases {
 		out[o.path] = append(out[o.path], Finding{
-			Rule: "x/dup-test-case", Line: o.unit.Line,
+			Rule: ruleXDupTestCase, Line: o.unit.Line,
 			Match: o.unit.Name,
 			Note: fmt.Sprintf("same normalized body as %d tests in this file (%s)",
 				len(cases), hash[:8]),

@@ -11,21 +11,40 @@ type RuleInfo struct {
 	Experimental bool
 }
 
+// Cross-file and path-only rule IDs that a tier gates.
+const (
+	ruleXCloneFunction  = "x/clone-function"
+	ruleXCouldBePrivate = "x/could-be-private"
+	ruleXDeadExport     = "x/dead-export"
+	ruleXDupLiteral     = "x/dup-literal"
+	ruleXDupTestCase    = "x/dup-test-case"
+	ruleXSpentTest      = "x/spent-test"
+)
+
 // crossRules lists the rules the cross-file passes and the path-only rules
-// emit, with the tier CrossFile and PathFindings give them. Per-blob rules
-// come from the registry.
+// emit with their tier. CrossFile and PathFindings gate on it through
+// crossEnabled, so a rule runs in the tier Catalog lists it under. Per-blob
+// rules come from the registry.
 var crossRules = []RuleInfo{ //nolint:gochecknoglobals // a fixed vocabulary
-	{ID: "x/clone-function", Experimental: true},
-	{ID: "x/could-be-private", Experimental: true},
-	{ID: "x/dead-export", Experimental: true},
-	{ID: "x/dup-literal", Experimental: true},
-	{ID: "x/dup-test-case", Experimental: true},
+	{ID: ruleXCloneFunction, Experimental: true},
+	{ID: ruleXCouldBePrivate, Experimental: true},
+	{ID: ruleXDeadExport, Experimental: true},
+	{ID: ruleXDupLiteral, Experimental: true},
+	{ID: ruleXDupTestCase, Experimental: true},
 	{ID: "x/last-ref"},
 	{ID: "x/single-impl-iface"},
-	{ID: "x/spent-test", Experimental: true},
+	{ID: ruleXSpentTest, Experimental: true},
 	{ID: "x/stale-config"},
 	{ID: ruleXStaleProse, Experimental: true},
 	{ID: "x/unused-option"},
+}
+
+// crossEnabled reports whether a cross-file or path-only rule runs: always for
+// a default rule, and only with experimental set for an experimental one.
+func crossEnabled(id string, experimental bool) bool {
+	i := slices.IndexFunc(crossRules, func(r RuleInfo) bool { return r.ID == id })
+
+	return i >= 0 && (experimental || !crossRules[i].Experimental)
 }
 
 // Catalog lists every rule that ships, ordered by ID.

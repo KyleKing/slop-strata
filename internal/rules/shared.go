@@ -82,7 +82,7 @@ var spentName = regexp.MustCompile( //nolint:gochecknoglobals // a compiled patt
 func spentTest(ctx *Ctx, findings *[]Finding) {
 	if spentName.MatchString(ctx.Path) {
 		*findings = append(*findings, Finding{
-			Rule: "x/spent-test", Line: 1,
+			Rule: ruleXSpentTest, Line: 1,
 			Match: ctx.Path,
 			Note:  "test file name suggests a one-shot subject",
 		})

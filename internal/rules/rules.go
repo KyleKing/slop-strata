@@ -106,7 +106,7 @@ var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile 
 // every path.
 func PathFindings(path string, test, experimental bool) []Finding {
 	var findings []Finding
-	if test && experimental {
+	if test && crossEnabled(ruleXSpentTest, experimental) {
 		spentTest(&Ctx{Path: path}, &findings)
 	}
 
