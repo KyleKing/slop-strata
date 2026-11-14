@@ -25,6 +25,7 @@
     "max_len": "Longest function in lines.",
     "max_nesting": "Deepest control nesting in any function.",
     "max_params": "Largest parameter count on any function.",
+    "next": "Up to three places to look at, in a fixed order: production functions over CC 10 that grew or were added (largest mass grown first), then new rule hits not in the baseline (by file and line), then a stated intent the numbers argue against (the \"reads as\" clause). A change is worth a look exactly when the list is not empty. change --brief prints the reading and these lines, and nothing when the list is empty. With --exit-code the status is 1 when it would print and 0 when it would not. Look at the first item before you merge or commit.",
     "noise_floor": "Median absolute deviation of weekly net mass across the history window. A week whose net sits within one floor of the median week shows no measurable change, so each is marked within_noise and printed with a ~.",
     "over_50": "Functions longer than 50 lines. Each is a candidate to split, not a violation.",
     "over_limit": "The share of mass_grown sitting in functions whose cyclomatic complexity exceeds 10, for production files (test_over_limit for tests). A change that concentrates its growth in already-complex functions is the shape erosion measures. Split the function or reduce its branches before adding to it.",

@@ -19,6 +19,10 @@ import (
 // errUsage marks a bad command line.
 var errUsage = errors.New("usage error")
 
+// errWorthALook marks a change --exit-code found worth a look. The run
+// succeeded, so it prints no message.
+var errWorthALook = errors.New("change is worth a look")
+
 // errNotMetric marks an unknown --explain name.
 var errNotMetric = errors.New("no such metric")
 

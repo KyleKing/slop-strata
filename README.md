@@ -103,6 +103,29 @@ cohort   added  alive  s_30d              s_90d
 
 Add `--all` to `change` or `snapshot` to show every number, including the ones that did not move. On `change` it also lists test functions, every directory, and unsupported files. Add `--json` to `change`, `snapshot`, or `history` for machine-readable output.
 
+## In a hook or an agent loop
+
+`slop-strata change --brief` prints nothing when the change is not worth a look. Otherwise it prints the reading and up to three `next:` lines. A change is worth a look when a production function over CC 10 grew or was added, a rule hit that is not in the baseline appeared, or the stated intent disagrees with the numbers (the "reads as" clause). The rule is fixed and has no score. `--explain next` lists the order.
+
+`--exit-code` turns that into a status: 1 when `--brief` would speak, 0 when it would not, and 2 for a real error or a bad command line. It is off by default, so a plain run never fails a build.
+
+A git hook that shows the lines and stops the commit:
+
+```bash
+# .git/hooks/pre-commit
+slop-strata change --brief --exit-code || [ $? -ne 1 ]
+```
+
+That line blocks the commit on status 1 and lets an error through. Drop the `|| ...` part to block on errors too.
+
+A coding agent reads the same lines. A hook that runs after the agent edits a file can pipe them back:
+
+```bash
+slop-strata change --brief --exit-code >&2 || exit 2
+```
+
+Claude Code treats exit 2 from a hook as "feed stderr to the model", so the agent sees the reading and the `next:` lines and keeps working. `--json` carries the same items in `result.next`.
+
 ## What the numbers mean
 
 Each name below has a full definition. Run `slop-strata --explain NAME` to read it, or `slop-strata --explain` with no name to list them all.
@@ -125,7 +148,7 @@ Two markers appear in the text output. A `*` marks a rate that rests on too few 
 
 ## Guardrails
 
-No number here has a target, and nothing fails a build. slop-strata prints no grade and no combined score. The components stay separate, so a fall in mass cannot cancel a rise in churn.
+No number here has a target, and nothing fails a build unless you pass `--exit-code`. slop-strata prints no grade and no combined score. The components stay separate, so a fall in mass cannot cancel a rise in churn.
 
 slop-strata raises questions about a change and leaves the answers to you. A change whose stated intent disagrees with its numbers gets a reading that says so. Whether the disagreement matters is for the person reviewing the change.
 

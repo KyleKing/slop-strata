@@ -17,7 +17,9 @@ import (
 const (
 	flagAll           = "--all"
 	flagBase          = "--base"
+	flagBrief         = "--brief"
 	flagContext       = "--context"
+	flagExitCode      = "--exit-code"
 	flagExperimental  = "--experimental"
 	flagHelp          = "--help"
 	flagJSON          = "--json"
@@ -28,6 +30,9 @@ const (
 	flagWriteBaseline = "--write-baseline"
 )
 
+// cmdChange names the change subcommand.
+const cmdChange = "change"
+
 // args is one invocation's parsed flags.
 type args struct {
 	repo          string
@@ -36,6 +41,8 @@ type args struct {
 	since         string
 	pairs         string
 	json          bool
+	brief         bool
+	exitCode      bool
 	ctx           bool
 	all           bool
 	writeBaseline bool
@@ -56,10 +63,10 @@ type command struct {
 //nolint:gochecknoglobals // the command table is fixed at compile time
 var subcommands = []command{
 	{
-		name:    "change",
+		name:    cmdChange,
 		summary: "score the change at hand against its merge base",
 		flags: []string{
-			flagRev, flagBase, flagJSON, flagContext, flagAll, flagExperimental,
+			flagRev, flagBase, flagJSON, flagBrief, flagExitCode, flagContext, flagAll, flagExperimental,
 			flagPairs, flagRepo,
 		},
 	},
@@ -94,6 +101,8 @@ var flagUsage = map[string][2]string{
 	flagPairs:         {"FILE", `score each "<base> <rev>" line of FILE (- for stdin), one JSON envelope per pair`},
 	flagRepo:          {"PATH", "repository root (default .)"},
 	flagJSON:          {"", "emit JSON, the integration surface"},
+	flagBrief:         {"", "print nothing unless the change is worth a look, then the reading and up to 3 next lines"},
+	flagExitCode:      {"", "exit 1 when --brief would speak, 0 when it would not (errors exit 2)"},
 	flagContext:       {"", "add the hunks, source lines, and messages a model needs (JSON only)"},
 	flagAll:           {"", "show every number, not only what moved"},
 	flagWriteBaseline: {"", "record current findings as the baseline"},
@@ -172,7 +181,7 @@ func parseFlag(cmd command, argv []string, a *args) ([]string, error) {
 // switchFlags binds each boolean flag to its field of a.
 func switchFlags(a *args) map[string]*bool {
 	return map[string]*bool{
-		flagJSON: &a.json, flagContext: &a.ctx, flagAll: &a.all,
+		flagJSON: &a.json, flagBrief: &a.brief, flagExitCode: &a.exitCode, flagContext: &a.ctx, flagAll: &a.all,
 		flagWriteBaseline: &a.writeBaseline, flagExperimental: &a.experimental,
 	}
 }
@@ -183,6 +192,22 @@ func valueFlags(a *args) map[string]*string {
 		flagRev: &a.rev, flagBase: &a.base, flagSince: &a.since,
 		flagRepo: &a.repo, flagPairs: &a.pairs,
 	}
+}
+
+// checkCombos rejects flag combinations a command cannot honor.
+func checkCombos(cmd command, a *args) error {
+	if cmd.name != cmdChange {
+		return nil
+	}
+	if a.brief && a.json {
+		return fmt.Errorf("%s prints text, and --json carries the same items in result.next: %w", flagBrief, errUsage)
+	}
+	if a.pairs != "" && (a.brief || a.exitCode) {
+		return fmt.Errorf("%s and %s apply to one change and cannot combine with --pairs: %w",
+			flagBrief, flagExitCode, errUsage)
+	}
+
+	return nil
 }
 
 // printHelp writes the top-level usage.
@@ -287,6 +312,9 @@ func run(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 
 		return nil
 	}
+	if err := checkCombos(cmd, a); err != nil {
+		return err
+	}
 
 	s, err := newSession(ctx, a.repo, a.experimental, stderr)
 	if err != nil {
@@ -295,7 +323,7 @@ func run(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 	defer s.close()
 
 	switch cmd.name {
-	case "change":
+	case cmdChange:
 		return s.changeCmd(ctx, a, stdout)
 	case "snapshot":
 		return s.snapshotCmd(ctx, a, stdout)

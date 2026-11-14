@@ -85,6 +85,7 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 ## Presentation
 
 - `change` prints a short block: the reading, then a table of deltas, then findings by rule. It shows only what moved, and `--all` shows the rest
+- `change --brief` is the quiet mode for hooks and coding agents. It prints nothing unless the change is worth a look, then the reading and up to three `next:` lines. Worth a look is one fixed rule over existing fields, with no score: a production function over CC 10 grew or was added, a new rule hit outside the baseline appeared, or the stated intent disagrees with the numbers. `--exit-code` maps that to status 1, and errors exit 2, so a build fails only when the caller asks for it
 - `snapshot` prints a per-directory table, ranked by hotspot score
 - `history` prints trends per directory as a table with sparklines. The per-class pairing rows are in JSON only
 - `--json` on `change`, `snapshot`, and `history` is the integration surface, and `change --json --pairs FILE` scores many `<base> <rev>` pairs in one process as JSON Lines. The tool renders no HTML

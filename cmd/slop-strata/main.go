@@ -17,8 +17,11 @@ var (
 	date    = "unknown"
 )
 
-// exitUsage is the exit status for a bad command line.
-const exitUsage = 2
+// Exit statuses: 1 is only ever --exit-code reporting a change worth a look.
+const (
+	exitLook  = 1
+	exitError = 2
+)
 
 func main() {
 	os.Exit(runMain())
@@ -28,16 +31,17 @@ func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "slop-strata:", err)
-		if errors.Is(err, errUsage) {
-			fmt.Fprintln(os.Stderr, `Run "slop-strata --help" for usage.`)
-
-			return exitUsage
-		}
-
-		return 1
+	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, errWorthALook):
+		return exitLook
+	}
+	fmt.Fprintln(os.Stderr, "slop-strata:", err)
+	if errors.Is(err, errUsage) {
+		fmt.Fprintln(os.Stderr, `Run "slop-strata --help" for usage.`)
 	}
 
-	return 0
+	return exitError
 }

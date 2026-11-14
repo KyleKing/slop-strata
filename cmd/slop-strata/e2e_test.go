@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -708,5 +709,73 @@ func TestSnapshotRanksProductionApartFromTests(t *testing.T) {
 	}
 	if len(r.Files) != 2 || r.Files[0].Path != "src/table.py" || r.Files[0].Tables != 1 || !r.Files[1].Test {
 		t.Errorf("files = %+v, want the case table file first and the test file last", r.Files)
+	}
+}
+
+// briefRepo has three commits after init: a docs-only one, one that adds a
+// function over CC 10, and one that edits that function without growing it.
+func briefRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var branches strings.Builder
+	for i := range 11 {
+		fmt.Fprintf(&branches, "\tif a == %d {\n\t\treturn %d\n\t}\n", i, i)
+	}
+	gitIn(t, dir, "init", "--initial-branch=main")
+	write("main.go", "package main\n\nfunc main() {}\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "feat: init")
+	write("README.md", "# Fixture\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "docs: add readme")
+	write("branchy.go", "package main\n\nfunc branchy(a int) int {\n"+branches.String()+"\treturn -1\n}\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-m", "feat: add branchy")
+
+	return dir
+}
+
+func TestChangeBriefSpeaksOnlyWhenWorthALook(t *testing.T) {
+	t.Parallel()
+	repo := briefRepo(t)
+	cases := []struct {
+		name     string
+		rev      string
+		wantNext string
+		args     []string
+		wantLook bool
+	}{
+		{name: "docs only is silent", rev: "HEAD~1", args: []string{"--exit-code"}},
+		{
+			name: "new function over CC 10", rev: "HEAD", args: []string{"--exit-code"},
+			wantNext: "next: branchy.go:3 branchy: new function, CC 12", wantLook: true,
+		},
+		{name: "without --exit-code the status stays 0", rev: "HEAD", wantNext: "next: branchy.go:3", wantLook: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			argv := append([]string{"change", "--brief", "--base", tc.rev + "~1", "--rev", tc.rev}, tc.args...)
+			out, err := runCLI(t, repo, argv...)
+			if got := errors.Is(err, errWorthALook); got != tc.wantLook || (err != nil && !got) {
+				t.Fatalf("err = %v, want worth-a-look %v", err, tc.wantLook)
+			}
+			if tc.wantNext == "" {
+				if out != "" {
+					t.Errorf("a quiet change printed %q", out)
+				}
+
+				return
+			}
+			if !strings.Contains(out, tc.wantNext) || strings.Count(out, "next:") > nextLimit {
+				t.Errorf("brief output = %q, want it to contain %q", out, tc.wantNext)
+			}
+		})
 	}
 }

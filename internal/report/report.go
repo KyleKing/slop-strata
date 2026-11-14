@@ -125,6 +125,13 @@ var Docs = map[string]string{
 	"top_functions": "Up to 10 functions the change grew most, largest mass_grown first, with " +
 		"file, start line, CC and mass before and after, and whether the file is a test file. " +
 		"A new function has cc_before 0. Open these first in review: they hold the growth.",
+	"next": "Up to three places to look at, in a fixed order: production functions over CC 10 " +
+		"that grew or were added (largest mass grown first), then new rule hits not in the " +
+		"baseline (by file and line), then a stated intent the numbers argue against (the " +
+		"\"reads as\" clause). A change is worth a look exactly when the list is not empty. " +
+		"change --brief prints the reading and these lines, and nothing when the list is empty. " +
+		"With --exit-code the status is 1 when it would print and 0 when it would not. Look at " +
+		"the first item before you merge or commit.",
 	"p90_len": "90th percentile function length in lines. Long functions carry context a reader " +
 		"must hold; watch the max, not the mean.",
 	"max_len": "Longest function in lines.",

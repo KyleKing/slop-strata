@@ -48,6 +48,8 @@ type changeResult struct {
 	afterByPath  map[string]structure.FileMetrics
 	beforeByPath map[string]structure.FileMetrics
 	leadHigh     string
+	disagreement string
+	grownFuncs   []topFunc
 	Base         string        `json:"base"`
 	End          string        `json:"end"`
 	Reading      string        `json:"reading"`
@@ -56,6 +58,7 @@ type changeResult struct {
 	Skipped      []skippedRow  `json:"skipped,omitempty"`
 	Files        []fileDelta   `json:"files"`
 	TopFunctions []topFunc     `json:"top_functions"`
+	Next         []nextItem    `json:"-"`
 	Findings     []findingRow  `json:"findings"`
 	Delta        deltaSummary  `json:"delta"`
 	highFuncs    funcCounts
@@ -184,7 +187,12 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
-		return nil
+		return lookStatus(a, res)
+	}
+	if a.brief {
+		printBrief(w, res)
+
+		return lookStatus(a, res)
 	}
 	if a.ctx {
 		report.Fprintln(w, "--context only applies to --json output")
@@ -193,7 +201,7 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	printChange(w, res, a.all)
 	report.WarnCounts(s.stderr, countRows(res.Skipped, res.Errors))
 
-	return nil
+	return lookStatus(a, res)
 }
 
 // scoreCommits scores the change from base to rev, two committed revisions.
@@ -391,7 +399,10 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	if err := s.dirDeltas(ctx, res, scored); err != nil {
 		return nil, err
 	}
-	res.Reading = readingFor(res, aggBefore, aggAfter)
+	fields := readingFields(res, aggBefore, aggAfter)
+	res.Reading = fields.Sentence()
+	res.disagreement = fields.Disagreement()
+	res.Next = nextItems(res)
 
 	return res, nil
 }
@@ -753,11 +764,12 @@ func (res *changeResult) applyFuncChanges(scored []scoredFile) {
 	res.highFuncs = highFuncChanges(changes)
 	ranked := rankFunctions(changes)
 	res.leadHigh = leadHighFunc(ranked)
+	res.grownFuncs = ranked
 	res.TopFunctions = ranked[:min(len(ranked), topFunctionLimit)]
 }
 
-// readingFor composes the one-line reading from production figures, or test figures when only tests moved.
-func readingFor(res *changeResult, before, after structure.Aggregates) string {
+// readingFields collects what the reading is built from: production figures, or test figures when only tests moved.
+func readingFields(res *changeResult, before, after structure.Aggregates) reading.Fields {
 	d := res.Delta
 	f := reading.Fields{
 		Intent:          res.Intent,
@@ -789,7 +801,7 @@ func readingFor(res *changeResult, before, after structure.Aggregates) string {
 		})
 	}
 
-	return f.Sentence()
+	return f
 }
 
 // markFindingsOld clears New on hits whose (rule,match) pair exists on the

@@ -22,6 +22,8 @@ func TestUsageErrorsAreCheckedBeforeTheRepository(t *testing.T) {
 		{name: "value flag at the end", argv: []string{"change", "--rev"}},
 		{name: "flag the command does not take", argv: []string{"init", "--pairs", "x"}},
 		{name: "flag before the subcommand", argv: []string{"--json", "change"}},
+		{name: "brief with json", argv: []string{"change", "--brief", "--json", "--repo", "/no/such/dir"}},
+		{name: "exit code with pairs", argv: []string{"change", "--exit-code", "--pairs", "x", "--repo", "/nowhere"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
