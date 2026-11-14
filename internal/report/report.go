@@ -153,7 +153,34 @@ var Docs = map[string]string{
 		"landing. High churn reads as work that did not settle.",
 	"churn_30d": "Lines added in the range that were modified or deleted within 30 days.",
 	"rework":    "Young lines (<=30 days) removed by fix commits: fixes to things just built.",
-	"reverts":   "Commits in the range that revert another change.",
+	"deaths_30d": "How the lines counted in churn_30d died, per directory (credited to the directory the " +
+		"line was written in) and overall, as counts: total, self, pure, whole_file, in_revert, three age " +
+		"buckets (age_le_1d, age_2_7d, age_8_30d), and by_class (birth author class, then the class of the " +
+		"removing commit). Each split is a count of total, so a consumer can add directories. Moved lines " +
+		"are not deaths. Squash merges hide whatever happened inside a branch, so a repository that squashes " +
+		"shows only the survivors of each branch. Read the parts side by side and never as one score: " +
+		"pruning and flapping look alike in churn_30d and differ here.",
+	"self": "Share of young deaths removed by the author who wrote the line, compared by commit author " +
+		"email. High self means people clean up their own work. A high share of other-author removals on " +
+		"agent-born lines (by_class) means cleanup is left to someone else: review agent output before it " +
+		"lands. With one author in the window self is always 1.0, so text output hides the column. " +
+		"A person with two emails reads as two authors, and a rebase that rewrites authors hides the original.",
+	"pure": "Share of young deaths in a hunk that removed lines and added none, against a hunk that " +
+		"replaced them in place. A deleted file counts as pure, and a rewrite whose removal and addition fall in " +
+		"separate hunks reads as pure. High pure with high whole_file and " +
+		"self reads as experiments pruned by whoever ran them. Low pure with high within_7d reads as young " +
+		"code rewritten in place: settle the design before writing the code.",
+	"whole_file": "Share of young deaths that died because their file was deleted, against a partial edit " +
+		"to a file that lives on. High whole_file means whole attempts are discarded, which is pruning. A " +
+		"file renamed or split with its lines kept does not count, because moved lines are not deaths. A " +
+		"file deleted and recreated with changes reads as whole_file for the old lines.",
+	"within_7d": "Share of young deaths within 7 days of the line being written: age_le_1d plus age_2_7d " +
+		"over total. A high share with low pure means code rewritten in place within a week: agree on the " +
+		"shape of the change before writing it. A repository that commits rarely has few deaths in the first day, " +
+		"so read the count with the share.",
+	"in_revert": "Young deaths in commits that revert another change. A revert is neither pruning nor " +
+		"flapping by these measures, so it is counted apart and still included in total.",
+	"reverts": "Commits in the range that revert another change.",
 	"s30_ci": "Greenwood 95% confidence interval for a cohort's survival at 30 days, as [low, high] " +
 		"clipped to 0 and 1. It widens when few lines reach the horizon, so read a wide interval as a weak estimate.",
 	"s90_ci": "Greenwood 95% confidence interval for a cohort's survival at 90 days, on the same basis as s30_ci.",

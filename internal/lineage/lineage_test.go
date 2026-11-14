@@ -3,6 +3,8 @@ package lineage_test
 import (
 	"fmt"
 	"math"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +64,9 @@ func TestMovedLinesKeepTheirCohort(t *testing.T) {
 	}
 	if res.Dirs["."].Churn30 != 0 {
 		t.Fatalf("moved lines are not churn: churn30 = %d", res.Dirs["."].Churn30)
+	}
+	if res.Deaths30.Total != 0 {
+		t.Fatalf("a move is not a young death: deaths_30d total = %d", res.Deaths30.Total)
 	}
 }
 
@@ -386,5 +391,81 @@ func TestGreenwoodIntervalAroundHalfSurviving(t *testing.T) {
 	if math.Abs(*cohort.S30-0.5) > 1e-9 || math.Abs(cohort.S30CI[0]-(0.5-want)) > 1e-6 ||
 		math.Abs(cohort.S30CI[1]-(0.5+want)) > 1e-6 {
 		t.Fatalf("s30 = %v, ci = %v; want 0.5 with interval 0.5 +/- %.6f", *cohort.S30, *cohort.S30CI, want)
+	}
+}
+
+func commitBy(email string, day int, files ...vcs.CommitFile) vcs.CommitRecord {
+	rec := commitOn(day, files...)
+	rec.AuthorName, rec.AuthorEmail = email, email
+
+	return rec
+}
+
+func TestYoungDeathsSplitByWhoHowWhatAndWhen(t *testing.T) {
+	t.Parallel()
+	removeTwo := vcs.CommitFile{
+		Path: "a.go", Removed: []string{"line a.go 0", "line a.go 1"},
+		Hunks: []vcs.DiffHunk{{OldStart: 1, OldLines: 2, NewStart: 1}},
+	}
+	replaceOne := vcs.CommitFile{
+		Path: "a.go", Removed: []string{"line a.go 0"}, Added: []string{"rewritten first line"},
+		Hunks: []vcs.DiffHunk{{OldStart: 1, OldLines: 1, NewStart: 1, NewLines: 1}},
+	}
+	deleteFile := vcs.CommitFile{Path: "a.go", Status: vcs.StatusDeleted}
+	cases := []struct {
+		remove vcs.CommitFile
+		name   string
+		author string
+		want   lineage.Deaths
+		day    int
+		revert bool
+	}{
+		{
+			name: "own author prunes two lines in a week", remove: removeTwo, author: "dev@x", day: 5,
+			want: lineage.Deaths{
+				Total: 2, Self: 2, Pure: 2, AgeWeek: 2,
+				ByClass: map[string]map[string]int{"person": {"person": 2}},
+			},
+		},
+		{
+			name: "another author replaces a line the same day", remove: replaceOne, author: "bot@x", day: 1,
+			want: lineage.Deaths{
+				Total: 1, AgeDay1: 1,
+				ByClass: map[string]map[string]int{"person": {"agent": 1}},
+			},
+		},
+		{
+			name: "a revert deletes the file after 20 days", remove: deleteFile, author: "bot@x", day: 20, revert: true,
+			want: lineage.Deaths{
+				Total: 3, Pure: 3, WholeFile: 3, InRevert: 3, AgeMonth: 3,
+				ByClass: map[string]map[string]int{"person": {"agent": 3}},
+			},
+		},
+		{name: "past 30 days is not a young death", remove: deleteFile, author: "dev@x", day: 31},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(author, _, _ string) string {
+				if strings.HasPrefix(author, "bot@") {
+					return "agent"
+				}
+
+				return "person"
+			})
+			w.Commit(commitBy("dev@x", 0, addedFile("a.go", 3)), false, false)
+			w.Commit(commitBy(tc.author, tc.day, tc.remove), false, tc.revert)
+
+			res := w.Finish()
+			if !reflect.DeepEqual(res.Deaths30, tc.want) {
+				t.Fatalf("deaths_30d = %+v, want %+v", res.Deaths30, tc.want)
+			}
+			if got := res.Dirs["."].Deaths30.Total; got != res.Dirs["."].Churn30 {
+				t.Fatalf("deaths_30d total %d must equal churn_30d %d", got, res.Dirs["."].Churn30)
+			}
+			if wantAuthors := map[bool]int{true: 1, false: 2}[tc.author == "dev@x"]; res.Authors != wantAuthors {
+				t.Fatalf("authors = %d, want %d", res.Authors, wantAuthors)
+			}
+		})
 	}
 }

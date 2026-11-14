@@ -278,6 +278,26 @@
         "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}}
       }
     },
+    "deaths": {
+      "type": "object",
+      "description": "Lines that died within 30 days of being written, so total equals churn_30d. self, pure, whole_file, and in_revert are independent splits of total, and the three age buckets partition it. Moved lines are not deaths.",
+      "required": ["total", "self", "pure", "whole_file", "in_revert", "age_le_1d", "age_2_7d", "age_8_30d"],
+      "properties": {
+        "total": {"type": "integer"},
+        "self": {"type": "integer", "description": "Removed by the commit author who wrote the line."},
+        "pure": {"type": "integer", "description": "Removed in a hunk that added no lines, or with a deleted file."},
+        "whole_file": {"type": "integer", "description": "Died with a deleted file."},
+        "in_revert": {"type": "integer", "description": "Removed by a commit that reverts another change."},
+        "age_le_1d": {"type": "integer"},
+        "age_2_7d": {"type": "integer"},
+        "age_8_30d": {"type": "integer"},
+        "by_class": {
+          "type": "object",
+          "description": "Birth author class, then the class of the removing commit, then a count.",
+          "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}
+        }
+      }
+    },
     "historyResult": {
       "type": "object",
       "required": ["range", "changes", "lineage", "weeks", "virality", "pairing", "hotspots"],
@@ -286,11 +306,19 @@
         "changes": {"type": "integer", "description": "First-parent commits in the window."},
         "lineage": {
           "type": "object",
-          "required": ["commits", "reverts", "dirs", "survival", "test_survival", "coupling", "concentration"],
+          "required": ["commits", "authors", "reverts", "deaths_30d", "dirs", "survival", "test_survival", "coupling", "concentration"],
           "properties": {
             "commits": {"type": "integer"},
+            "authors": {"type": "integer", "description": "Distinct commit author emails in the window. With 1, every death's self share is trivially 1."},
             "reverts": {"type": "integer"},
-            "dirs": {"type": "object", "additionalProperties": {"type": "object"}},
+            "deaths_30d": {"$ref": "#/$defs/deaths"},
+            "dirs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {"deaths_30d": {"$ref": "#/$defs/deaths"}}
+              }
+            },
             "survival": {
               "type": "array",
               "items": {
