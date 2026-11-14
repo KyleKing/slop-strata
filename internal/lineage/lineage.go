@@ -107,23 +107,29 @@ type Survival struct {
 // Deaths counts the lines that died within 30 days of being written, so Total
 // equals churn_30d. Self, Pure, WholeFile, and InRevert are independent splits
 // of Total, and the three age buckets partition it. ByClass is birth class,
-// then the class of the commit that removed the line.
+// then the class of the commit that removed the line. ReaddAtRisk counts the
+// deaths of lines long enough to match that had 30 days of walk left, and
+// Readded and ReaddedByRevert split off the ones a later commit added back.
 type Deaths struct {
-	ByClass   map[string]map[string]int `json:"by_class,omitempty"`
-	Total     int                       `json:"total"`
-	Self      int                       `json:"self"`
-	Pure      int                       `json:"pure"`
-	WholeFile int                       `json:"whole_file"`
-	InRevert  int                       `json:"in_revert"`
-	AgeDay1   int                       `json:"age_le_1d"`
-	AgeWeek   int                       `json:"age_2_7d"`
-	AgeMonth  int                       `json:"age_8_30d"`
+	ByClass         map[string]map[string]int `json:"by_class,omitempty"`
+	Total           int                       `json:"total"`
+	Self            int                       `json:"self"`
+	Pure            int                       `json:"pure"`
+	WholeFile       int                       `json:"whole_file"`
+	InRevert        int                       `json:"in_revert"`
+	AgeDay1         int                       `json:"age_le_1d"`
+	AgeWeek         int                       `json:"age_2_7d"`
+	AgeMonth        int                       `json:"age_8_30d"`
+	ReaddAtRisk     int                       `json:"readd_at_risk"`
+	Readded         int                       `json:"readded"`
+	ReaddedByRevert int                       `json:"readded_by_revert"`
 }
 
 // deathCtx is what the removing commit says about a death: where it is
 // credited, who removed the line, and the shape of the edit.
 type deathCtx struct {
 	ds     *DirStats
+	path   string
 	author string
 	klass  string
 	day    int
@@ -173,6 +179,9 @@ func (d *Deaths) merge(o Deaths) {
 	d.AgeDay1 += o.AgeDay1
 	d.AgeWeek += o.AgeWeek
 	d.AgeMonth += o.AgeMonth
+	d.ReaddAtRisk += o.ReaddAtRisk
+	d.Readded += o.Readded
+	d.ReaddedByRevert += o.ReaddedByRevert
 	for birth, row := range o.ByClass {
 		if d.ByClass == nil {
 			d.ByClass = map[string]map[string]int{}
@@ -247,6 +256,7 @@ type Walker struct {
 	testBirths map[string]testBirth
 	testDeaths []testDeath
 	res        *Result
+	readd      *readdTracker
 	deaths     []death
 	lastDay    int
 }
@@ -261,6 +271,7 @@ func NewWalker(class func(author, committer, body string) string) *Walker {
 		authors:    map[string]struct{}{},
 		testBirths: map[string]testBirth{},
 		res:        &Result{Dirs: map[string]*DirStats{}},
+		readd:      newReaddTracker(),
 	}
 }
 
@@ -380,6 +391,7 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 		w.lastDay = birth
 	}
 	mv := w.collectMoves(rec)
+	w.matchReadds(rec, mv, birth, revert)
 
 	touched := map[string]bool{}
 	for i := range rec.Files {
@@ -392,14 +404,15 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 		ds.Touches++
 		touched[f.Path] = true
 		dc := deathCtx{
-			ds: ds, author: rec.AuthorEmail, klass: klass, day: birth, fix: fixIntent, revert: revert,
+			ds: ds, path: f.Path, author: rec.AuthorEmail, klass: klass, day: birth,
+			fix: fixIntent, revert: revert,
 		}
 
 		switch f.Status {
 		case vcs.StatusAdded:
 			w.addFile(f, klass, cohort, birth, rec, ds, mv)
 		case vcs.StatusDeleted:
-			w.removeFile(f.Path, dc, mv)
+			w.removeFile(f.Path, f.Removed, dc, mv)
 		default:
 			if f.Status == vcs.StatusRenamed && f.OldPath != "" {
 				w.renameFile(f)
@@ -440,13 +453,13 @@ func (w *Walker) addFile(f *vcs.CommitFile, klass string, cohort, birth int,
 
 // removeFile records a deletion: a test death when the file was being
 // tracked, plus every live line killed.
-func (w *Walker) removeFile(path string, dc deathCtx, mv *moves) {
+func (w *Walker) removeFile(path string, removed []string, dc deathCtx, mv *moves) {
 	if tb, ok := w.testBirths[path]; ok {
 		w.testDeaths = append(w.testDeaths, testDeath{age: ageDays(tb.day, dc.day), klass: tb.klass})
 		delete(w.testBirths, path)
 	}
 	dc.pure, dc.whole = true, true
-	w.killAll(path, dc, mv)
+	w.killAll(path, removed, dc, mv)
 }
 
 // renameFile moves a file's line tags and test-birth record to its new path.
@@ -467,10 +480,10 @@ func (mv *moves) take(path string, idx int) (tag, bool) {
 }
 
 // killAll records every live line of a deleted file as a death.
-func (w *Walker) killAll(path string, dc deathCtx, mv *moves) {
+func (w *Walker) killAll(path string, removed []string, dc deathCtx, mv *moves) {
 	for i, t := range w.files[path] {
 		if !mv.exempt[path][i] {
-			w.recordDeath(t, dc)
+			w.recordDeath(t, lineAt(removed, i), dc)
 		}
 	}
 	delete(w.files, path)
@@ -479,9 +492,10 @@ func (w *Walker) killAll(path string, dc deathCtx, mv *moves) {
 // hunkEdit pairs a hunk with where its added lines start in the file's Added
 // list, before the hunks get applied last-first.
 type hunkEdit struct {
-	path  string
-	first int
-	h     vcs.DiffHunk
+	path         string
+	first        int
+	removedFirst int
+	h            vcs.DiffHunk
 }
 
 // applyHunks rewrites a file's line tags through its hunks in one pass over the
@@ -491,10 +505,11 @@ func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
 ) {
 	ds := dc.ds
 	edits := make([]hunkEdit, len(f.Hunks))
-	cur, need, grow := 0, 0, 0
+	cur, gone, need, grow := 0, 0, 0, 0
 	for i, h := range f.Hunks {
-		edits[i] = hunkEdit{f.Path, cur, h}
+		edits[i] = hunkEdit{f.Path, cur, gone, h}
 		cur += h.NewLines
+		gone += h.OldLines
 		need = max(need, max(h.OldStart-1, 0)+h.OldLines)
 		grow += h.NewLines - h.OldLines
 	}
@@ -508,7 +523,7 @@ func (w *Walker) applyHunks(f *vcs.CommitFile, cohort, birth int, klass string,
 		idx := max(h.OldStart-1, 0)
 		out = append(out, lines[at:idx]...)
 		dc.pure = h.NewLines == 0
-		w.killRange(lines, idx, h.OldLines, exempt, dc)
+		w.killRange(lines, idx, hunkSlice(f.Removed, edit.removedFirst, h.OldLines), h.OldLines, exempt, dc)
 		mid, births := insertTags(edit, cohort, birth, klass, rec, mv)
 		out = append(out, mid...)
 		at = idx + h.OldLines
@@ -532,13 +547,25 @@ func padPreRange(lines fileLines, need int) fileLines {
 	return append(lines, pad...)
 }
 
-// killRange records deaths over [idx, idx+oldLines) of the padded old lines.
-func (w *Walker) killRange(lines fileLines, idx, oldLines int, exempt map[int]bool, dc deathCtx) {
+// killRange records deaths over [idx, idx+oldLines) of the padded old lines,
+// with the hunk's removed text, which a clipped diff leaves short.
+func (w *Walker) killRange(lines fileLines, idx int, removed []string, oldLines int,
+	exempt map[int]bool, dc deathCtx,
+) {
 	for p, t := range lines[idx : idx+oldLines] {
 		if !exempt[idx+p] {
-			w.recordDeath(t, dc)
+			w.recordDeath(t, lineAt(removed, p), dc)
 		}
 	}
+}
+
+// lineAt answers line i of a removed-text list, or "" past its end.
+func lineAt(lines []string, i int) string {
+	if i < len(lines) {
+		return lines[i]
+	}
+
+	return ""
 }
 
 // insertTags builds the line tags a hunk adds: a moved line claims its stashed
@@ -565,7 +592,7 @@ func insertTags(edit hunkEdit, cohort, birth int, klass string,
 // recordDeath logs one line's removal with its provenance. Churn goes to the
 // directory the line was added in, so it never exceeds that directory's added
 // lines, while removal and rework stay with the directory it died in.
-func (w *Walker) recordDeath(t tag, dc deathCtx) {
+func (w *Walker) recordDeath(t tag, text string, dc deathCtx) {
 	dc.ds.Removed++
 	age := ageDays(t.birthDays, dc.day)
 	w.deaths = append(w.deaths, death{cohort: t.cohort, age: age, klass: t.class, fix: dc.fix})
@@ -577,6 +604,7 @@ func (w *Walker) recordDeath(t tag, dc deathCtx) {
 		born.Churn30++
 		born.Deaths30.add(t.class, dc, t.author != "" && t.author == dc.author, age)
 		w.res.Churned30++
+		w.readd.register(dc.path, text, t.dir, dc)
 	}
 	if dc.fix && age <= churn30Days {
 		dc.ds.Rework++
@@ -617,6 +645,7 @@ func (w *Walker) Finish() *Result {
 	res.Coupling = w.coupling()
 	res.Added30 = w.totalAdded()
 	res.Authors = len(w.authors)
+	w.foldReadds()
 	for _, ds := range res.Dirs {
 		res.Deaths30.merge(ds.Deaths30)
 	}

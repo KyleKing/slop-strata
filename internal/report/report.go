@@ -160,6 +160,20 @@ var Docs = map[string]string{
 		"are not deaths. Squash merges hide whatever happened inside a branch, so a repository that squashes " +
 		"shows only the survivors of each branch. Read the parts side by side and never as one score: " +
 		"pruning and flapping look alike in churn_30d and differ here.",
+	"readd": "Share of young deaths that came back: a later commit, within 30 days of the death, added a " +
+		"line to the same file with the same trimmed text. deaths_30d carries the counts: readd_at_risk, " +
+		"readded, and readded_by_revert, overall and per directory, and the text table prints readded over " +
+		"readd_at_risk. Only lines of 30 or more bytes match, because shorter ones such as \"return nil\" " +
+		"recur by habit, and readd_at_risk counts only such deaths that had 30 full days of walk after them, " +
+		"the way survival leaves out a line too young to reach its horizon, so a window under 30 days old " +
+		"shows a dash. A line removed and added in one commit is a move or an edit and never counts, and each " +
+		"death and each added line match once. A death in a revert commit, or a line re-added by one, counts " +
+		"in readded_by_revert instead, since undoing a revert is deliberate. A high share means code was cut " +
+		"and then rebuilt in the same place: agree on the design before writing it. A low share beside high " +
+		"pure and whole_file means pruned code stayed gone. It misreads formatting commits that rewrap lines, " +
+		"regenerated fixtures and golden files, a red-green test loop that deletes and restores a line, and " +
+		"squash merges that hide what happened inside a branch. Code that reappears in a file with another " +
+		"name, or in 29 bytes or fewer, is not seen.",
 	"self": "Share of young deaths removed by the author who wrote the line, compared by commit author " +
 		"email. High self means people clean up their own work. A high share of other-author removals on " +
 		"agent-born lines (by_class) means cleanup is left to someone else: review agent output before it " +

@@ -1,6 +1,7 @@
 package lineage_test
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"reflect"
@@ -480,6 +481,69 @@ func TestYoungDeathsSplitByWhoHowWhatAndWhen(t *testing.T) {
 			}
 			if wantAuthors := map[bool]int{true: 1, false: 2}[tc.author == "dev@x"]; res.Authors != wantAuthors {
 				t.Fatalf("authors = %d, want %d", res.Authors, wantAuthors)
+			}
+		})
+	}
+}
+
+func TestYoungDeathsComeBackToTheSameFile(t *testing.T) {
+	t.Parallel()
+	long := "result := compute(first, second, third)"
+	cases := []struct {
+		name         string
+		line         string
+		readdPath    string
+		deathRevert  bool
+		readdRevert  bool
+		sameCommit   bool
+		readdDay     int
+		endDay       int
+		wantAtRisk   int
+		wantReadded  int
+		wantByRevert int
+	}{
+		{name: "re-added five days later", readdDay: 6, endDay: 40, wantAtRisk: 1, wantReadded: 1},
+		{name: "removed and added in one commit is a move", sameCommit: true, readdDay: 1, endDay: 40},
+		{name: "short line never matches", line: "return nil", readdDay: 6, endDay: 40},
+		{name: "re-added after 31 days", readdDay: 32, endDay: 40, wantAtRisk: 1},
+		{name: "same text in another file", readdPath: "b.go", readdDay: 6, endDay: 40, wantAtRisk: 1},
+		{
+			name: "a revert undone is deliberate", deathRevert: true, readdRevert: true, readdDay: 6, endDay: 40,
+			wantAtRisk: 1, wantByRevert: 1,
+		},
+		{name: "death too near the end of the walk", readdDay: 6, endDay: 20},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			line := cmp.Or(tc.line, long)
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			w.Commit(commitBy("dev@x", 0, vcs.CommitFile{
+				Path: "a.go", Status: vcs.StatusAdded, Added: []string{line},
+				Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+			}), false, false)
+			remove := vcs.CommitFile{
+				Path: "a.go", Removed: []string{line},
+				Hunks: []vcs.DiffHunk{{OldStart: 1, OldLines: 1, NewStart: 1}},
+			}
+			if tc.sameCommit {
+				remove.Added = []string{line}
+				remove.Hunks[0].NewLines = 1
+			}
+			w.Commit(commitBy("dev@x", 1, remove), false, tc.deathRevert)
+			if !tc.sameCommit {
+				readd := vcs.CommitFile{
+					Path: cmp.Or(tc.readdPath, "a.go"), Added: []string{line},
+					Hunks: []vcs.DiffHunk{{NewStart: 1, NewLines: 1}},
+				}
+				w.Commit(commitBy("dev@x", tc.readdDay, readd), false, tc.readdRevert)
+			}
+			w.Commit(commitBy("dev@x", tc.endDay, addedFile("c.go", 1)), false, false)
+
+			got := w.Finish().Deaths30
+			gotCounts := [3]int{got.ReaddAtRisk, got.Readded, got.ReaddedByRevert}
+			if want := [3]int{tc.wantAtRisk, tc.wantReadded, tc.wantByRevert}; gotCounts != want {
+				t.Fatalf("at_risk, readded, by_revert = %v, want %v", gotCounts, want)
 			}
 		})
 	}

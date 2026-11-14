@@ -631,24 +631,31 @@ func printDeaths(w io.Writer, res *historyResult) {
 	if lin.Deaths30.Total == 0 {
 		return
 	}
-	showSelf := lin.Authors > 1
+	showSelf, showReadd := lin.Authors > 1, lin.Deaths30.ReaddAtRisk > 0
 	header := []string{colDir, "deaths_30d"}
 	if showSelf {
 		header = append(header, "self")
 	}
 	header = append(header, "pure", "whole_file", "within_7d")
-	rows := [][]string{deathRow("(all)", lin.Deaths30, showSelf)}
+	if showReadd {
+		header = append(header, "readd")
+	}
+	rows := [][]string{deathRow("(all)", lin.Deaths30, showSelf, showReadd)}
 	hidden := 0
 	for _, d := range report.SortedKeys(lin.Dirs) {
 		switch dd := lin.Dirs[d].Deaths30; {
 		case dd.Total >= lineage.ProvisionalLines:
-			rows = append(rows, deathRow(d, dd, showSelf))
+			rows = append(rows, deathRow(d, dd, showSelf, showReadd))
 		case dd.Total > 0:
 			hidden++
 		}
 	}
 	report.Fprintln(w)
 	report.Table(w, header, rows)
+	if showReadd {
+		report.Fprintf(w, "readd: lines of %d or more bytes, deaths at least %d days before the walk ended\n",
+			lineage.ReaddTextFloor, lineage.ReaddDays)
+	}
 	if lin.Deaths30.Total < lineage.ProvisionalLines {
 		report.Fprintf(w, "%s fewer than %d samples\n", provisionalMark, lineage.ProvisionalLines)
 	}
@@ -658,7 +665,7 @@ func printDeaths(w io.Writer, res *historyResult) {
 	}
 }
 
-func deathRow(label string, d lineage.Deaths, showSelf bool) []string {
+func deathRow(label string, d lineage.Deaths, showSelf, showReadd bool) []string {
 	provisional := d.Total < lineage.ProvisionalLines
 	share := func(n int) string {
 		return provisionalMarked(fmt.Sprintf("%.2f", float64(n)/float64(d.Total)), provisional)
@@ -668,7 +675,23 @@ func deathRow(label string, d lineage.Deaths, showSelf bool) []string {
 		row = append(row, share(d.Self))
 	}
 
-	return append(row, share(d.Pure), share(d.WholeFile), share(d.AgeDay1+d.AgeWeek))
+	row = append(row, share(d.Pure), share(d.WholeFile), share(d.AgeDay1+d.AgeWeek))
+	if showReadd {
+		row = append(row, readdCell(d))
+	}
+
+	return row
+}
+
+// readdCell is the share of eligible young deaths a later commit added back to
+// the same file, or a dash when no death had 30 days to come back.
+func readdCell(d lineage.Deaths) string {
+	if d.ReaddAtRisk == 0 {
+		return "—"
+	}
+	cell := fmt.Sprintf("%.2f", float64(d.Readded)/float64(d.ReaddAtRisk))
+
+	return provisionalMarked(cell, d.ReaddAtRisk < lineage.ProvisionalLines)
 }
 
 // printWeeks renders the first-parent week table with its noise footnote.

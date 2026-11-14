@@ -38,6 +38,7 @@
     "pairing": "Author classes compared on the same week and directory: net mass moved and commits each. A cell is provisional under 5 commits.",
     "provisional": "Set on a survival cohort, test class, or directory whose rate rests on too few samples: under 30 lines for a cohort, under 5 test files for a test class, under 5 functions for a directory's erosion (on the smaller side of a change). The rate still prints, marked * in text output.",
     "pure": "Share of young deaths in a hunk that removed lines and added none, against a hunk that replaced them in place. A deleted file counts as pure, and a rewrite whose removal and addition fall in separate hunks reads as pure. High pure with high whole_file and self reads as experiments pruned by whoever ran them. Low pure with high within_7d reads as young code rewritten in place: settle the design before writing the code.",
+    "readd": "Share of young deaths that came back: a later commit, within 30 days of the death, added a line to the same file with the same trimmed text. deaths_30d carries the counts: readd_at_risk, readded, and readded_by_revert, overall and per directory, and the text table prints readded over readd_at_risk. Only lines of 30 or more bytes match, because shorter ones such as \"return nil\" recur by habit, and readd_at_risk counts only such deaths that had 30 full days of walk after them, the way survival leaves out a line too young to reach its horizon, so a window under 30 days old shows a dash. A line removed and added in one commit is a move or an edit and never counts, and each death and each added line match once. A death in a revert commit, or a line re-added by one, counts in readded_by_revert instead, since undoing a revert is deliberate. A high share means code was cut and then rebuilt in the same place: agree on the design before writing it. A low share beside high pure and whole_file means pruned code stayed gone. It misreads formatting commits that rewrap lines, regenerated fixtures and golden files, a red-green test loop that deletes and restores a line, and squash merges that hide what happened inside a branch. Code that reappears in a file with another name, or in 29 bytes or fewer, is not seen.",
     "reverts": "Commits in the range that revert another change.",
     "rework": "Young lines (\u003c=30 days) removed by fix commits: fixes to things just built.",
     "rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file holds the ones already accepted. Experimental rules report only with --experimental.",
@@ -83,6 +84,9 @@
         },
         "in_revert": 0,
         "pure": 0,
+        "readd_at_risk": 0,
+        "readded": 0,
+        "readded_by_revert": 0,
         "self": 4,
         "total": 4,
         "whole_file": 0
@@ -103,6 +107,9 @@
             },
             "in_revert": 0,
             "pure": 0,
+            "readd_at_risk": 0,
+            "readded": 0,
+            "readded_by_revert": 0,
             "self": 4,
             "total": 4,
             "whole_file": 0

@@ -281,7 +281,7 @@
     "deaths": {
       "type": "object",
       "description": "Lines that died within 30 days of being written, so total equals churn_30d. self, pure, whole_file, and in_revert are independent splits of total, and the three age buckets partition it. Moved lines are not deaths.",
-      "required": ["total", "self", "pure", "whole_file", "in_revert", "age_le_1d", "age_2_7d", "age_8_30d"],
+      "required": ["total", "self", "pure", "whole_file", "in_revert", "age_le_1d", "age_2_7d", "age_8_30d", "readd_at_risk", "readded", "readded_by_revert"],
       "properties": {
         "total": {"type": "integer"},
         "self": {"type": "integer", "description": "Removed by the commit author who wrote the line."},
@@ -291,6 +291,9 @@
         "age_le_1d": {"type": "integer"},
         "age_2_7d": {"type": "integer"},
         "age_8_30d": {"type": "integer"},
+        "readd_at_risk": {"type": "integer", "description": "Deaths of lines of 30 or more bytes that had 30 days of walk after them, the denominator of the readd share."},
+        "readded": {"type": "integer", "description": "Of readd_at_risk, deaths a later commit added back to the same file within 30 days, excluding revert-related ones."},
+        "readded_by_revert": {"type": "integer", "description": "Of readd_at_risk, deaths in a revert commit or added back by one."},
         "by_class": {
           "type": "object",
           "description": "Birth author class, then the class of the removing commit, then a count.",
