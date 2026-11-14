@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 2
+const Version = 3
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -183,7 +183,10 @@ var Docs = map[string]string{
 		"them, so a non-zero count means the numbers cover less of the tree. Unsupported file " +
 		"types are listed as skipped but not counted.",
 	"intent": "The change's stated purpose read off commit metadata: Conventional Commit type, " +
-		"branch name, then issue keywords, plus revert detection.",
+		"branch name, then issue keywords, plus revert detection. Kinds are feat, fix, refactor, perf, " +
+		"test, docs, chore, and unknown. Only refactor, fix, and test make a claim the numbers can " +
+		"contradict, so a reading that says \"reads as\" questions that claim. perf, docs, and chore " +
+		"never do. Use it to judge whether a mismatch between label and numbers is worth a question in review.",
 }
 
 // Names lists every metric --explain answers, sorted.

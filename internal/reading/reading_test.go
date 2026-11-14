@@ -51,6 +51,38 @@ func TestSentenceLeadsWithNetAndCountsFunctionsByHowTheyChanged(t *testing.T) {
 			want: "Fix: net +1.0 mass, 1.0 grown; touched 1 function over CC 10",
 		},
 		{
+			name: "names the directory with the largest net mass and tags it when it is a hotspot",
+			fields: reading.Fields{
+				Intent: intent.Intent{Kind: intent.Feat}, MassAdded: 164, MassGrown: 164,
+				Dirs: []reading.Dir{
+					{Name: ".", Hotspot: true},
+					{Name: "cmd/x", MassNet: 163.8, MassGrown: 163.8, Hotspot: true},
+					{Name: "internal/y", MassNet: -20, MassGrown: 1},
+				},
+			},
+			want: "Feat in `cmd/x` (a hotspot): net +164.0 mass, 164.0 grown",
+		},
+		{
+			name: "equal net mass goes to the larger growth, then the name",
+			fields: reading.Fields{
+				Intent: intent.Intent{Kind: intent.Fix}, MassAdded: 1, MassRemoved: 1,
+				Dirs: []reading.Dir{
+					{Name: "b", MassNet: 5, MassGrown: 5},
+					{Name: "a", MassNet: -5, MassGrown: 5},
+					{Name: "c", MassNet: 5, MassGrown: 2},
+				},
+			},
+			want: "Fix in `a`: net +0.0 mass, 0.0 grown",
+		},
+		{
+			name: "no directory moved mass reads without a hotspot tag",
+			fields: reading.Fields{
+				Intent: intent.Intent{Kind: intent.Docs},
+				Dirs:   []reading.Dir{{Name: "docs", Hotspot: true}, {Name: "."}},
+			},
+			want: "Docs in `.`: no complexity mass moved",
+		},
+		{
 			name:   "no mass moved",
 			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Chore}},
 			want:   "Chore: no complexity mass moved",
@@ -100,6 +132,16 @@ func TestDisagreementNamesTheNumbersAgainstTheIntent(t *testing.T) {
 			name:   "test change that adds production mass",
 			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Test}, MassAdded: 3},
 			want:   "a test change that adds production mass",
+		},
+		{
+			name:   "docs never disagrees",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Docs}, MassAdded: 50},
+			want:   "",
+		},
+		{
+			name:   "perf may add mass",
+			fields: reading.Fields{Intent: intent.Intent{Kind: intent.Perf}, MassAdded: 50, ErosionAfter: 0.4},
+			want:   "",
 		},
 		{
 			name:   "feature never disagrees with itself",

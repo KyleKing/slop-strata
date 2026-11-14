@@ -17,6 +17,8 @@ const (
 	Refactor Kind = "refactor"
 	Test     Kind = "test"
 	Chore    Kind = "chore"
+	Docs     Kind = "docs"
+	Perf     Kind = "perf"
 	Unknown  Kind = "unknown"
 )
 
@@ -66,11 +68,15 @@ func subjectKind(typ string) Kind {
 		return Feat
 	case Fix:
 		return Fix
-	case Refactor, "perf", "style", "cleanup", "chore-cleanup":
+	case Refactor, "cleanup", "chore-cleanup":
 		return Refactor
-	case Test, "docs":
+	case Test:
 		return Test
-	case Chore, "ci", "build", "bump", "deps":
+	case Docs:
+		return Docs
+	case Perf:
+		return Perf
+	case Chore, "ci", "build", "bump", "deps", "style":
 		return Chore
 	default:
 		return Unknown
@@ -92,6 +98,10 @@ func branchKind(branch string) Kind {
 		return Test
 	case "chore":
 		return Chore
+	case "docs":
+		return Docs
+	case "perf":
+		return Perf
 	default:
 		return Unknown
 	}

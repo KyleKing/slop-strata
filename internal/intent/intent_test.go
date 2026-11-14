@@ -63,8 +63,17 @@ func TestOfReadsSubjectThenBranchThenRevert(t *testing.T) {
 			want:    intent.Intent{Kind: intent.Feat, Scope: "api", Summary: "add export"},
 		},
 		{
-			name:    "perf reads as refactor",
-			subject: "perf: tighten the loop", want: intent.Intent{Kind: intent.Refactor, Summary: "tighten the loop"},
+			name:    "perf keeps its own kind",
+			subject: "perf: tighten the loop", want: intent.Intent{Kind: intent.Perf, Summary: "tighten the loop"},
+		},
+		{
+			name:    "docs keeps its own kind",
+			subject: "docs(readme): explain usage",
+			want:    intent.Intent{Kind: intent.Docs, Scope: "readme", Summary: "explain usage"},
+		},
+		{
+			name:    "style reads as chore",
+			subject: "style: format", want: intent.Intent{Kind: intent.Chore, Summary: "format"},
 		},
 		{
 			name:    "branch decides when the subject does not",

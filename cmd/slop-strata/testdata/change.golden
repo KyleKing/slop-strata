@@ -16,7 +16,7 @@
     "experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the narrating-comment, dup-literal, dup-test-case, dead-export, and snapshot stale-prose rules and the type-any and test-reads-source families. Enable them per run with --experimental, or for a repository with experimental = true in .slop-strata.toml. A rule leaves this list when a labels file shows it clears the bar.",
     "findings": "New rule hits attributable to this change, after the baseline and pre-existing hits are excluded.",
     "hotspot": "Directories where recent touches meet high complexity mass: churn x complexity.",
-    "intent": "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection.",
+    "intent": "The change's stated purpose read off commit metadata: Conventional Commit type, branch name, then issue keywords, plus revert detection. Kinds are feat, fix, refactor, perf, test, docs, chore, and unknown. Only refactor, fix, and test make a claim the numbers can contradict, so a reading that says \"reads as\" questions that claim. perf, docs, and chore never do. Use it to judge whether a mismatch between label and numbers is worth a question in review.",
     "mass": "Total complexity mass: sum over functions of CC x sqrt(SLOC). Gross added/removed/net are reported separately; a refactor that removes mass differs from one that adds it.",
     "mass_8w": "Net mass per week for the last eight weeks of the range, oldest left. Each row scales to its own minimum and maximum, so it shows shape, not sign or size.",
     "mass_grown": "Function-matched growth: for each function present after the change, max(0, mass_after - mass_before) summed, matched by name within the same file. New functions count in full. This is the mass a change actually adds, as distinct from mass_added which totals the after-side mass of every touched file.",
@@ -98,6 +98,6 @@
     },
     "reading": "Refactor in `.`: net -0.1 mass, 5.3 grown; 1 new rule hits"
   },
-  "schema": 2,
+  "schema": 3,
   "tool": "slop-strata"
 }

@@ -812,15 +812,13 @@ func readingFor(res *changeResult, before, after structure.Aggregates) string {
 			f.FindingsNew++
 		}
 	}
-	for _, d := range res.Dirs {
-		if d.Hotspot {
-			f.Hotspot = true
-		}
+	grown := map[string]float64{}
+	for i := range res.Files {
+		grown[lineage.DirOf(res.Files[i].Path)] += res.Files[i].MassGrown
 	}
-	for d := range res.Dirs {
-		f.TouchedDirs = append(f.TouchedDirs, d)
+	for name, d := range res.Dirs {
+		f.Dirs = append(f.Dirs, reading.Dir{Name: name, MassNet: d.MassNet, MassGrown: grown[name], Hotspot: d.Hotspot})
 	}
-	sort.Strings(f.TouchedDirs)
 
 	return f.Sentence()
 }

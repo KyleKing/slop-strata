@@ -132,13 +132,13 @@ The gate exists because a noisy rule teaches people to skip its output, and that
 `change`, `snapshot`, and `history` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0}, "warnings": [], "schema": 2}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0}, "warnings": [], "schema": 3}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `--json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 2
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 3
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 

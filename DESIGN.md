@@ -13,7 +13,7 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 ## Decisions
 
 - Named `slop-strata`. Pure Go. Rules are Go functions that walk tree-sitter trees, built into the binary. ast-grep YAML packs (scb-check's 137 rules among them) load as an optional external source through `sg`
-- Generic, configured per repository: author classes come from logins and trailer patterns in `.slop-strata.toml`, with two built-in classes after the repository's own: `agent` for coding-agent co-author trailers, and `bot` for logins ending in `[bot]`. `change`, `snapshot`, and `history` emit JSON in one envelope that carries a schema version (2, published as `docs/schema.json`) and the definition of each metric. Unknown config keys fail the run. Any HTML or dashboard is the consuming system's job
+- Generic, configured per repository: author classes come from logins and trailer patterns in `.slop-strata.toml`, with two built-in classes after the repository's own: `agent` for coding-agent co-author trailers, and `bot` for logins ending in `[bot]`. `change`, `snapshot`, and `history` emit JSON in one envelope that carries a schema version (3, published as `docs/schema.json`) and the definition of each metric. Unknown config keys fail the run. Any HTML or dashboard is the consuming system's job
 - No bare command. Subcommands are listed in this order, and `--help` recommends `change` when run with no arguments:
   1. `change`: lines added by `@` (jj) or `HEAD` against its merge base
   2. `snapshot`: the whole tree at a revision
@@ -67,7 +67,7 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
 
 A delta means nothing until the tool knows what the change set out to do, so every result carries its context and a one-line reading.
 
-- Intent comes from the Conventional Commit type, the branch name, and linked issue keywords: `feat`, `fix`, `refactor`, `test`, `chore`, or unknown
+- Intent comes from the Conventional Commit type, the branch name, and linked issue keywords: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, or unknown. Only `refactor`, `fix`, and `test` carry an expectation the numbers can contradict. `perf`, `docs`, `chore`, `ci`, `build`, and `style` never produce a disagreement
 - Gross and net are reported apart: mass added, mass removed, and the net. A refactor that removes three high-complexity functions and adds one smaller one is paying down. A feature that adds the same mass is accruing
 - Location matters as much as size: whether the change touched a hotspot, a file with low survival, or code another author class wrote
 - Each result reads as a sentence before the numbers: "Refactor in a hotspot: removed 2 functions over CC 10, erosion in `pkg/parse` fell from 0.48 to 0.31." Readings come from rules over these fields, never from a model, so the same input always gives the same sentence

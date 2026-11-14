@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 2}
+    "schema": {"const": 3}
   },
   "allOf": [
     {
@@ -83,7 +83,7 @@
       "type": "object",
       "required": ["kind"],
       "properties": {
-        "kind": {"type": "string", "enum": ["feat", "fix", "refactor", "test", "chore", "unknown"]},
+        "kind": {"type": "string", "enum": ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "unknown"]},
         "scope": {"type": "string"},
         "summary": {"type": "string"},
         "revert": {"type": "boolean"}

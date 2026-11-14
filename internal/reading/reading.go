@@ -3,16 +3,31 @@
 package reading
 
 import (
+	"cmp"
 	"fmt"
+	"math"
+	"slices"
 	"strings"
 
 	"github.com/kyleking/slop-strata/internal/intent"
 )
 
+// Dir is one touched directory's share of a change.
+type Dir struct {
+	Name      string
+	MassNet   float64
+	MassGrown float64
+	Hotspot   bool
+}
+
+func (d Dir) moved() bool {
+	return d.MassNet != 0 || d.MassGrown != 0
+}
+
 // Fields is what a reading is built from.
 type Fields struct {
 	Intent          intent.Intent
-	TouchedDirs     []string
+	Dirs            []Dir
 	MassAdded       float64
 	MassRemoved     float64
 	MassGrown       float64
@@ -23,7 +38,6 @@ type Fields struct {
 	FuncHighGone    int // functions over CC 10 that disappeared
 	FindingsNew     int
 	FindingsGone    int
-	Hotspot         bool
 }
 
 // Disagreement reports whether the numbers argue against the stated intent.
@@ -42,6 +56,23 @@ func (f Fields) Disagreement() string {
 	}
 }
 
+// primaryDir picks the directory the change mostly happened in: the largest
+// absolute net mass, then the most mass grown, then the name.
+func primaryDir(dirs []Dir) (Dir, bool) {
+	if len(dirs) == 0 {
+		return Dir{}, false
+	}
+	best := slices.MaxFunc(dirs, func(a, b Dir) int {
+		return cmp.Or(
+			cmp.Compare(math.Abs(a.MassNet), math.Abs(b.MassNet)),
+			cmp.Compare(a.MassGrown, b.MassGrown),
+			cmp.Compare(b.Name, a.Name),
+		)
+	})
+
+	return best, true
+}
+
 // functions counts functions with the right noun.
 func functions(n int) string {
 	if n == 1 {
@@ -56,15 +87,15 @@ func (f Fields) Sentence() string {
 	var b strings.Builder
 
 	where := ""
-	if len(f.TouchedDirs) > 0 {
-		where = " in `" + f.TouchedDirs[0] + "`"
+	if dir, ok := primaryDir(f.Dirs); ok {
+		where = " in `" + dir.Name + "`"
+		if dir.Hotspot && dir.moved() {
+			where += " (a hotspot)"
+		}
 	}
 	label := string(f.Intent.Kind)
 	if label == "unknown" {
 		label = "change"
-	}
-	if f.Hotspot {
-		where += " (a hotspot)"
 	}
 	fmt.Fprintf(&b, "%s%s: ", strings.ToUpper(label[:1])+label[1:], where)
 
