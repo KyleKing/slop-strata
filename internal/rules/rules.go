@@ -12,13 +12,14 @@ import (
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.
 const (
-	ruleGoSilentError     = "go/silent-error"
-	ruleGoTypeAny         = "go/type-any"
-	rulePyTestReadsSource = "py/test-reads-source"
-	rulePyTimingHack      = "py/timing-hack"
-	ruleTSAsUnknownAs     = "ts/as-unknown-as"
-	ruleXNarratingComment = "x/narrating-comment"
-	ruleXStaleProse       = "x/stale-prose"
+	ruleGoSilentError        = "go/silent-error"
+	ruleGoTypeAny            = "go/type-any"
+	rulePyTestReadsSource    = "py/test-reads-source"
+	rulePyTimingHack         = "py/timing-hack"
+	ruleTSAsUnknownAs        = "ts/as-unknown-as"
+	ruleXIgnoreWithoutReason = "x/ignore-without-reason"
+	ruleXNarratingComment    = "x/narrating-comment"
+	ruleXStaleProse          = "x/stale-prose"
 )
 
 // Tree-sitter node kinds and texts several rules match on.
@@ -52,8 +53,11 @@ type Ctx struct {
 	Root         *ts.Node
 	Path         string
 	Src          []byte
+	directives   []Directive
 	Test         bool
 	Experimental bool
+
+	directivesRead bool
 }
 
 // Rule is a per-blob check.
@@ -67,6 +71,7 @@ type Rule struct {
 // all is the registry: every rule that ships, in id order.
 var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile time
 	{ID: ruleGoSilentError, Apply: goSilentError, Experimental: true},
+	{ID: ruleXIgnoreWithoutReason, Apply: ignoreWithoutReason},
 	{ID: ruleGoTypeAny, Apply: goTypeAny, Experimental: true},
 	{ID: "go/test-reads-source", TestOnly: true, Apply: goTestReadsSource, Experimental: true},
 	{ID: "go/timing-hack", TestOnly: true, Apply: goTimingHack},

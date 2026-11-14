@@ -1,12 +1,14 @@
 package rules
 
-// Suppressor sets findings aside and counts why: a false-positive label or the
-// baseline. Each finding counts once, under the first reason in that order.
+// Suppressor sets findings aside and counts why: an inline ignore with a
+// reason, a false-positive label, or the baseline. Each finding counts once,
+// under the first reason in that order.
 type Suppressor struct {
 	baseline Baseline
 	labels   Labels
 
-	// Labeled and Baselined count the findings set aside so far.
+	// Ignored, Labeled, and Baselined count the findings set aside so far.
+	Ignored   int
 	Labeled   int
 	Baselined int
 }
@@ -16,12 +18,19 @@ func NewSuppressor(baseline Baseline, labels Labels) *Suppressor {
 	return &Suppressor{baseline: baseline, labels: labels}
 }
 
-// Apply gives one file's findings their IDs and drops the ones set aside.
-func (s *Suppressor) Apply(path string, fs []Finding) []Finding {
+// Apply gives one file's findings their IDs and drops the ones set aside. The
+// fingerprint, when present, carries the file's inline directives.
+func (s *Suppressor) Apply(path string, fp *Fingerprint, fs []Finding) []Finding {
 	fs = Identify(path, fs)
+	var directives []Directive
+	if fp != nil {
+		directives = fp.Directives
+	}
 	var kept []Finding
 	for _, f := range fs {
 		switch {
+		case covered(directives, f):
+			s.Ignored++
 		case s.labels.IsFalsePositive(f.ID):
 			s.Labeled++
 		case s.baseline[f.ID]:

@@ -35,8 +35,24 @@ func CrossFile(
 	singleImplIfaces(blobs, out)
 	unusedOptions(blobs, out)
 	staleConfig(blobs, out, configPaths)
+	textIgnoresWithoutReason(blobs, out)
 
 	return out
+}
+
+// textIgnoresWithoutReason flags the reasonless ignore comments of prose and
+// config files. Code files report theirs from the per-blob rule.
+func textIgnoresWithoutReason(blobs []BlobPrint, out map[string][]Finding) {
+	for _, b := range blobs {
+		if lang.ByPath(b.Path) != nil {
+			continue
+		}
+		for _, d := range b.Print.Directives {
+			if d.Reason == "" {
+				out[b.Path] = append(out[b.Path], misuse(d))
+			}
+		}
+	}
 }
 
 // staleProse flags a code-shaped name a comment, docstring, or prose file

@@ -850,7 +850,7 @@ func TestChangeBriefSpeaksOnlyWhenWorthALook(t *testing.T) {
 	}
 }
 
-// snapshotFindings is the part of a snapshot envelope the labels test reads.
+// snapshotFindings is the part of a snapshot envelope the suppression tests read.
 type snapshotFindings struct {
 	Result struct {
 		Findings map[string][]struct {
@@ -927,5 +927,28 @@ func TestLabelledAndIgnoredFindingsAreSetAsideAndCounted(t *testing.T) {
 	hasRow := func(l string) bool { return slices.Equal(strings.Fields(l), want) }
 	if !slices.ContainsFunc(strings.Split(table, "\n"), hasRow) {
 		t.Errorf("rules table has no row %v:\n%s", want, table)
+	}
+}
+
+func TestInlineIgnoreNeedsAReason(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	sleep := "package main\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestWaits(t *testing.T) {\n" +
+		"\t// slop-strata:ignore go/timing-hack %s\n\ttime.Sleep(1)\n}\n"
+	for name, directive := range map[string]string{"util_test.go": "waiting on a fake clock", "bare_test.go": ""} {
+		body := fmt.Sprintf(sleep, directive)
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "test: ignore the sleeps")
+	snap := snapshotOf(t, repo)
+	if snap.idOf("util_test.go", "go/timing-hack") != "" || snap.Counts.Suppressed.Ignored != 1 {
+		t.Errorf("ignore with a reason: findings %+v, ignored %d", snap.Result.Findings["util_test.go"],
+			snap.Counts.Suppressed.Ignored)
+	}
+	if snap.idOf("bare_test.go", "go/timing-hack") == "" || snap.idOf("bare_test.go", "x/ignore-without-reason") == "" {
+		t.Errorf("ignore without a reason must keep the hit and be reported: %+v", snap.Result.Findings["bare_test.go"])
 	}
 }

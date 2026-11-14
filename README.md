@@ -149,7 +149,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
-- `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline or labeled false positive. `--explain suppressed`
+- `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline, ignored inline with a reason, or labeled false positive. `--explain suppressed`
 - `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
 - `pairing` compares author classes in the same week and directory. `--explain pairing`
 - `counts` says how many files the run could not score, and why. `--explain counts`
@@ -172,7 +172,18 @@ The gate exists because a noisy rule teaches people to skip its output, and that
 
 Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
 
-The baseline (`snapshot --write-baseline`, or `init`) accepts every current finding at once. It keys findings by id, so an older baseline file fails the run with a message to rewrite it. Labeled and baselined findings are counted in `counts.suppressed` and in one line on stderr, so a muted finding never vanishes without a trace.
+To mute one finding inline, write `slop-strata:ignore`, the rule id, and a reason in a comment on the finding's line or the line above it:
+
+```go
+// slop-strata:ignore go/timing-hack waits on the fake clock's tick
+time.Sleep(tick)
+```
+
+Use the file's own comment syntax: `//` or `#` in code, `#` in TOML and YAML, and an HTML comment in Markdown. A Markdown comment inside a fenced code block is example text and does not count. JSON has no comments, and ast-grep findings keep ast-grep's own suppression comment. In Go, `//nolint:errcheck // reason` also mutes `go/silent-error`.
+
+The reason is required. An ignore without one mutes nothing, and slop-strata reports it as `x/ignore-without-reason`. A `//nolint` with no reason mutes nothing either, and golangci-lint's `nolintlint` is the place that polices it.
+
+The baseline (`snapshot --write-baseline`, or `init`) accepts every current finding at once. It keys findings by id, so an older baseline file fails the run with a message to rewrite it. Ignored, labeled, and baselined findings are counted in `counts.suppressed` and in one line on stderr, so a muted finding never vanishes without a trace.
 
 ## Labeling findings
 
@@ -196,7 +207,7 @@ The labels are evidence about this repository. A rule's precision here says noth
 `change`, `snapshot`, `history`, and `rules` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "suppressed": {"baseline": 0, "labeled_fp": 0}}, "warnings": [], "schema": 3}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 3}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints

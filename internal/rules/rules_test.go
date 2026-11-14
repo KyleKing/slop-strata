@@ -1002,3 +1002,104 @@ func TestFindingIDsSurviveLineMovesAndBreakTies(t *testing.T) {
 		t.Errorf("the same hit in another path shares id %s", renamed[0].ID)
 	}
 }
+
+type ignoreCase struct {
+	files       map[string]string
+	name        string
+	path        string
+	rule        string
+	configPaths []string
+	want        int
+}
+
+func ignoreCases() []ignoreCase {
+	const sleepTest = "package p\n\nimport \"time\"\n\nfunc TestA() {\n%s\ttime.Sleep(1)\n}\n"
+	const silent = "package p\n\nfunc f() {\n\t_ = g() //nolint:errcheck%s\n}\n\nfunc g() error { return nil }\n"
+	const pyTry = "def f(x):\n    try:\n        g(x)\n%s    except ValueError:\n        pass\n"
+
+	return []ignoreCase{
+		{
+			name: "go ignore above with a reason suppresses", path: "a_test.go", rule: "go/timing-hack", want: 0,
+			files: map[string]string{
+				"a_test.go": fmt.Sprintf(sleepTest, "\t// slop-strata:ignore go/timing-hack waits on a fake clock\n"),
+			},
+		},
+		{
+			name: "go ignore two lines above does not reach", path: "a_test.go", rule: "go/timing-hack", want: 1,
+			files: map[string]string{
+				"a_test.go": fmt.Sprintf(sleepTest, "\t// slop-strata:ignore go/timing-hack too far\n\n"),
+			},
+		},
+		{
+			name: "go nolint with a reason suppresses silent-error", path: "a.go", rule: "go/silent-error", want: 0,
+			files: map[string]string{"a.go": fmt.Sprintf(silent, " // detached HEAD has no branch")},
+		},
+		{
+			name: "go nolint without a reason keeps silent-error", path: "a.go", rule: "go/silent-error", want: 1,
+			files: map[string]string{"a.go": fmt.Sprintf(silent, "")},
+		},
+		{
+			name: "python ignore with a reason suppresses", path: "a.py", rule: "py/silent-except", want: 0,
+			files: map[string]string{
+				"a.py": fmt.Sprintf(pyTry, "    # slop-strata:ignore py/silent-except retry loop\n"),
+			},
+		},
+		{
+			name: "ignore without a reason keeps the hit", path: "a.py", rule: "py/silent-except", want: 1,
+			files: map[string]string{"a.py": fmt.Sprintf(pyTry, "    # slop-strata:ignore py/silent-except\n")},
+		},
+		{
+			name: "ignore without a reason is reported", path: "a.py", rule: "x/ignore-without-reason", want: 1,
+			files: map[string]string{"a.py": fmt.Sprintf(pyTry, "    # slop-strata:ignore py/silent-except\n")},
+		},
+		{
+			name: "markdown comment suppresses prose", path: "README.md", rule: "x/stale-prose", want: 0,
+			files: map[string]string{
+				"README.md": "<!-- slop-strata:ignore x/stale-prose example name -->\nCall `fetchRecords()`.\n",
+			},
+		},
+		{
+			name: "markdown comment in a code fence is prose", path: "README.md", rule: "x/stale-prose", want: 1,
+			files: map[string]string{
+				"README.md": "```\n<!-- slop-strata:ignore x/stale-prose example -->\n```\nCall `fetchRecords()`.\n",
+			},
+		},
+		{
+			name: "markdown ignore without a reason is reported", path: "README.md", rule: "x/ignore-without-reason",
+			want: 1,
+			files: map[string]string{
+				"README.md": "<!-- slop-strata:ignore x/stale-prose -->\nCall `fetchRecords()`.\n",
+			},
+		},
+		{
+			name: "yaml comment suppresses a stale key", path: "app.yaml", rule: "x/stale-config", want: 0,
+			configPaths: []string{"app.yaml"},
+			files: map[string]string{
+				"app.yaml": "# slop-strata:ignore x/stale-config read by the deploy script\nretries: 3\n",
+			},
+		},
+	}
+}
+
+func TestInlineIgnores(t *testing.T) {
+	t.Parallel()
+	for _, tc := range ignoreCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			blobs := make([]rules.BlobPrint, 0, len(tc.files))
+			paths := make([]string, 0, len(tc.files))
+			for path, src := range tc.files {
+				paths = append(paths, path)
+				blobs = append(blobs, rules.BlobPrint{Path: path, Print: printOf(t, path, src)})
+			}
+			found := rules.CrossFile(blobs, paths, nil, tc.configPaths, true)[tc.path]
+			if lang.ByPath(tc.path) != nil {
+				found = slices.Concat(found, findingsOf(t, tc.path, tc.files[tc.path], true))
+			}
+			live := rules.NewSuppressor(nil, nil).Apply(tc.path, printOf(t, tc.path, tc.files[tc.path]), found)
+			if got := countRule(live, tc.rule); got != tc.want {
+				t.Errorf("%s hits = %d, want %d: %+v", tc.rule, got, tc.want, live)
+			}
+		})
+	}
+}

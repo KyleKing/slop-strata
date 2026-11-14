@@ -68,6 +68,7 @@ type Fingerprint struct {
 	ProseRefs   map[string]int        `json:"prose_refs,omitempty"`   // code-shaped names in comments -> line
 	ConfigKeys  map[string]int        `json:"config_keys,omitempty"`  // config key paths -> line
 	Clones      []CloneUnit           `json:"clones,omitempty"`
+	Directives  []Directive           `json:"directives,omitempty"`
 	Ifaces      []IfaceDecl           `json:"ifaces,omitempty"`
 }
 
@@ -105,6 +106,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 	collectDecls(ctx, fp)
 	collectExports(ctx, fp)
 	collectIfaces(ctx, fp)
+	fp.Directives = ctx.commentDirectives()
 
 	return fp
 }

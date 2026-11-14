@@ -97,7 +97,7 @@ func (s *session) readLabels() (rules.Labels, error) {
 
 // suppressedCounts reports what a Suppressor has set aside.
 func suppressedCounts(sup *rules.Suppressor) report.Suppressed {
-	return report.Suppressed{Baseline: sup.Baselined, LabeledFP: sup.Labeled}
+	return report.Suppressed{Baseline: sup.Baselined, Ignored: sup.Ignored, LabeledFP: sup.Labeled}
 }
 
 func newSession(ctx context.Context, repoPath string, experimental bool, stderr io.Writer) (*session, error) {

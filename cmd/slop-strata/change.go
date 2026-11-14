@@ -506,7 +506,7 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	added := addedLines(f.Hunks)
-	for _, fn := range sup.Apply(f.Path, rep.Findings) {
+	for _, fn := range sup.Apply(f.Path, rep.Print, rep.Findings) {
 		row := findingRow{ID: fn.ID, Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
 		if oldLine, ok := added[fn.Line]; ok {
 			row.New = fn.Match != "" || !oldAt[ruleLine(fn.Rule, oldLine)]
@@ -1367,7 +1367,7 @@ func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*r
 
 	hits := rules.RemovedNameProse(basePrints, rev, touched)
 	for _, path := range report.SortedKeys(hits) {
-		for _, fn := range sup.Apply(path, hits[path]) {
+		for _, fn := range sup.Apply(path, rev[path], hits[path]) {
 			res.Findings = append(res.Findings, findingRow{
 				ID: fn.ID, Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
 			})

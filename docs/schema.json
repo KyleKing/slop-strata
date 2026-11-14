@@ -45,12 +45,13 @@
         "errors": {"type": "integer", "minimum": 0},
         "skipped": {"type": "integer", "minimum": 0},
         "suppressed": {
-          "description": "Findings set aside, each counted once under the first of labeled_fp and baseline. Always zero on history.",
+          "description": "Findings set aside, each counted once under the first of ignored, labeled_fp, and baseline. Always zero on history.",
           "type": "object",
-          "required": ["baseline", "labeled_fp"],
+          "required": ["baseline", "ignored", "labeled_fp"],
           "additionalProperties": false,
           "properties": {
             "baseline": {"type": "integer", "minimum": 0, "description": "Accepted in the baseline file."},
+            "ignored": {"type": "integer", "minimum": 0, "description": "Covered by an inline slop-strata:ignore or nolint comment with a reason."},
             "labeled_fp": {"type": "integer", "minimum": 0, "description": "Labeled a false positive in the labels file."}
           }
         }

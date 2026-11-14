@@ -27,14 +27,16 @@ type Counts struct {
 }
 
 // Suppressed tallies the findings a run set aside, so a hit that never printed
-// is still counted: accepted in the baseline or labeled a false positive.
+// is still counted: accepted in the baseline, ignored inline with a reason, or
+// labeled a false positive.
 type Suppressed struct {
 	Baseline  int `json:"baseline"`
+	Ignored   int `json:"ignored"`
 	LabeledFP int `json:"labeled_fp"`
 }
 
 // Total is every finding set aside.
-func (s Suppressed) Total() int { return s.Baseline + s.LabeledFP }
+func (s Suppressed) Total() int { return s.Baseline + s.Ignored + s.LabeledFP }
 
 // Envelope wraps every subcommand's JSON output.
 type Envelope struct {
@@ -82,8 +84,8 @@ func WarnCounts(w io.Writer, c Counts) {
 		Fprintf(w, "slop-strata: %d skipped, %d with parse errors (--json names each)\n", c.Skipped, c.Errors)
 	}
 	if s := c.Suppressed; s.Total() != 0 {
-		Fprintf(w, "slop-strata: %d findings set aside (%d in the baseline, %d labeled false positive)\n",
-			s.Total(), s.Baseline, s.LabeledFP)
+		Fprintf(w, "slop-strata: %d findings set aside (%d in the baseline, %d ignored inline, %d labeled false "+
+			"positive)\n", s.Total(), s.Baseline, s.Ignored, s.LabeledFP)
 	}
 }
 
@@ -266,15 +268,20 @@ var Docs = map[string]string{
 		"repository, which slop-strata rules prints and the table below repeats from the labels file of the " +
 		"current directory. Labels never promote or demote a rule on their own, and one repository's labels " +
 		"are not the corpus the 80% bar is set on.",
-	"findings": "New rule hits attributable to this change, after the baseline and labeled hits and " +
-		"the pre-existing hits are excluded. Each has an id, a short hash of the rule, path, enclosing " +
-		"function, and matched text, so it survives line moves, and a scope naming the function. To dispute " +
-		"a hit without touching the code, run slop-strata label ID fp. Suppressed hits are counted in " +
-		"counts.suppressed.",
+	"findings": "New rule hits attributable to this change, after the baseline, ignored, and labeled " +
+		"hits and the pre-existing hits are excluded. Each has an id, a short hash of the rule, path, " +
+		"enclosing function, and matched text, so it survives line moves, and a scope naming the function. " +
+		"To suppress a hit inline, write slop-strata:ignore RULE-ID REASON in a comment on its line or the " +
+		"line above, in the file's comment syntax: // or # in code, # in TOML and YAML, and an HTML comment " +
+		"in Markdown outside code blocks. In Go, //nolint:errcheck // REASON also suppresses go/silent-error. " +
+		"The reason is required. An ignore without one suppresses nothing and is reported as " +
+		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
+		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
-		"file) and labeled_fp (a false-positive label). A finding counts once, under the first of " +
-		"labeled_fp and baseline. A count that grows faster than the hits get fixed means findings are " +
-		"being muted: read the labels in review.",
+		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
+		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
+		"grows faster than the hits get fixed means findings are being muted: read the ignore reasons and " +
+		"labels in review.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +

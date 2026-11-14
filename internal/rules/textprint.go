@@ -28,6 +28,7 @@ func CollectText(path string, content []byte) *Fingerprint {
 		fp.ConfigKeys = configKeys(path, content)
 	}
 	fp.EntryRefs = packageEntryRefs(path, content)
+	fp.Directives = textDirectives(path, content)
 
 	return fp
 }
