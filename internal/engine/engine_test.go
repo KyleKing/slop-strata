@@ -163,14 +163,12 @@ func TestStoredSkipVerdictFollowsTheLimits(t *testing.T) {
 	if rep := engine.New(strict, store).Analyze(ctx, "p.go", sha, packed); rep.Skipped != "minified" {
 		t.Fatalf("first read Skipped = %q, want minified", rep.Skipped)
 	}
-	again := engine.New(strict, store)
-	if !again.Known(ctx, "p.go", sha) {
-		t.Fatal("a stored verdict under the same limits should answer without content")
+	blob := []engine.Blob{{Path: "p.go", SHA: sha}}
+	rep, ok := engine.New(strict, store).Lookup(ctx, blob)[blob[0]]
+	if !ok || rep.Skipped != "minified" {
+		t.Fatalf("lookup under the same limits = %+v, want a minified verdict without content", rep)
 	}
-	if rep := again.Analyze(ctx, "p.go", sha, nil); rep.Skipped != "minified" {
-		t.Errorf("verdict Skipped = %q, want minified", rep.Skipped)
-	}
-	if engine.New(loose, store).Known(ctx, "p.go", sha) {
+	if _, ok := engine.New(loose, store).Lookup(ctx, blob)[blob[0]]; ok {
 		t.Error("a verdict stored under other limits should not answer")
 	}
 }

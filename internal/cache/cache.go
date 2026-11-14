@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS analyses (
 	PRIMARY KEY (sha, class, analysis)
 )`
 
+// selectPayload reads one payload by its full key.
+const selectPayload = "SELECT payload FROM analyses WHERE sha = ? AND class = ? AND analysis = ?"
+
+// upsertPayload stores one payload under its full key.
+const upsertPayload = "INSERT OR REPLACE INTO analyses (sha, class, analysis, payload) VALUES (?, ?, ?, ?)"
+
 // openAttempts bounds the busy retry: parallel slop-strata invocations race
 // the WAL transition and first schema write, and the journal-mode pragma
 // answers BUSY without honoring the busy timeout, so opening retries at a
@@ -120,9 +126,7 @@ func (s *Store) Get(ctx context.Context, sha, class, analysis string) ([]byte, b
 		return nil, false
 	}
 	var payload []byte
-	err := s.db.QueryRowContext(ctx,
-		"SELECT payload FROM analyses WHERE sha = ? AND class = ? AND analysis = ?",
-		sha, class, analysis).Scan(&payload)
+	err := s.db.QueryRowContext(ctx, selectPayload, sha, class, analysis).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false
 	}
@@ -139,11 +143,89 @@ func (s *Store) Put(ctx context.Context, sha, class, analysis string, payload []
 		return
 	}
 	// A failed write loses only a memo; the answer was already computed.
-	if _, err := s.db.ExecContext(ctx,
-		"INSERT OR REPLACE INTO analyses (sha, class, analysis, payload) VALUES (?, ?, ?, ?)",
-		sha, class, analysis, payload); err != nil {
+	if _, err := s.db.ExecContext(ctx, upsertPayload, sha, class, analysis, payload); err != nil {
 		return
 	}
+}
+
+// Key names one stored payload under an analysis key: a blob and the path class
+// it was read under.
+type Key struct {
+	SHA   string
+	Class string
+}
+
+// Entry is one payload to store under its key.
+type Entry struct {
+	Key
+	Payload []byte
+}
+
+// GetMany returns the payloads stored for keys under an analysis key, all read
+// in one transaction. A key with no payload, or one a failed read lost, is
+// absent from the result.
+func (s *Store) GetMany(ctx context.Context, analysis string, keys []Key) map[Key][]byte {
+	out := make(map[Key][]byte, len(keys))
+	if s.db == nil || len(keys) == 0 {
+		return out
+	}
+	// A failed transaction loses only memos: the caller scores what is absent.
+	_ = s.inTx(ctx, selectPayload, func(stmt *sql.Stmt) error { //nolint:errcheck // see comment
+		for _, k := range keys {
+			var payload []byte
+			if err := stmt.QueryRowContext(ctx, k.SHA, k.Class, analysis).Scan(&payload); err == nil {
+				out[k] = payload
+			}
+		}
+
+		return nil
+	})
+
+	return out
+}
+
+// PutMany stores entries under an analysis key in one transaction.
+func (s *Store) PutMany(ctx context.Context, analysis string, entries []Entry) {
+	if s.db == nil || len(entries) == 0 {
+		return
+	}
+	// A failed write loses only memos; the answers were already computed.
+	_ = s.inTx(ctx, upsertPayload, func(stmt *sql.Stmt) error { //nolint:errcheck // see comment
+		for _, e := range entries {
+			if _, err := stmt.ExecContext(ctx, e.SHA, e.Class, analysis, e.Payload); err != nil {
+				return fmt.Errorf("storing %s: %w", e.SHA, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// inTx runs fn with query prepared inside one transaction, committing when fn
+// succeeds and rolling back otherwise.
+func (s *Store) inTx(ctx context.Context, query string, fn func(*sql.Stmt) error) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning cache transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
+	stmt, err := tx.PrepareContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("preparing cache statement: %w", err)
+	}
+	defer func() { err = errors.Join(err, stmt.Close()) }()
+	if err := fn(stmt); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing cache transaction: %w", err)
+	}
+
+	return nil
 }
 
 // Close releases the database.

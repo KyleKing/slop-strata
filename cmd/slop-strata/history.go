@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -115,58 +116,107 @@ func (s *session) historyCmd(ctx context.Context, a *args, w io.Writer) error {
 	return nil
 }
 
+// Scoring runs over windows of commits, so one parse batch and one cache
+// transaction cover many commits: a window closes at windowCommits commits or
+// windowBlobs changed files, whichever comes first.
+const (
+	windowCommits = 256
+	windowBlobs   = 2048
+)
+
+// historyWalk accumulates one walk: the lineage walker, the week rows, the
+// pairing and virality maps, and each path's latest live mass.
+type historyWalk struct {
+	walker    *lineage.Walker
+	weeks     map[string]*weekRow
+	pairs     map[string]*pairRow
+	viral     map[string]*viralRow
+	ruleFirst map[string]string
+	liveMass  map[string]float64 // path -> mass of its latest after-blob
+	gaps      *scoreGaps
+	changes   int
+}
+
 // walkHistory walks the range oldest first, feeding each commit to the lineage
 // walker, the week rows, and the blob scoring, and rolls the result up.
 func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*historyResult, *scoreGaps, error) {
-	blobs, err := s.ops.OpenBlobReader(ctx, s.root)
+	reader, err := s.ops.OpenBlobReader(ctx, s.root)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading blobs: %w", err)
 	}
-	walker := lineage.NewWalker(s.cfg.Classify)
-	weeks := map[string]*weekRow{}
-	pairs := map[string]*pairRow{}
-	viral := map[string]*viralRow{}
-	ruleFirst := map[string]string{}
-	liveMass := map[string]float64{} // path -> mass of its latest after-blob
-	gaps := newScoreGaps()
-	changes := 0
-
+	hw := &historyWalk{
+		walker: lineage.NewWalker(s.cfg.Classify), weeks: map[string]*weekRow{}, pairs: map[string]*pairRow{},
+		viral: map[string]*viralRow{}, ruleFirst: map[string]string{}, liveMass: map[string]float64{},
+		gaps: newScoreGaps(),
+	}
+	var window []vcs.CommitRecord
+	files := 0
 	for rec, err := range s.ops.LogHistory(ctx, s.root, vcs.LogOptions{
 		Range: rangeSpec, FirstParent: true, Reverse: true, Since: since, MaxDiffBytes: s.cfg.MaxFileBytes,
 	}) {
 		if err != nil {
-			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", err), blobs.Close())
+			return nil, nil, errors.Join(fmt.Errorf("walking history: %w", err), reader.Close())
 		}
-		changes++
-		in := intent.Of(rec.Subject, "", rec.Body)
-		klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
-			rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
-		walker.Commit(rec, in.Kind == intent.Fix, in.Revert)
-		week := mondayOf(rec.AuthorTime)
-		wk := weekCell(weeks, week)
-		wk.Commits++
-		wk.Kinds[string(in.Kind)]++
-		for i := range rec.Files {
-			wk.Added += rec.Files[i].LinesAdded()
-			wk.Removed += rec.Files[i].LinesDeleted()
+		window = append(window, rec)
+		files += len(rec.Files)
+		if len(window) < windowCommits && files < windowBlobs {
+			continue
 		}
-		if err := s.scoreCommit(ctx, rec, &commitScore{
-			wk: wk, pairs: pairs, viral: viral, ruleFirst: ruleFirst, blobs: blobs,
-			liveMass: liveMass, klass: klass, week: week, gaps: gaps,
-		}); err != nil {
-			return nil, nil, errors.Join(err, blobs.Close())
+		if err := s.walkWindow(ctx, hw, window, reader); err != nil {
+			return nil, nil, errors.Join(err, reader.Close())
 		}
+		window, files = window[:0], 0
 	}
-	if err := blobs.Close(); err != nil {
+	if err := s.walkWindow(ctx, hw, window, reader); err != nil {
+		return nil, nil, errors.Join(err, reader.Close())
+	}
+	if err := reader.Close(); err != nil {
 		return nil, nil, fmt.Errorf("reading blobs: %w", err)
 	}
 
-	res := &historyResult{Range: rangeSpec, Lineage: walker.Finish(), Changes: changes}
-	collectRollups(res, weeks, pairs, viral)
+	res := &historyResult{Range: rangeSpec, Lineage: hw.walker.Finish(), Changes: hw.changes}
+	collectRollups(res, hw.weeks, hw.pairs, hw.viral)
 	markNoise(res)
-	res.Hotspots = hotspotScores(res.Lineage, liveMass)
+	res.Hotspots = hotspotScores(res.Lineage, hw.liveMass)
 
-	return res, gaps, nil
+	return res, hw.gaps, nil
+}
+
+// walkWindow scores a window's blobs, then applies its commits in order.
+func (s *session) walkWindow(ctx context.Context, hw *historyWalk, window []vcs.CommitRecord,
+	reader *vcs.BlobReader,
+) error {
+	reports, err := s.windowReports(ctx, window, reader)
+	if err != nil {
+		return err
+	}
+	for i := range window {
+		s.walkCommit(hw, &window[i], reports)
+	}
+
+	return nil
+}
+
+// walkCommit applies one commit to the lineage walker, its week row, and the
+// blob scoring.
+func (s *session) walkCommit(hw *historyWalk, rec *vcs.CommitRecord, reports map[engine.Blob]*engine.FileReport) {
+	hw.changes++
+	in := intent.Of(rec.Subject, "", rec.Body)
+	klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
+		rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
+	hw.walker.Commit(*rec, in.Kind == intent.Fix, in.Revert)
+	week := mondayOf(rec.AuthorTime)
+	wk := weekCell(hw.weeks, week)
+	wk.Commits++
+	wk.Kinds[string(in.Kind)]++
+	for i := range rec.Files {
+		wk.Added += rec.Files[i].LinesAdded()
+		wk.Removed += rec.Files[i].LinesDeleted()
+	}
+	scoreCommit(rec, &commitScore{
+		wk: wk, pairs: hw.pairs, viral: hw.viral, ruleFirst: hw.ruleFirst, reports: reports,
+		liveMass: hw.liveMass, klass: klass, week: week, gaps: hw.gaps,
+	})
 }
 
 // mondayOf names the Monday week a commit's author date falls in.
@@ -299,8 +349,9 @@ func hotspotScores(lin *lineage.Result, liveMass map[string]float64) map[string]
 	return out
 }
 
-// commitScore is what one commit's blob scoring feeds: the week row, the
-// pairing maps, the virality trackers, and each path's latest live mass.
+// commitScore is what one commit's blob scoring reads, its window's reports, and
+// feeds: the week row, the pairing maps, the virality trackers, and each path's
+// latest live mass.
 type commitScore struct {
 	wk        *weekRow
 	pairs     map[string]*pairRow
@@ -308,7 +359,7 @@ type commitScore struct {
 	ruleFirst map[string]string
 	liveMass  map[string]float64
 	gaps      *scoreGaps
-	blobs     *vcs.BlobReader
+	reports   map[engine.Blob]*engine.FileReport
 	klass     string
 	week      string
 }
@@ -338,14 +389,9 @@ func (g *scoreGaps) counts() report.Counts {
 	return report.Counts{Errors: len(g.errors), Skipped: len(g.skipped)}
 }
 
-// scoreCommit analyzes both sides of a commit's changed blobs for mass
-// delta, findings, and the per-class pairing.
-func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *commitScore) error {
-	blobs, err := s.commitBlobs(ctx, rec.Files, cs.blobs)
-	if err != nil {
-		return fmt.Errorf("reading blobs of %s: %w", rec.Hash, err)
-	}
-	s.eng.Prefetch(ctx, commitRequests(rec.Files, blobs))
+// scoreCommit folds both sides of a commit's changed blobs into mass delta,
+// findings, and the per-class pairing. A side with no report does not exist.
+func scoreCommit(rec *vcs.CommitRecord, cs *commitScore) {
 	for i := range rec.Files {
 		f := &rec.Files[i]
 		d := lineage.DirOf(f.Path)
@@ -355,83 +401,63 @@ func (s *session) scoreCommit(ctx context.Context, rec vcs.CommitRecord, cs *com
 		}
 		pairCell(cs.pairs, cs.week, d).ClassCommits[cs.klass]++
 
-		if !blobs.present[f.NewSHA] {
+		rep, ok := cs.reports[engine.Blob{Path: f.Path, SHA: f.NewSHA}]
+		if !ok {
 			delete(cs.liveMass, f.Path)
 
 			continue
 		}
-		s.scoreBlob(ctx, cs, *f, blobs.content[f.NewSHA], s.oldMass(ctx, *f, blobs, cs.gaps))
+		scoreBlob(cs, *f, rep, oldMass(cs, *f))
 	}
-
-	return nil
 }
 
-// blobSet is what a commit's scoring knows of its blobs: every sha known to
-// exist, and the content of those the engine could not answer without it.
-type blobSet struct {
-	content map[string][]byte
-	present map[string]bool
-}
-
-// commitBlobs reads the blobs scoreCommit analyzes, each changed file's new side
-// and, when that exists, its old side, skipping any the engine answers from its
-// path or the cache.
-func (s *session) commitBlobs(ctx context.Context, files []vcs.CommitFile, reader *vcs.BlobReader,
-) (*blobSet, error) {
-	present := map[string]bool{}
-	var need []string
-	ask := func(path, sha string) {
-		switch {
-		case !isBlobSHA(sha):
-		case s.eng.Known(ctx, path, sha):
-			present[sha] = true
-		default:
-			need = append(need, sha)
+// windowReports answers the report of every blob a window's commits score: each
+// changed file's new side and, when that exists, its old side. Only the blobs
+// the engine cannot answer from their path or the cache are read. A blob git
+// does not have gets no report.
+func (s *session) windowReports(ctx context.Context, window []vcs.CommitRecord, reader *vcs.BlobReader,
+) (map[engine.Blob]*engine.FileReport, error) {
+	var asks []engine.Blob
+	for c := range window {
+		for i := range window[c].Files {
+			f := &window[c].Files[i]
+			if !isBlobSHA(f.NewSHA) {
+				continue
+			}
+			asks = append(asks, engine.Blob{Path: f.Path, SHA: f.NewSHA})
+			if isBlobSHA(f.OldSHA) {
+				asks = append(asks, engine.Blob{Path: oldPathOf(*f), SHA: f.OldSHA})
+			}
 		}
 	}
-	for i := range files {
-		f := &files[i]
-		if isBlobSHA(f.NewSHA) {
-			ask(f.Path, f.NewSHA)
-			ask(oldPathOf(*f), f.OldSHA)
+	reports := s.eng.Lookup(ctx, asks)
+	var shas []string
+	for _, b := range asks {
+		if _, ok := reports[b]; !ok {
+			shas = append(shas, b.SHA)
 		}
 	}
-	content, err := reader.Read(need)
+	content, err := reader.Read(shas)
 	if err != nil {
 		return nil, fmt.Errorf("reading blobs: %w", err)
 	}
-	for sha := range content {
-		present[sha] = true
+	var reqs []engine.Request
+	for _, b := range asks {
+		if c, ok := content[b.SHA]; ok {
+			if _, done := reports[b]; !done {
+				reqs = append(reqs, engine.Request{Path: b.Path, SHA: b.SHA, Content: c})
+			}
+		}
 	}
+	maps.Copy(reports, s.eng.AnalyzeAll(ctx, reqs))
 
-	return &blobSet{content: content, present: present}, nil
+	return reports, nil
 }
 
 // isBlobSHA reports whether a diff side names a blob, as opposed to the empty
 // or all-zero id of a side that does not exist.
 func isBlobSHA(sha string) bool {
 	return strings.Trim(sha, "0") != ""
-}
-
-// commitRequests lists the blobs scoreCommit will analyze that the engine needs
-// content for: each changed file's new side, and its old side when the new side
-// is present.
-func commitRequests(files []vcs.CommitFile, blobs *blobSet) []engine.Request {
-	var reqs []engine.Request
-	for i := range files {
-		f := &files[i]
-		if !blobs.present[f.NewSHA] {
-			continue
-		}
-		if content, ok := blobs.content[f.NewSHA]; ok {
-			reqs = append(reqs, engine.Request{Path: f.Path, SHA: f.NewSHA, Content: content})
-		}
-		if old, ok := blobs.content[f.OldSHA]; ok {
-			reqs = append(reqs, engine.Request{Path: oldPathOf(*f), SHA: f.OldSHA, Content: old})
-		}
-	}
-
-	return reqs
 }
 
 // pairCell returns the week's pairing row for a directory, creating it on
@@ -450,12 +476,12 @@ func pairCell(pairs map[string]*pairRow, week, d string) *pairRow {
 
 // oldMass is a file's before-side function mass, zero when no before blob
 // exists or it does not analyze.
-func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs *blobSet, gaps *scoreGaps) float64 {
-	if !blobs.present[f.OldSHA] {
+func oldMass(cs *commitScore, f vcs.CommitFile) float64 {
+	rep, ok := cs.reports[engine.Blob{Path: oldPathOf(f), SHA: f.OldSHA}]
+	if !ok {
 		return 0
 	}
-	rep := s.eng.Analyze(ctx, oldPathOf(f), f.OldSHA, blobs.content[f.OldSHA])
-	gaps.note(oldPathOf(f), f.OldSHA, rep)
+	cs.gaps.note(oldPathOf(f), f.OldSHA, rep)
 	if rep.Skipped != "" {
 		return 0
 	}
@@ -465,10 +491,7 @@ func (s *session) oldMass(ctx context.Context, f vcs.CommitFile, blobs *blobSet,
 
 // scoreBlob folds one after-blob's report into the commit score, as a delta
 // against the before-blob's mass.
-func (s *session) scoreBlob(
-	ctx context.Context, cs *commitScore, f vcs.CommitFile, content []byte, massBefore float64,
-) {
-	rep := s.eng.Analyze(ctx, f.Path, f.NewSHA, content)
+func scoreBlob(cs *commitScore, f vcs.CommitFile, rep *engine.FileReport, massBefore float64) {
 	cs.gaps.note(f.Path, f.NewSHA, rep)
 	if rep.Skipped != "" {
 		return

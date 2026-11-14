@@ -149,70 +149,147 @@ func matchGlob(glob, path string) (bool, error) {
 // Analyze scores one blob. Unsupported paths and config skips return a
 // skipped report; oversize and minified blobs likewise, each with its reason.
 func (a *Analyzer) Analyze(ctx context.Context, path, sha string, content []byte) *FileReport {
-	if rep, ok := a.take(path, sha); ok {
-		return rep
-	}
-	rep, j := a.begin(ctx, path, sha, content)
-	if j == nil {
-		return rep
-	}
-	if a.parser == nil {
-		a.parser = lang.NewParser()
-	}
-	a.record(ctx, j, a.score(a.parser, j))
-
-	return rep
+	return a.analyzeOne(ctx, Request{Path: path, SHA: sha, Content: content})
 }
 
 // AnalyzeText fingerprints a prose or config blob: no parse, only the
 // text-level facts the cross-file passes join on.
 func (a *Analyzer) AnalyzeText(ctx context.Context, path, sha string, content []byte) *FileReport {
-	if rep, ok := a.take(path, sha); ok {
+	return a.analyzeOne(ctx, Request{Path: path, SHA: sha, Content: content, Text: true})
+}
+
+// analyzeOne answers one request from the hold, the cache, or a parse on the
+// parser Analyze reuses.
+func (a *Analyzer) analyzeOne(ctx context.Context, r Request) *FileReport {
+	if rep, ok := a.take(r.Path, r.SHA); ok {
 		return rep
 	}
-	rep, j := a.beginText(ctx, path, sha, content)
-	if j == nil {
+	rep, ok := a.front(r)
+	if ok {
 		return rep
 	}
-	a.record(ctx, j, a.score(nil, j))
+	class := pathClass(r.Path)
+	if payload, ok := a.store.Get(ctx, r.SHA, class, a.analysis); ok && a.apply(rep, payload, r.Text) {
+		return rep
+	}
+	reason, j := a.back(rep, r, class)
+	if reason != "" {
+		if e, ok := verdict(r.SHA, class, reason); ok {
+			a.store.Put(ctx, e.SHA, e.Class, a.analysis, e.Payload)
+		}
+
+		return rep
+	}
+	var p *lang.Parser
+	if j.lang != nil {
+		if a.parser == nil {
+			a.parser = lang.NewParser()
+		}
+		p = a.parser
+	}
+	if payload := a.score(p, j); payload != nil {
+		a.store.Put(ctx, j.sha, j.class, a.analysis, payload)
+	}
+	a.finish(j)
 
 	return rep
 }
 
-// Prefetch scores the requests not yet held, one worker per CPU. The calling
-// goroutine alone writes the cache and the hold, so no lock is needed.
-func (a *Analyzer) Prefetch(ctx context.Context, reqs []Request) {
-	var jobs []*job
-	pending := map[string]bool{}
-	for _, r := range reqs {
-		key := memoKey(r.Path, r.SHA)
-		if pending[key] {
-			continue
-		}
-		pending[key] = true
-		var (
-			rep *FileReport
-			j   *job
-		)
-		if r.Text {
-			rep, j = a.beginText(ctx, r.Path, r.SHA, r.Content)
-		} else {
-			rep, j = a.begin(ctx, r.Path, r.SHA, r.Content)
-		}
-		if j == nil {
-			a.memo[key] = rep
-
-			continue
-		}
-		jobs = append(jobs, j)
-	}
-	a.run(ctx, jobs)
+// Blob names a blob read at a path.
+type Blob struct {
+	Path string
+	SHA  string
 }
 
-// run scores jobs on a worker pool and records each result as it arrives.
-func (a *Analyzer) run(ctx context.Context, jobs []*job) {
+// Lookup answers the code blobs whose reports follow from their paths and the
+// cache alone, without their content, reading the cache in one transaction.
+func (a *Analyzer) Lookup(ctx context.Context, blobs []Blob) map[Blob]*FileReport {
+	reqs := make([]Request, len(blobs))
+	for i, b := range blobs {
+		reqs[i] = Request{Path: b.Path, SHA: b.SHA}
+	}
+	out, pending := a.answerAll(ctx, reqs)
+	for _, p := range pending {
+		delete(out, p.blob)
+	}
+
+	return out
+}
+
+// Prefetch scores the requests not yet held and holds each report until Analyze
+// or AnalyzeText asks for it.
+func (a *Analyzer) Prefetch(ctx context.Context, reqs []Request) {
+	for b, rep := range a.AnalyzeAll(ctx, reqs) {
+		a.memo[memoKey(b.Path, b.SHA)] = rep
+	}
+}
+
+// AnalyzeAll answers every request's report, parsing the ones the cache cannot
+// answer on one worker per CPU. The calling goroutine alone reads and writes the
+// cache, one transaction each way, so no lock is needed.
+func (a *Analyzer) AnalyzeAll(ctx context.Context, reqs []Request) map[Blob]*FileReport {
+	out, pending := a.answerAll(ctx, reqs)
+	var entries []cache.Entry
+	var jobs []*job
+	for _, p := range pending {
+		reason, j := a.back(out[p.blob], p.req, p.class)
+		switch {
+		case j != nil:
+			jobs = append(jobs, j)
+		case reason != "":
+			if e, ok := verdict(p.req.SHA, p.class, reason); ok {
+				entries = append(entries, e)
+			}
+		}
+	}
+	entries = append(entries, a.run(jobs)...)
+	a.store.PutMany(ctx, a.analysis, entries)
+
+	return out
+}
+
+// pendingReq is a request its path and the cache could not answer.
+type pendingReq struct {
+	blob  Blob
+	class string
+	req   Request
+}
+
+// answerAll fills a report for every distinct request, answering what the path
+// and the cache can and listing the rest, whose reports still need content.
+func (a *Analyzer) answerAll(ctx context.Context, reqs []Request) (map[Blob]*FileReport, []pendingReq) {
+	out := make(map[Blob]*FileReport, len(reqs))
+	var pending []pendingReq
+	var keys []cache.Key
+	for _, r := range reqs {
+		b := Blob{Path: r.Path, SHA: r.SHA}
+		if _, seen := out[b]; seen {
+			continue
+		}
+		rep, ok := a.front(r)
+		out[b] = rep
+		if !ok {
+			class := pathClass(r.Path)
+			pending = append(pending, pendingReq{blob: b, req: r, class: class})
+			keys = append(keys, cache.Key{SHA: r.SHA, Class: class})
+		}
+	}
+	payloads := a.store.GetMany(ctx, a.analysis, keys)
+	unanswered := pending[:0]
+	for i, p := range pending {
+		if payload, ok := payloads[keys[i]]; ok && a.apply(out[p.blob], payload, p.req.Text) {
+			continue
+		}
+		unanswered = append(unanswered, p)
+	}
+
+	return out, unanswered
+}
+
+// run scores jobs on a worker pool and answers the payloads to store.
+func (a *Analyzer) run(jobs []*job) []cache.Entry {
 	if len(jobs) == 0 {
-		return
+		return nil
 	}
 	type scored struct {
 		job     *job
@@ -243,10 +320,16 @@ func (a *Analyzer) run(ctx context.Context, jobs []*job) {
 		wg.Wait()
 		close(out)
 	}()
+	entries := make([]cache.Entry, 0, len(jobs))
 	for s := range out {
-		a.record(ctx, s.job, s.payload)
-		a.memo[memoKey(s.job.rep.Path, s.job.sha)] = s.job.rep
+		if s.payload != nil {
+			key := cache.Key{SHA: s.job.sha, Class: s.job.class}
+			entries = append(entries, cache.Entry{Key: key, Payload: s.payload})
+		}
+		a.finish(s.job)
 	}
+
+	return entries
 }
 
 // take hands out a prefetched report, which is held for one call only.
@@ -264,96 +347,83 @@ func memoKey(path, sha string) string {
 	return path + "\x00" + sha
 }
 
-// Known reports whether a code blob's report follows from its path and the
-// cache alone, without its content, and holds that report for the next Analyze.
-func (a *Analyzer) Known(ctx context.Context, path, sha string) bool {
-	rep, ok := a.answer(ctx, path, sha)
-	if ok {
-		a.memo[memoKey(path, sha)] = rep
+// front starts a request's report and answers it from the path alone when it
+// can: config skips, unsupported code paths, and generated marks.
+func (a *Analyzer) front(r Request) (*FileReport, bool) {
+	rep := &FileReport{Path: r.Path, SHA: r.SHA}
+	if r.Text {
+		rep.Lang = lang.TextKind(r.Path)
+		for _, glob := range a.cfg.Skip {
+			if ok, err := matchGlob(glob, r.Path); err == nil && ok {
+				rep.Skipped = "config-skip"
+
+				return rep, true
+			}
+		}
+
+		return rep, false
 	}
-
-	return ok
-}
-
-// answer resolves a code blob from its path and the cache, without its content.
-func (a *Analyzer) answer(ctx context.Context, path, sha string) (*FileReport, bool) {
-	rep := &FileReport{Path: path, SHA: sha}
-	if reason := a.skip(path); reason != "" {
+	if reason := a.skip(r.Path); reason != "" {
 		rep.Skipped = reason
 
 		return rep, true
 	}
-	if a.generated != nil && a.generated(path) {
+	if a.generated != nil && a.generated(r.Path) {
 		rep.Skipped = ReasonGenerated
 
 		return rep, true
 	}
-	c, ok := a.lookup(ctx, sha, pathClass(path))
-	if !ok {
-		return rep, false
-	}
-	if c.Skipped != "" {
-		rep.Skipped = c.Skipped
 
-		return rep, true
+	return rep, false
+}
+
+// apply fills a report from a stored payload, a skip verdict or an analysis, and
+// reports whether the payload decoded.
+func (a *Analyzer) apply(rep *FileReport, payload []byte, text bool) bool {
+	var c cached
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return false
+	}
+	rep.Skipped = c.Skipped
+	rep.Print = c.Print
+	if text || c.Skipped != "" {
+		return true
 	}
 	rep.Metrics = c.Metrics
 	rep.Findings = c.Findings
-	rep.Print = c.Print
 	rep.Lang = c.Metrics.Lang
 	a.addPathFindings(rep)
 
-	return rep, true
+	return true
 }
 
-// lookup reads a blob's stored payload under a path class.
-func (a *Analyzer) lookup(ctx context.Context, sha, class string) (cached, bool) {
-	var c cached
-	payload, ok := a.store.Get(ctx, sha, class, a.analysis)
-	if !ok {
-		return c, false
+// back answers a request from its content: why it is skipped, setting the
+// report's reason, or the job that scores it.
+func (a *Analyzer) back(rep *FileReport, r Request, class string) (string, *job) {
+	reason := a.contentSkip(r.Content, r.Text)
+	if reason != "" {
+		rep.Skipped = reason
+
+		return reason, nil
 	}
-	if err := json.Unmarshal(payload, &c); err != nil {
-		return c, false
+	j := &job{rep: rep, sha: r.SHA, class: class, content: r.Content}
+	if !r.Text {
+		j.lang = lang.ByPath(r.Path)
 	}
 
-	return c, true
+	return "", j
 }
 
-// verdict stores why a blob's content was skipped, so a later run skips it
-// without reading it, and answers the reason.
-func (a *Analyzer) verdict(ctx context.Context, sha, class, reason string) string {
-	if payload, err := json.Marshal(cached{Skipped: reason}); err == nil {
-		a.store.Put(ctx, sha, class, a.analysis, payload)
-	}
-
-	return reason
-}
-
-// begin answers a code blob that needs no parse, either skipped or read from the
-// cache, and otherwise returns the job that scores it.
-func (a *Analyzer) begin(ctx context.Context, path, sha string, content []byte) (*FileReport, *job) {
-	rep, ok := a.answer(ctx, path, sha)
-	if ok {
-		return rep, nil
-	}
-	class := pathClass(path)
-	if reason := a.codeSkip(content); reason != "" {
-		rep.Skipped = a.verdict(ctx, sha, class, reason)
-
-		return rep, nil
-	}
-
-	return rep, &job{rep: rep, lang: lang.ByPath(path), sha: sha, class: class, content: content}
-}
-
-// codeSkip names why a code blob's content is not scored, or "" when it is.
-func (a *Analyzer) codeSkip(content []byte) string {
+// contentSkip names why a blob's content is not scored, or "" when it is. Prose
+// and config are only ever skipped for size or binary bytes.
+func (a *Analyzer) contentSkip(content []byte, text bool) string {
 	switch {
 	case int64(len(content)) > a.cfg.MaxFileBytes:
 		return "oversize"
 	case bytes.IndexByte(content, 0) >= 0:
 		return "binary"
+	case text:
+		return ""
 	case minified(content, a.cfg.MinifiedAvgLine):
 		return "minified"
 	case generatedMarker(content):
@@ -363,36 +433,15 @@ func (a *Analyzer) codeSkip(content []byte) string {
 	}
 }
 
-// beginText is begin for prose and config blobs, which have no parse and no
-// minified or path-dependent findings.
-func (a *Analyzer) beginText(ctx context.Context, path, sha string, content []byte) (*FileReport, *job) {
-	rep := &FileReport{Path: path, SHA: sha, Lang: lang.TextKind(path)}
-	for _, glob := range a.cfg.Skip {
-		if ok, err := matchGlob(glob, path); err == nil && ok {
-			rep.Skipped = "config-skip"
-
-			return rep, nil
-		}
-	}
-	class := pathClass(path)
-	if c, ok := a.lookup(ctx, sha, class); ok {
-		rep.Skipped = c.Skipped
-		rep.Print = c.Print
-
-		return rep, nil
-	}
-	switch {
-	case int64(len(content)) > a.cfg.MaxFileBytes:
-		rep.Skipped = a.verdict(ctx, sha, class, "oversize")
-
-		return rep, nil
-	case bytes.IndexByte(content, 0) >= 0:
-		rep.Skipped = a.verdict(ctx, sha, class, "binary")
-
-		return rep, nil
+// verdict is the entry that stores why a blob's content was skipped, so a later
+// run skips it without reading it.
+func verdict(sha, class, reason string) (cache.Entry, bool) {
+	payload, err := json.Marshal(cached{Skipped: reason})
+	if err != nil {
+		return cache.Entry{}, false
 	}
 
-	return rep, &job{rep: rep, sha: sha, class: class, content: content}
+	return cache.Entry{Key: cache.Key{SHA: sha, Class: class}, Payload: payload}, true
 }
 
 // score computes a job's report and returns the payload to cache, or nil when it
@@ -427,12 +476,9 @@ func (a *Analyzer) score(p *lang.Parser, j *job) []byte {
 	return payload
 }
 
-// record stores a scored job's payload, when it has one, and adds the findings
-// that depend on the file name, which the cached payload never holds.
-func (a *Analyzer) record(ctx context.Context, j *job, payload []byte) {
-	if payload != nil {
-		a.store.Put(ctx, j.sha, j.class, a.analysis, payload)
-	}
+// finish adds the findings that depend on the file name, which a stored
+// payload never holds, to a scored code job's report.
+func (a *Analyzer) finish(j *job) {
 	if j.lang != nil {
 		a.addPathFindings(j.rep)
 	}
