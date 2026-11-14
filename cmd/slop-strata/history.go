@@ -472,6 +472,8 @@ func printHistory(w io.Writer, res *historyResult) {
 		}, rows)
 	}
 
+	printDeaths(w, res)
+
 	if len(res.Viral) > 0 {
 		report.Fprintln(w)
 		rows := make([][]string, 0, len(res.Viral))
@@ -484,6 +486,54 @@ func printHistory(w io.Writer, res *historyResult) {
 		}
 		report.Table(w, []string{"rule", "first hit", "spread by class"}, rows)
 	}
+}
+
+// printDeaths renders how young lines died: shares of the churn_30d lines per
+// directory with enough of them, plus an overall row. The self column drops out
+// when the window has one author, since it would read 1.00 everywhere.
+func printDeaths(w io.Writer, res *historyResult) {
+	lin := res.Lineage
+	if lin.Deaths30.Total == 0 {
+		return
+	}
+	showSelf := lin.Authors > 1
+	header := []string{colDir, "deaths_30d"}
+	if showSelf {
+		header = append(header, "self")
+	}
+	header = append(header, "pure", "whole_file", "within_7d")
+	rows := [][]string{deathRow("(all)", lin.Deaths30, showSelf)}
+	hidden := 0
+	for _, d := range report.SortedKeys(lin.Dirs) {
+		switch dd := lin.Dirs[d].Deaths30; {
+		case dd.Total >= lineage.ProvisionalLines:
+			rows = append(rows, deathRow(d, dd, showSelf))
+		case dd.Total > 0:
+			hidden++
+		}
+	}
+	report.Fprintln(w)
+	report.Table(w, header, rows)
+	if lin.Deaths30.Total < lineage.ProvisionalLines {
+		report.Fprintf(w, "%s fewer than %d samples\n", provisionalMark, lineage.ProvisionalLines)
+	}
+	if hidden > 0 {
+		report.Fprintf(w, "%d directories with fewer than %d young deaths not listed\n",
+			hidden, lineage.ProvisionalLines)
+	}
+}
+
+func deathRow(label string, d lineage.Deaths, showSelf bool) []string {
+	provisional := d.Total < lineage.ProvisionalLines
+	share := func(n int) string {
+		return provisionalMarked(fmt.Sprintf("%.2f", float64(n)/float64(d.Total)), provisional)
+	}
+	row := []string{label, strconv.Itoa(d.Total)}
+	if showSelf {
+		row = append(row, share(d.Self))
+	}
+
+	return append(row, share(d.Pure), share(d.WholeFile), share(d.AgeDay1+d.AgeWeek))
 }
 
 // printWeeks renders the first-parent week table with its noise footnote.

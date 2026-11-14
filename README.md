@@ -142,6 +142,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `over_limit` is the share of mass grown that lands in functions already over CC 10. `--explain over_limit`
 - `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written, credited to the directory they were written in. `--explain churn_30d`
 - `rework` counts young lines removed by a fix commit. `--explain rework`
+- `deaths_30d` splits the lines behind `churn_30d` by how they died: removed by their own author (`self`), deleted without a replacement (`pure`), taken out with their whole file (`whole_file`), removed in a revert, and by age (a day, a week, 30 days). `history` prints the shares per directory with at least 30 such deaths. Squash merges hide what happens inside a branch. `--explain deaths_30d`, `--explain self`, `--explain pure`, `--explain whole_file`, `--explain within_7d`, `--explain in_revert`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
