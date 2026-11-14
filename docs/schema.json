@@ -303,7 +303,7 @@
     },
     "historyResult": {
       "type": "object",
-      "required": ["range", "changes", "lineage", "weeks", "virality", "pairing", "hotspots"],
+      "required": ["range", "changes", "lineage", "oscillation", "weeks", "virality", "pairing", "hotspots"],
       "properties": {
         "range": {"type": "string"},
         "changes": {"type": "integer", "description": "First-parent commits in the window."},
@@ -339,6 +339,42 @@
             "test_survival": {"type": "array"},
             "coupling": {"type": ["array", "null"]},
             "concentration": {"type": "object", "additionalProperties": {"type": ["number", "null"]}}
+          }
+        },
+        "oscillation": {
+          "type": "object",
+          "description": "Functions whose body changed in at least 3 commits within 14 days, keyed by path and name. Bot-class commits do not count.",
+          "required": ["oscillating_funcs", "oscillating_test_funcs", "dirs", "top"],
+          "properties": {
+            "oscillating_funcs": {"type": "integer", "description": "Production functions."},
+            "oscillating_test_funcs": {"type": "integer", "description": "Functions in test files."},
+            "dirs": {
+              "type": "object",
+              "description": "Only directories with at least one oscillating function.",
+              "additionalProperties": {
+                "type": "object",
+                "required": ["oscillating_funcs", "oscillating_test_funcs"],
+                "properties": {
+                  "oscillating_funcs": {"type": "integer"},
+                  "oscillating_test_funcs": {"type": "integer"}
+                }
+              }
+            },
+            "top": {
+              "type": "array",
+              "description": "Up to 10 production functions, most changes first, then shortest span.",
+              "items": {
+                "type": "object",
+                "required": ["path", "name", "line", "changes", "span_days"],
+                "properties": {
+                  "path": {"type": "string"},
+                  "name": {"type": "string"},
+                  "line": {"type": "integer", "description": "Start line in the function's latest version."},
+                  "changes": {"type": "integer", "description": "Most commits that changed it within any 14 days."},
+                  "span_days": {"type": "integer", "description": "Days from the first to the last of those commits."}
+                }
+              }
+            }
           }
         },
         "weeks": {

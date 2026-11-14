@@ -174,6 +174,18 @@ var Docs = map[string]string{
 		"regenerated fixtures and golden files, a red-green test loop that deletes and restores a line, and " +
 		"squash merges that hide what happened inside a branch. Code that reappears in a file with another " +
 		"name, or in 29 bytes or fewer, is not seen.",
+	"oscillating_funcs": "Functions whose body changed in at least 3 separate commits within any 14 days, " +
+		"keyed by file path and function name, counted per directory and overall. oscillating_test_funcs " +
+		"counts functions in test files apart, and the JSON lists the 10 busiest production functions with " +
+		"path, name, line, changes, and span_days. A commit changes a function when a diff hunk adds a line " +
+		"inside it or removes one from between its lines, and the function already existed. Commits of the " +
+		"bot author class do not count. A function rewritten again and again in two weeks means its shape " +
+		"was not settled before the code: decide the interface first, or split the function so the unstable " +
+		"part is small. A formatting commit can supply all three changes, a red-green test loop on one " +
+		"function reads as oscillation though it is deliberate, a squash merge hides the changes inside a " +
+		"branch, and a small function has little to change except all of it. A file renamed through git's " +
+		"rename detection keeps its history, and a function renamed or moved to another file starts again. " +
+		"Same-named functions in one file count once per commit, and anonymous functions are not followed.",
 	"self": "Share of young deaths removed by the author who wrote the line, compared by commit author " +
 		"email. High self means people clean up their own work. A high share of other-author removals on " +
 		"agent-born lines (by_class) means cleanup is left to someone else: review agent output before it " +

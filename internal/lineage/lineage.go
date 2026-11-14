@@ -72,6 +72,11 @@ func cohortLabel(c int) string {
 	return fmt.Sprintf("%04d-%02d", c/monthsPerYear, c%monthsPerYear)
 }
 
+// DayOf is the unix day of a time, the unit lineage ages lines in.
+func DayOf(t time.Time) int {
+	return days(t)
+}
+
 func days(t time.Time) int {
 	return int(t.UTC().Unix() / 86400) //nolint:mnd // seconds per day
 }

@@ -34,6 +34,9 @@ const pairOfMiddles = 2
 // sparkWeeks is the trailing window of the per-directory mass sparkline.
 const sparkWeeks = 8
 
+// botClass is the author class whose commits oscillation does not count.
+const botClass = "bot"
+
 // provisionalMark follows a rate printed from a thin sample in text output.
 const provisionalMark = "*"
 
@@ -46,14 +49,15 @@ const provisionalBelow = 5
 
 // historyResult is the history subcommand's JSON shape.
 type historyResult struct {
-	Lineage    *lineage.Result    `json:"lineage"`
-	Hotspots   map[string]float64 `json:"hotspots"`
-	Range      string             `json:"range"`
-	Weeks      []weekRow          `json:"weeks"`
-	Viral      []viralRow         `json:"virality"`
-	Pairs      []pairRow          `json:"pairing"`
-	Changes    int                `json:"changes"`
-	NoiseFloor float64            `json:"noise_floor"`
+	Lineage     *lineage.Result    `json:"lineage"`
+	Oscillation *oscillationResult `json:"oscillation"`
+	Hotspots    map[string]float64 `json:"hotspots"`
+	Range       string             `json:"range"`
+	Weeks       []weekRow          `json:"weeks"`
+	Viral       []viralRow         `json:"virality"`
+	Pairs       []pairRow          `json:"pairing"`
+	Changes     int                `json:"changes"`
+	NoiseFloor  float64            `json:"noise_floor"`
 }
 
 // weekRow is one week of first-parent activity.
@@ -132,6 +136,7 @@ type historyWalk struct {
 	viral     map[string]*viralRow
 	ruleFirst map[string]string
 	liveMass  map[string]float64 // path -> mass of its latest after-blob
+	osc       *oscillation
 	gaps      *scoreGaps
 	progress  *progress
 	changes   int
@@ -169,7 +174,7 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 	hw := &historyWalk{
 		walker: lineage.NewWalker(s.cfg.Classify), weeks: map[string]*weekRow{}, pairs: map[string]*pairRow{},
 		viral: map[string]*viralRow{}, ruleFirst: map[string]string{}, liveMass: map[string]float64{},
-		gaps: newScoreGaps(), progress: prog,
+		osc: newOscillation(), gaps: newScoreGaps(), progress: prog,
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -200,7 +205,9 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 		return nil, nil, fmt.Errorf("reading blobs: %w", err)
 	}
 
-	res := &historyResult{Range: rangeSpec, Lineage: hw.walker.Finish(), Changes: hw.changes}
+	res := &historyResult{
+		Range: rangeSpec, Lineage: hw.walker.Finish(), Oscillation: hw.osc.result(), Changes: hw.changes,
+	}
 	collectRollups(res, hw.weeks, hw.pairs, hw.viral)
 	markNoise(res)
 	res.Hotspots = hotspotScores(res.Lineage, hw.liveMass)
@@ -266,7 +273,8 @@ func (s *session) walkCommit(hw *historyWalk, rec *vcs.CommitRecord, reports map
 	}
 	scoreCommit(rec, &commitScore{
 		wk: wk, pairs: hw.pairs, viral: hw.viral, ruleFirst: hw.ruleFirst, reports: reports,
-		liveMass: hw.liveMass, klass: klass, week: week, gaps: hw.gaps,
+		liveMass: hw.liveMass, osc: hw.osc, klass: klass, week: week, day: lineage.DayOf(rec.CommitTime),
+		gaps: hw.gaps,
 	})
 }
 
@@ -408,10 +416,12 @@ type commitScore struct {
 	viral     map[string]*viralRow
 	ruleFirst map[string]string
 	liveMass  map[string]float64
+	osc       *oscillation
 	gaps      *scoreGaps
 	reports   map[engine.Blob]*engine.FileReport
 	klass     string
 	week      string
+	day       int
 }
 
 // scoreGaps records the distinct blobs a walk could not score, keyed by path and
@@ -448,6 +458,7 @@ func scoreCommit(rec *vcs.CommitRecord, cs *commitScore) {
 		if f.Status == vcs.StatusRenamed && f.OldPath != "" {
 			cs.liveMass[f.Path] = cs.liveMass[f.OldPath]
 			delete(cs.liveMass, f.OldPath)
+			cs.osc.rename(f.OldPath, f.Path)
 		}
 		pairCell(cs.pairs, cs.week, d).ClassCommits[cs.klass]++
 
@@ -458,6 +469,9 @@ func scoreCommit(rec *vcs.CommitRecord, cs *commitScore) {
 			continue
 		}
 		scoreBlob(cs, *f, rep, oldMass(cs, *f))
+		if cs.klass != botClass && rep.Skipped == "" && f.Status != vcs.StatusAdded {
+			cs.osc.observe(f, cs.reports[engine.Blob{Path: oldPathOf(*f), SHA: f.OldSHA}], rep, cs.day)
+		}
 	}
 }
 
@@ -608,6 +622,7 @@ func printHistory(w io.Writer, res *historyResult) {
 	}
 
 	printDeaths(w, res)
+	printOscillation(w, res)
 
 	if len(res.Viral) > 0 {
 		report.Fprintln(w)
@@ -692,6 +707,25 @@ func readdCell(d lineage.Deaths) string {
 	cell := fmt.Sprintf("%.2f", float64(d.Readded)/float64(d.ReaddAtRisk))
 
 	return provisionalMarked(cell, d.ReaddAtRisk < lineage.ProvisionalLines)
+}
+
+// printOscillation renders the functions that changed in three commits within
+// 14 days, per directory with any and overall, tests apart.
+func printOscillation(w io.Writer, res *historyResult) {
+	osc := res.Oscillation
+	if osc.Funcs+osc.TestFuncs == 0 {
+		return
+	}
+	dirs := report.SortedKeys(osc.Dirs)
+	slices.SortStableFunc(dirs, func(a, b string) int {
+		return cmp.Compare(osc.Dirs[b].Funcs, osc.Dirs[a].Funcs)
+	})
+	rows := [][]string{{"(all)", strconv.Itoa(osc.Funcs), strconv.Itoa(osc.TestFuncs)}}
+	for _, d := range dirs {
+		rows = append(rows, []string{d, strconv.Itoa(osc.Dirs[d].Funcs), strconv.Itoa(osc.Dirs[d].TestFuncs)})
+	}
+	report.Fprintln(w)
+	report.Table(w, []string{colDir, "oscillating_funcs", "tests"}, rows)
 }
 
 // printWeeks renders the first-parent week table with its noise footnote.

@@ -654,7 +654,7 @@ func TestExplain(t *testing.T) {
 // same --explain entry as the JSON docs map.
 var metricHeaders = []string{ //nolint:gochecknoglobals // the header vocabulary is fixed
 	"churn_14d", "churn_30d", "concentration", "erosion", "hotspot", "mass", "mass_8w",
-	"over_50", "readd", "rework", "rule_hits", "s_30d", "s_90d",
+	"oscillating_funcs", "over_50", "readd", "rework", "rule_hits", "s_30d", "s_90d",
 }
 
 func TestExplainCoversEveryMetric(t *testing.T) {
