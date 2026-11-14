@@ -769,7 +769,13 @@ func (w *Walker) coupling() [][2]string {
 			out = append(out, pair)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i][0] < out[j][0] })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][0] != out[j][0] {
+			return out[i][0] < out[j][0]
+		}
+
+		return out[i][1] < out[j][1]
+	})
 
 	return out
 }

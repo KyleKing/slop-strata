@@ -260,8 +260,8 @@ func median(values []float64) float64 {
 // files touched in the range, the same files churn is counted on.
 func hotspotScores(lin *lineage.Result, liveMass map[string]float64) map[string]float64 {
 	dirMass := map[string]float64{}
-	for path, m := range liveMass {
-		dirMass[lineage.DirOf(path)] += m
+	for _, path := range report.SortedKeys(liveMass) {
+		dirMass[lineage.DirOf(path)] += liveMass[path]
 	}
 	out := map[string]float64{}
 	for d, ds := range lin.Dirs {

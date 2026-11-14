@@ -283,6 +283,21 @@ func TestCohortFollowsCommitterDateInUTC(t *testing.T) {
 	}
 }
 
+func TestCouplingOrderIsTotal(t *testing.T) {
+	t.Parallel()
+	w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+	for day := range 3 {
+		w.Commit(commitOn(day, addedFile("d.go", 1), addedFile("c.go", 1), addedFile("b.go", 1), addedFile("a.go", 1)),
+			false, false)
+	}
+	want := [][2]string{
+		{"a.go", "b.go"}, {"a.go", "c.go"}, {"a.go", "d.go"}, {"b.go", "c.go"}, {"b.go", "d.go"}, {"c.go", "d.go"},
+	}
+	if got := w.Finish().Coupling; !reflect.DeepEqual(got, want) {
+		t.Fatalf("coupling = %v, want %v", got, want)
+	}
+}
+
 func addedFile(path string, lines int) vcs.CommitFile {
 	added := make([]string, lines)
 	for i := range added {
