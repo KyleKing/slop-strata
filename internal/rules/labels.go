@@ -83,7 +83,7 @@ func WriteLabels(path string, labels Labels) error {
 	if err != nil {
 		return fmt.Errorf("rendering labels: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), labelsPerm); err != nil {
+	if err := writeFileAtomic(path, append(data, '\n'), labelsPerm); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 

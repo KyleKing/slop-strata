@@ -998,4 +998,8 @@ func TestOldBaselineFailsLoudlyUntilRewritten(t *testing.T) {
 	if _, err := runCLI(t, repo, "snapshot"); err != nil {
 		t.Fatalf("snapshot after the rewrite: %v", err)
 	}
+	left, err := filepath.Glob(path + ".tmp*")
+	if err != nil || len(left) > 0 {
+		t.Errorf("temp files left behind: %v, %v", left, err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -76,8 +77,36 @@ func WriteBaseline(path string, files map[string][]Finding) error {
 		return fmt.Errorf("rendering baseline: %w", err)
 	}
 
-	if err := os.WriteFile(path, append(data, '\n'), baselinePerm); err != nil {
+	if err := writeFileAtomic(path, append(data, '\n'), baselinePerm); err != nil {
 		return fmt.Errorf("writing baseline: %w", err)
+	}
+
+	return nil
+}
+
+// writeFileAtomic writes through a temp file in the same directory and renames
+// it over path, so a failed write leaves the old file intact.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, os.Remove(tmp.Name()))
+		}
+	}()
+	if _, err = tmp.Write(data); err != nil {
+		return errors.Join(fmt.Errorf("writing %s: %w", tmp.Name(), err), tmp.Close())
+	}
+	if err = tmp.Chmod(perm); err != nil {
+		return errors.Join(fmt.Errorf("setting mode of %s: %w", tmp.Name(), err), tmp.Close())
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", tmp.Name(), err)
+	}
+	if err = os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("replacing %s: %w", path, err)
 	}
 
 	return nil
