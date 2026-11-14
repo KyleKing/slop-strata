@@ -58,6 +58,8 @@ Status: v1 in progress. This file is the repository's `DESIGN.md`.
   - Comments: density per function, and narrating comments (now, moved, was, a ticket that is not a forward pointer)
 - Duplication: normalized-subtree clones (scb-check's method), and string or number literals repeated across files
 - The default set runs only the rules that cleared the precision bar. `--experimental` adds the rest, and `--explain experimental` lists them
+- A finding's id is ten hex characters of a hash over its rule, path, enclosing function (when the rule reads one), matched text, and an occurrence index that breaks ties among findings sharing the other four, counted from the top of the file. A line move changes none of those. A rename of the function, an edit of the matched text, or a new tie above it changes the id. Cross-file rules such as `x/stale-prose` have no enclosing function, so their id covers rule, path, and matched text
+- The baseline and false-positive labels are two ways to set a finding aside, and both are counted in the envelope's `counts.suppressed`. The baseline file keys findings by id and carries a format version, and a file in an older format fails the run with an instruction to rewrite it
 
 ### 4. Virality and attribution
 
@@ -82,7 +84,15 @@ The tool calls no model. It hands a coding harness what one needs, and the harne
 - `--context` adds to the JSON what a reader would open next: the diff hunks behind each delta, the functions that crossed a threshold before and after, the findings with their source lines, the change's commit messages and linked issue text, and the history of the hotspot it touched
 - A prompt shipped in the repository (`prompts/explain.md`) takes that JSON and asks for four things: whether the stated intent matches what the numbers show, which one function to look at first and why, whether a rule hit is real or a false positive with the line that decides it, and what a smaller version of the change would look like
 - The model's answer is a draft for a person, never stored as a metric. Deterministic readings stay the record, which keeps runs comparable and avoids the self-grading bias that absolute LLM scores show
-- Disputed findings a person marks (false positive, or real) go back into a labels file that the rule-authoring loop reads. The labels file is not built yet, so no rule has a recorded precision
+- Disputed findings a person marks (false positive, or real) go back into a labels file that the rule-authoring loop reads. `slop-strata label <id> tp|fp` writes it, and `slop-strata rules` prints each rule's labeled precision with its count. See "Labels and the precision gate" below for what the file does and does not prove
+
+## Labels and the precision gate
+
+The labels file (`.slop-strata-labels.json`, written by `slop-strata label`) holds a person's verdicts on individual findings of one repository. Each entry stores the finding id, rule, verdict (`tp` or `fp`), path, matched text, an optional note, and the tool version, and never the labeler.
+
+- It is evidence of one thing: the precision of each rule on this repository, from the findings someone read. A finding labeled `fp` is suppressed like a baselined one and counted in `counts.suppressed`, and a finding labeled `tp` stays
+- It is not evidence of the corpus-wide precision the gate is set on. The gate is global to the binary, so one rule is either default or experimental for every repository, and a single repository's labels sample code that its authors and tools shaped. A repository whose hits are all docs examples will label a rule poorly, and one full of generated code will label it well, and neither says what the rule does elsewhere
+- `slop-strata rules` and `--explain experimental` print each rule's tier, labeled `tp` and `fp`, and precision with `n`, marked `*` under 10 labels. Labels never promote or demote a rule. Moving a rule across the 80% bar is the owner's decision, made with this number and the corpus read side by side
 
 ## Presentation
 
@@ -112,7 +122,7 @@ It reports what predicts a test getting deleted:
 
 A change whose stated intent disagrees with its numbers (a refactor that raises erosion, a cleanup that adds mass) gets a reading that says so, as evidence a reviewer can use to question the premise. It never blocks a change, and a reading that a reviewer overrules teaches the rule nothing until a person marks it.
 - Its tests run the built binary against a generated repository and diff golden JSON for each subcommand. Unit tests stay for the counting rules where a fixture cannot show the edge, such as nested functions and decorators. Goldens at pinned public SHAs are not built yet
-- Each metric is checked against a small human-labeled sample before it ships: does a high reading match code a reviewer would call hard to change? A metric that fails this does not ship. The labels file that would record each rule's measured precision per release is not built yet
+- Each metric is checked against a small human-labeled sample before it ships: does a high reading match code a reviewer would call hard to change? A metric that fails this does not ship. The labels file records a rule's measured precision for one repository, and the corpus read that sets the gate is still a separate sample
 
 ## Evaluation corpus
 
@@ -180,9 +190,9 @@ Shipped in part: `lineage` matches moved lines with aragonite's `diff.MatchMoves
 
 What a mature product does that v1 will not, measured against CodeScene and SonarQube:
 
-- Precision first: each rule ships only with a measured false-positive rate on the corpus below a set bar, and a rule that drifts above it is turned off by default. Not built yet, beyond the gate itself
-- Every finding explains itself in one screen: the rule, the line that triggered it, a minimal before and after, and how to suppress it inline with a reason. Not built yet
-- Stable output: a JSON schema version (shipped, `docs/schema.json`), finding IDs that survive line moves (keyed by function and rule, not line number, not built yet), and a changelog entry for every change to a threshold
+- Precision first: each rule ships only with a measured false-positive rate on the corpus below a set bar, and a rule that drifts above it is turned off by default. The gate exists, and the labels file now puts a per-repository number beside each rule. Moving a rule across the gate stays the owner's decision, and nothing automatic does it
+- Every finding explains itself in one screen: the rule, the line that triggered it, a minimal before and after, and how to suppress it inline with a reason. Shipped in part: a finding carries its rule, line, matched text, enclosing function, and an id. Inline suppression with a reason and the minimal before and after are not built yet
+- Stable output: a JSON schema version (shipped, `docs/schema.json`), finding IDs that survive line moves (shipped, see "Slop rules"), and a changelog entry for every change to a threshold
 - Fast first run: a full history of a 3,000-commit repository in minutes on a laptop, with progress and a resumable cache. Parsing is parallel, and `history` prints a commits done/total line to a terminal once a run passes two seconds. Resume is not built yet
 - Zero-config start: language detection, vendored and generated file detection, and author classes guessed from known bot logins, with `init` writing what it guessed for review. Shipped
 - Trends people trust: a noise floor and provisional markers on the trend tables. Shipped; the charts are text tables for now

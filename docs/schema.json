@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, or history result. Schema version 2. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 3. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -9,7 +9,7 @@
     "result": {"description": "The command's result, or null on a failed pair of change --pairs."},
     "docs": {"type": "object", "additionalProperties": {"type": "string"}},
     "tool": {"const": "slop-strata"},
-    "command": {"enum": ["change", "snapshot", "history"]},
+    "command": {"enum": ["change", "snapshot", "history", "rules"]},
     "repo": {"type": "string"},
     "at": {"type": "string", "format": "date-time"},
     "warnings": {"type": "array", "items": {"type": "string"}},
@@ -29,17 +29,56 @@
     {
       "if": {"properties": {"command": {"const": "history"}}, "required": ["command"]},
       "then": {"properties": {"result": {"$ref": "#/$defs/historyResult"}}}
+    },
+    {
+      "if": {"properties": {"command": {"const": "rules"}}, "required": ["command"]},
+      "then": {"properties": {"result": {"$ref": "#/$defs/rulesResult"}}}
     }
   ],
   "$defs": {
     "counts": {
-      "description": "Files the run could not score. A non-zero count means the numbers cover less of the tree.",
+      "description": "Files the run could not score, and findings it set aside. A non-zero errors or skipped count means the numbers cover less of the tree.",
       "type": "object",
-      "required": ["errors", "skipped"],
+      "required": ["errors", "skipped", "suppressed"],
       "additionalProperties": false,
       "properties": {
         "errors": {"type": "integer", "minimum": 0},
-        "skipped": {"type": "integer", "minimum": 0}
+        "skipped": {"type": "integer", "minimum": 0},
+        "suppressed": {
+          "description": "Findings set aside, each counted once under the first of labeled_fp and baseline. Always zero on history.",
+          "type": "object",
+          "required": ["baseline", "labeled_fp"],
+          "additionalProperties": false,
+          "properties": {
+            "baseline": {"type": "integer", "minimum": 0, "description": "Accepted in the baseline file."},
+            "labeled_fp": {"type": "integer", "minimum": 0, "description": "Labeled a false positive in the labels file."}
+          }
+        }
+      }
+    },
+    "rulesResult": {
+      "type": "object",
+      "required": ["labels", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "labels": {"type": "string", "description": "The labels file the counts come from, relative to the repository root."},
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "tier", "precision", "tp", "fp", "n", "provisional"],
+            "additionalProperties": false,
+            "properties": {
+              "rule": {"type": "string"},
+              "tier": {"enum": ["default", "experimental", "external"], "description": "external marks a rule that only the labels file names, such as an ast-grep rule."},
+              "precision": {"type": ["number", "null"], "description": "tp over n, null when no finding of the rule is labeled."},
+              "tp": {"type": "integer", "minimum": 0},
+              "fp": {"type": "integer", "minimum": 0},
+              "n": {"type": "integer", "minimum": 0, "description": "Labeled findings, tp plus fp."},
+              "provisional": {"type": "boolean", "description": "True under 10 labels."}
+            }
+          }
+        }
       }
     },
     "skippedRow": {
@@ -53,9 +92,10 @@
     },
     "findingRow": {
       "type": "object",
-      "required": ["path", "rule", "line", "new"],
+      "required": ["id", "path", "rule", "line", "new"],
       "additionalProperties": false,
       "properties": {
+        "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, enclosing function, matched text, and an occurrence index. Survives line moves."},
         "path": {"type": "string"},
         "rule": {"type": "string"},
         "match": {"type": "string"},
@@ -263,11 +303,13 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["rule", "line"],
+              "required": ["rule", "id", "line"],
               "properties": {
                 "rule": {"type": "string"},
+                "id": {"type": "string", "description": "Ten hex characters hashed from the rule, path, scope, matched text, and an occurrence index. Survives line moves."},
                 "line": {"type": "integer"},
                 "match": {"type": "string"},
+                "scope": {"type": "string", "description": "The enclosing function, when the rule reads one."},
                 "note": {"type": "string"}
               }
             }

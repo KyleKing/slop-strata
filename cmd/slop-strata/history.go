@@ -634,7 +634,7 @@ func printHistory(w io.Writer, res *historyResult) {
 			}
 			rows = append(rows, []string{v.Rule, v.FirstWeek, strings.Join(parts, " ")})
 		}
-		report.Table(w, []string{"rule", "first hit", "spread by class"}, rows)
+		report.Table(w, []string{colRule, "first hit", "spread by class"}, rows)
 	}
 }
 

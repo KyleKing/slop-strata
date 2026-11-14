@@ -23,6 +23,8 @@ const (
 	flagExperimental  = "--experimental"
 	flagHelp          = "--help"
 	flagJSON          = "--json"
+	flagList          = "--list"
+	flagNote          = "--note"
 	flagPairs         = "--pairs"
 	flagRepo          = "--repo"
 	flagRev           = "--rev"
@@ -30,8 +32,12 @@ const (
 	flagWriteBaseline = "--write-baseline"
 )
 
-// cmdChange names the change subcommand.
-const cmdChange = "change"
+// Subcommand names the dispatcher and the checks branch on.
+const (
+	cmdChange = "change"
+	cmdLabel  = "label"
+	cmdRules  = "rules"
+)
 
 // args is one invocation's parsed flags.
 type args struct {
@@ -40,6 +46,8 @@ type args struct {
 	base          string
 	since         string
 	pairs         string
+	note          string
+	positional    []string
 	json          bool
 	brief         bool
 	exitCode      bool
@@ -47,15 +55,17 @@ type args struct {
 	all           bool
 	writeBaseline bool
 	experimental  bool
+	list          bool
 	help          bool
 }
 
 // command is one subcommand: its summary and the flags it accepts, in the order
 // its usage prints them.
 type command struct {
-	name    string
-	summary string
-	flags   []string
+	name       string
+	summary    string
+	positional string // placeholder for the arguments after the name, empty when it takes none
+	flags      []string
 }
 
 // subcommands lists the subcommands in the order the top-level help prints them.
@@ -88,6 +98,17 @@ var subcommands = []command{
 		summary: "write .slop-strata.toml and record the current baseline",
 		flags:   []string{flagRev, flagAll, flagExperimental, flagRepo},
 	},
+	{
+		name:       cmdLabel,
+		summary:    "record a verdict on a finding, or list the verdicts",
+		positional: "<finding-id> tp|fp",
+		flags:      []string{flagNote, flagList, flagRev, flagRepo},
+	},
+	{
+		name:    cmdRules,
+		summary: "list the rules with their tier and labeled precision",
+		flags:   []string{flagJSON, flagRepo},
+	},
 }
 
 // flagUsage documents each flag: its value placeholder, empty for a switch, and
@@ -98,6 +119,8 @@ var flagUsage = map[string][2]string{
 	flagRev:           {"R", "revision to score (default HEAD; change reads the working tree when unset)"},
 	flagBase:          {"B", "base revision to diff from (default merge-base with the default branch)"},
 	flagSince:         {"S", `history window, e.g. "180 days ago" (default "180 days ago")`},
+	flagList:          {"", "print the recorded verdicts instead of adding one"},
+	flagNote:          {"TEXT", "why the verdict holds, stored with it"},
 	flagPairs:         {"FILE", `score each "<base> <rev>" line of FILE (- for stdin), one JSON envelope per pair`},
 	flagRepo:          {"PATH", "repository root (default .)"},
 	flagJSON:          {"", "emit JSON, the integration surface"},
@@ -138,6 +161,11 @@ func parseFlags(cmd command, argv []string, a *args) error {
 
 // parseFlag reads the flag at the head of argv and returns what follows it.
 func parseFlag(cmd command, argv []string, a *args) ([]string, error) {
+	if cmd.positional != "" && !strings.HasPrefix(argv[0], "-") {
+		a.positional = append(a.positional, argv[0])
+
+		return argv[1:], nil
+	}
 	name, inline, hasInline := strings.Cut(argv[0], "=")
 	rest := argv[1:]
 	if name == "-h" {
@@ -182,7 +210,7 @@ func parseFlag(cmd command, argv []string, a *args) ([]string, error) {
 func switchFlags(a *args) map[string]*bool {
 	return map[string]*bool{
 		flagJSON: &a.json, flagBrief: &a.brief, flagExitCode: &a.exitCode, flagContext: &a.ctx, flagAll: &a.all,
-		flagWriteBaseline: &a.writeBaseline, flagExperimental: &a.experimental,
+		flagWriteBaseline: &a.writeBaseline, flagExperimental: &a.experimental, flagList: &a.list,
 	}
 }
 
@@ -190,12 +218,15 @@ func switchFlags(a *args) map[string]*bool {
 func valueFlags(a *args) map[string]*string {
 	return map[string]*string{
 		flagRev: &a.rev, flagBase: &a.base, flagSince: &a.since,
-		flagRepo: &a.repo, flagPairs: &a.pairs,
+		flagRepo: &a.repo, flagPairs: &a.pairs, flagNote: &a.note,
 	}
 }
 
 // checkCombos rejects flag combinations a command cannot honor.
 func checkCombos(cmd command, a *args) error {
+	if cmd.name == cmdLabel {
+		return checkLabelArgs(a)
+	}
 	if cmd.name != cmdChange {
 		return nil
 	}
@@ -236,8 +267,9 @@ Every number is a guardrail with no target and no gate.
 
 // printCommandHelp writes one subcommand's usage with only its flags.
 func printCommandHelp(w io.Writer, cmd command) {
+	usage := strings.TrimSpace(cmd.name + " " + cmd.positional)
 	report.Fprintf(w, "slop-strata %s — %s\n\nUsage: slop-strata %s [flags]\n\nFlags:\n",
-		cmd.name, cmd.summary, cmd.name)
+		cmd.name, cmd.summary, usage)
 	for _, name := range append(slices.Clone(cmd.flags), "--help") {
 		info := flagUsage[name]
 		left := name
@@ -316,19 +348,28 @@ func run(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	s, err := newSession(ctx, a.repo, a.experimental, stderr)
+	s, err := newSession(ctx, a.repo, a.experimental || cmd.name == cmdLabel, stderr)
 	if err != nil {
 		return err
 	}
 	defer s.close()
 
-	switch cmd.name {
+	return s.dispatch(ctx, cmd.name, a, stdout)
+}
+
+// dispatch runs the subcommand name against an open session.
+func (s *session) dispatch(ctx context.Context, name string, a *args, stdout io.Writer) error {
+	switch name {
 	case cmdChange:
 		return s.changeCmd(ctx, a, stdout)
 	case "snapshot":
 		return s.snapshotCmd(ctx, a, stdout)
 	case "history":
 		return s.historyCmd(ctx, a, stdout)
+	case cmdLabel:
+		return s.labelCmd(ctx, a, stdout)
+	case cmdRules:
+		return s.rulesCmd(a, stdout)
 	default:
 		return s.initCmd(ctx, a, stdout)
 	}
@@ -361,6 +402,9 @@ func runExplain(argv []string, stdout io.Writer) error {
 	}
 	if !report.Explain(stdout, value) {
 		return fmt.Errorf("%q: %w", value, errNotMetric)
+	}
+	if value == "experimental" {
+		return explainRules(stdout)
 	}
 
 	return nil

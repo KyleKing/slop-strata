@@ -12,11 +12,13 @@ import (
 // Rule IDs are constants where the registry and the rule that emits them share
 // a spelling.
 const (
+	ruleGoSilentError     = "go/silent-error"
 	ruleGoTypeAny         = "go/type-any"
 	rulePyTestReadsSource = "py/test-reads-source"
 	rulePyTimingHack      = "py/timing-hack"
 	ruleTSAsUnknownAs     = "ts/as-unknown-as"
 	ruleXNarratingComment = "x/narrating-comment"
+	ruleXStaleProse       = "x/stale-prose"
 )
 
 // Tree-sitter node kinds and texts several rules match on.
@@ -33,11 +35,14 @@ const (
 	textUnknown         = "unknown"
 )
 
-// Finding is one rule hit: the rule, where, and an optional note.
+// Finding is one rule hit: the rule, where, and an optional note. Scope names
+// the enclosing function, and ID, set by Identify, survives line moves.
 type Finding struct {
 	Rule  string `json:"rule"`
+	ID    string `json:"id,omitempty"`
 	Note  string `json:"note,omitempty"`
 	Match string `json:"match,omitempty"`
+	Scope string `json:"scope,omitempty"`
 	Line  int    `json:"line"`
 }
 
@@ -61,7 +66,7 @@ type Rule struct {
 
 // all is the registry: every rule that ships, in id order.
 var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile time
-	{ID: "go/silent-error", Apply: goSilentError, Experimental: true},
+	{ID: ruleGoSilentError, Apply: goSilentError, Experimental: true},
 	{ID: ruleGoTypeAny, Apply: goTypeAny, Experimental: true},
 	{ID: "go/test-reads-source", TestOnly: true, Apply: goTestReadsSource, Experimental: true},
 	{ID: "go/timing-hack", TestOnly: true, Apply: goTimingHack},
@@ -113,6 +118,7 @@ func Run(ctx *Ctx) []Finding {
 		}
 		rule.Apply(ctx, &findings)
 	}
+	ctx.setScopes(findings)
 
 	return findings
 }

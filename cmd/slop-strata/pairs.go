@@ -66,7 +66,7 @@ func (s *session) pairEnvelope(ctx context.Context, p pair, withContext bool) (r
 	if p.err == nil {
 		res, err := s.scorePair(ctx, p, withContext)
 		if err == nil {
-			return report.NewEnvelope("change", s.root, res, countRows(res.Skipped, res.Errors), warnings(res)), true
+			return report.NewEnvelope("change", s.root, res, res.counts(), warnings(res)), true
 		}
 		p.err = err
 	}

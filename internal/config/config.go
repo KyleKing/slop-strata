@@ -22,6 +22,9 @@ const FileName = ".slop-strata.toml"
 // ruleset tightened after code landed does not re-report it.
 const BaselineFileName = ".slop-strata-baseline.json"
 
+// LabelsFileName is the default file holding a person's verdicts on findings.
+const LabelsFileName = ".slop-strata-labels.json"
+
 const (
 	// The byte cap past which a blob is skipped and reported by name.
 	defaultMaxFileBytes = 1 << 20
@@ -89,6 +92,8 @@ type Config struct {
 	Baseline string `toml:"baseline"`
 	// DefaultBranch overrides the detected branch a change diffs against.
 	DefaultBranch string `toml:"default_branch"`
+	// Labels names the file of finding verdicts relative to the repo root.
+	Labels string `toml:"labels"`
 	// Skip lists path globs (filepath.Match syntax) excluded from every
 	// analysis: vendored trees, generated code, lockfiles.
 	Skip []string `toml:"skip"`
@@ -123,6 +128,7 @@ func Default() *Config {
 		MaxFileBytes:    defaultMaxFileBytes,
 		MinifiedAvgLine: defaultMinifiedAvgLine,
 		Baseline:        BaselineFileName,
+		Labels:          LabelsFileName,
 	}
 }
 

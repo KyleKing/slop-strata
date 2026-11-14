@@ -9,10 +9,10 @@ Checked against the code at 5c196df. Items from the v0.6.0 audit that are now do
 
 ## Rules below the bar
 
-No labels file exists, so no rule has a recorded precision, and the gate is a judgment call. Build the labels file, record precision per rule and per release, and move a rule out of the gate only on that evidence. `slop-strata --explain experimental` lists the gated rules.
+`slop-strata label` records verdicts per repository and `slop-strata rules` prints each rule's labeled precision, but the gate is still a judgment call on the corpus. Label more findings across repositories, record precision per release, and move a rule out of the gate only on that evidence. `slop-strata --explain experimental` lists the gated rules.
 
 - `go/silent-error` flags any blank last target on a sole call. Flagging only discarded errors needs callee types, which the rule does not have.
-- `x/narrating-comment` is still gated. Drop it, or keep it gated, once the labels file shows its precision.
+- `x/narrating-comment` is still gated. Drop it, or keep it gated, once labels across repositories show its precision.
 - `x/dead-export` skips Go methods, which avoids interface false positives. It does not resolve interface satisfaction.
 - `snapshot` reports `x/stale-prose` for every unresolved name, behind `--experimental`. It should flag only names the history shows existed and are now gone. The exemptions for changelogs, ADRs, and migration guides already exist.
 - `py/type-any` and `go/type-any` report every hit. They should report a count per file.
@@ -26,11 +26,10 @@ No labels file exists, so no rule has a recorded precision, and the gate is a ju
 
 - `internal/lang` and `internal/srcdigest` have no tests.
 - Goldens at pinned public SHAs are not built. The worked example pins calcipy at 594d31b, but no test reads that pin.
-- A per-release precision record needs the labels file above.
+- A per-release precision record needs labels from more than one repository.
 
 ## Open from DESIGN.md
 
-- Finding IDs that survive line moves
 - Progress output and a resumable cache for the first run
 - Function-level move matching and per-hunk classification
 - Stale config: a key a config file defines that no code reads by name is reported, but a key code reads that no config defines is not

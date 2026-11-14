@@ -21,9 +21,20 @@ const Version = 3
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
 type Counts struct {
-	Errors  int `json:"errors"`
-	Skipped int `json:"skipped"`
+	Suppressed Suppressed `json:"suppressed"`
+	Errors     int        `json:"errors"`
+	Skipped    int        `json:"skipped"`
 }
+
+// Suppressed tallies the findings a run set aside, so a hit that never printed
+// is still counted: accepted in the baseline or labeled a false positive.
+type Suppressed struct {
+	Baseline  int `json:"baseline"`
+	LabeledFP int `json:"labeled_fp"`
+}
+
+// Total is every finding set aside.
+func (s Suppressed) Total() int { return s.Baseline + s.LabeledFP }
 
 // Envelope wraps every subcommand's JSON output.
 type Envelope struct {
@@ -63,13 +74,17 @@ func NewEnvelope(command, repo string, result any, counts Counts, warnings []str
 	}
 }
 
-// WarnCounts prints one line to w when a run skipped or failed to parse any file,
-// so text output says what its numbers leave out.
+// WarnCounts prints a line to w when a run skipped or failed to parse a file,
+// and another when it set findings aside, so text output says what its numbers
+// leave out.
 func WarnCounts(w io.Writer, c Counts) {
-	if c.Skipped == 0 && c.Errors == 0 {
-		return
+	if c.Skipped != 0 || c.Errors != 0 {
+		Fprintf(w, "slop-strata: %d skipped, %d with parse errors (--json names each)\n", c.Skipped, c.Errors)
 	}
-	Fprintf(w, "slop-strata: %d skipped, %d with parse errors (--json names each)\n", c.Skipped, c.Errors)
+	if s := c.Suppressed; s.Total() != 0 {
+		Fprintf(w, "slop-strata: %d findings set aside (%d in the baseline, %d labeled false positive)\n",
+			s.Total(), s.Baseline, s.LabeledFP)
+	}
 }
 
 // Encode writes one envelope, indented for a person or on a single line for
@@ -246,11 +261,30 @@ var Docs = map[string]string{
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
 		"narrating-comment, dup-literal, dup-test-case, dead-export, and snapshot stale-prose rules and " +
 		"the type-any and test-reads-source families. Enable them per run with --experimental, or for a " +
-		"repository " +
-		"with experimental = true in .slop-strata.toml. A rule leaves this list when a labels file " +
-		"shows it clears the bar.",
-	"findings": "New rule hits attributable to this change, after the baseline and pre-existing " +
-		"hits are excluded.",
+		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
+		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
+		"repository, which slop-strata rules prints and the table below repeats from the labels file of the " +
+		"current directory. Labels never promote or demote a rule on their own, and one repository's labels " +
+		"are not the corpus the 80% bar is set on.",
+	"findings": "New rule hits attributable to this change, after the baseline and labeled hits and " +
+		"the pre-existing hits are excluded. Each has an id, a short hash of the rule, path, enclosing " +
+		"function, and matched text, so it survives line moves, and a scope naming the function. To dispute " +
+		"a hit without touching the code, run slop-strata label ID fp. Suppressed hits are counted in " +
+		"counts.suppressed.",
+	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
+		"file) and labeled_fp (a false-positive label). A finding counts once, under the first of " +
+		"labeled_fp and baseline. A count that grows faster than the hits get fixed means findings are " +
+		"being muted: read the labels in review.",
+	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
+		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
+		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +
+		"verdict, path, matched text, note, and the tool version, and no author. The file is evidence of " +
+		"this repository's precision per rule. It says nothing about a rule's precision on other " +
+		"repositories, which the 80% gate measures. Label hits as you review them, then read slop-strata rules.",
+	"precision": "Per rule, tp over tp plus fp from the labels file, with n the number of labels. Under " +
+		"10 labels the figure is provisional and printed with *. The tier column says whether the rule runs " +
+		"by default or only with --experimental. No rule changes tier from this number: the 80% bar is the " +
+		"owner's call, and the number is evidence for it from one repository.",
 	"virality": "For each rule: the first commit that hit it, then how hits spread afterward per " +
 		"author class and across directories (spread_dirs). Answers whether a pattern gets " +
 		"copied once it lands.",
@@ -267,7 +301,8 @@ var Docs = map[string]string{
 	"counts": "Files the run could not score: skipped (excluded by config, size, binary content, " +
 		"minified or generated shape) and errors (a parse that left error nodes). Metrics exclude " +
 		"them, so a non-zero count means the numbers cover less of the tree. Unsupported file " +
-		"types are listed as skipped but not counted.",
+		"types are listed as skipped but not counted. suppressed counts the findings set aside; see " +
+		"suppressed.",
 	"intent": "The change's stated purpose read off commit metadata: Conventional Commit type, " +
 		"branch name, then issue keywords, plus revert detection. Kinds are feat, fix, refactor, perf, " +
 		"test, docs, chore, and unknown. Only refactor, fix, and test make a claim the numbers can " +

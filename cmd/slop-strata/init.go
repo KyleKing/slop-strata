@@ -64,6 +64,7 @@ func (s *session) writeConfig(ctx context.Context, path string) error {
 		"# skip = [\"vendor/*\", \"*.min.js\"]\n" +
 		"# entry_points = [\"cmd/*\", \"main.go\"]\n" +
 		"# config_paths = [\"config/*.toml\", \"settings/*.yaml\"]\n" +
+		"# labels = \".slop-strata-labels.json\"  # verdicts recorded by slop-strata label\n" +
 		"# Built in after these: agent (coding-agent co-author trailers), bot (logins ending in [bot])\n\n")
 	if len(logins) > 0 {
 		sorted := make([]string, 0, len(logins))

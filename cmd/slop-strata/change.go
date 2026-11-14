@@ -62,6 +62,7 @@ type changeResult struct {
 	Findings     []findingRow  `json:"findings"`
 	Delta        deltaSummary  `json:"delta"`
 	highFuncs    funcCounts
+	suppressed   report.Suppressed
 }
 
 type deltaSummary struct {
@@ -88,6 +89,7 @@ type dirDelta struct {
 }
 
 type findingRow struct {
+	ID    string `json:"id"`
 	Path  string `json:"path"`
 	Rule  string `json:"rule"`
 	Match string `json:"match,omitempty"`
@@ -110,6 +112,14 @@ type fileDelta struct {
 type skippedRow struct {
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
+}
+
+// counts tallies the files the change could not score and the findings it set aside.
+func (res *changeResult) counts() report.Counts {
+	c := countRows(res.Skipped, res.Errors)
+	c.Suppressed = res.suppressed
+
+	return c
 }
 
 // percentScale converts a fraction to a percent for display.
@@ -182,8 +192,7 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 		if a.ctx {
 			res.Context = s.buildContext(ctx, base, end, files, res, a.rev != "")
 		}
-		counts := countRows(res.Skipped, res.Errors)
-		if err := report.WriteJSON(w, "change", s.root, res, counts, warnings(res)); err != nil {
+		if err := report.WriteJSON(w, "change", s.root, res, res.counts(), warnings(res)); err != nil {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
@@ -199,7 +208,7 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 
 	printChange(w, res, a.all)
-	report.WarnCounts(s.stderr, countRows(res.Skipped, res.Errors))
+	report.WarnCounts(s.stderr, res.counts())
 
 	return lookStatus(a, res)
 }
@@ -353,9 +362,9 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	if err != nil {
 		return nil, err
 	}
-	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
+	sup, err := s.suppressor()
 	if err != nil {
-		return nil, fmt.Errorf("reading baseline: %w", err)
+		return nil, err
 	}
 
 	res := &changeResult{
@@ -371,7 +380,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	old := map[string]bool{}
 	scored := make([]scoredFile, 0, len(files))
 	for i := range files {
-		sf, err := s.scoreFile(ctx, &files[i], oldBlobs, newSides[i], baseline, res, old)
+		sf, err := s.scoreFile(ctx, &files[i], oldBlobs, newSides[i], sup, res, old)
 		if err != nil {
 			return nil, err
 		}
@@ -387,7 +396,8 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	res.applyFuncChanges(scored)
 
 	markFindingsOld(old, res)
-	s.crossFileFindings(ctx, base, end, files, newSides, scored, baseline, res)
+	s.crossFileFindings(ctx, base, end, files, newSides, scored, sup, res)
+	res.suppressed = suppressedCounts(sup)
 
 	aggBefore := structure.Aggregate(before)
 	aggAfter := structure.Aggregate(after)
@@ -454,7 +464,7 @@ func (s *session) oldBlobs(ctx context.Context, files []vcs.CommitFile) (map[str
 // old collects the old side's (rule, match) pairs for markFindingsOld. A hit
 // is new only when its line was added by the change.
 func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map[string][]byte,
-	newSide side, baseline rules.Baseline, res *changeResult, old map[string]bool,
+	newSide side, sup *rules.Suppressor, res *changeResult, old map[string]bool,
 ) (scoredFile, error) {
 	sf := scoredFile{delta: fileDelta{
 		Path: f.Path, Status: f.Status.String(),
@@ -496,8 +506,8 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	added := addedLines(f.Hunks)
-	for _, fn := range baseline.Suppress(f.Path, rep.Findings) {
-		row := findingRow{Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
+	for _, fn := range sup.Apply(f.Path, rep.Findings) {
+		row := findingRow{ID: fn.ID, Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
 		if oldLine, ok := added[fn.Line]; ok {
 			row.New = fn.Match != "" || !oldAt[ruleLine(fn.Rule, oldLine)]
 		}
@@ -1093,9 +1103,9 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 			if !f.New {
 				mark = "(existing)"
 			}
-			rows = append(rows, []string{f.Rule, fmt.Sprintf("%s:%d", f.Path, f.Line), mark})
+			rows = append(rows, []string{f.ID, f.Rule, fmt.Sprintf("%s:%d", f.Path, f.Line), mark})
 		}
-		report.Table(w, []string{"rule", "at", ""}, rows)
+		report.Table(w, []string{"id", colRule, "at", ""}, rows)
 	}
 	for _, sk := range res.Skipped {
 		if all || sk.Reason != engine.ReasonUnsupported {
@@ -1191,11 +1201,11 @@ func printDirDeltas(w io.Writer, dirs map[string]dirDelta, all bool) {
 // crossFileFindings adds the findings that need the base tree and sorts every
 // finding, so the rows come out in one order however the passes ran.
 func (s *session) crossFileFindings(ctx context.Context, base, end string, files []vcs.CommitFile,
-	newSides []side, scored []scoredFile, baseline rules.Baseline, res *changeResult,
+	newSides []side, scored []scoredFile, sup *rules.Suppressor, res *changeResult,
 ) {
 	if basePrints, err := s.treePrints(ctx, base); err == nil {
 		s.lastRefs(ctx, end, files, scored, basePrints, res)
-		s.removedNameProse(ctx, basePrints, files, newSides, scored, baseline, res)
+		s.removedNameProse(ctx, basePrints, files, newSides, scored, sup, res)
 	}
 	sortFindings(res.Findings)
 }
@@ -1231,6 +1241,7 @@ func (s *session) lastRefs(ctx context.Context, end string,
 			}
 			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] {
 				res.Findings = append(res.Findings, findingRow{
+					ID:   rules.FindingID("x/last-ref", scored[i].delta.Path, "", name, 0),
 					Path: scored[i].delta.Path, Rule: "x/last-ref",
 					Line: removedLine(&files[i], name), Match: name, New: true,
 				})
@@ -1330,7 +1341,7 @@ func (s *session) readTreePrints(ctx context.Context, rev string) (map[string]*r
 
 // removedNameProse flags prose naming a name this change removed, reading the revision as base plus changed files.
 func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*rules.Fingerprint,
-	files []vcs.CommitFile, newSides []side, scored []scoredFile, baseline rules.Baseline, res *changeResult,
+	files []vcs.CommitFile, newSides []side, scored []scoredFile, sup *rules.Suppressor, res *changeResult,
 ) {
 	rev := maps.Clone(basePrints)
 	touched := map[string]bool{}
@@ -1356,9 +1367,9 @@ func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*r
 
 	hits := rules.RemovedNameProse(basePrints, rev, touched)
 	for _, path := range report.SortedKeys(hits) {
-		for _, fn := range baseline.Suppress(path, hits[path]) {
+		for _, fn := range sup.Apply(path, hits[path]) {
 			res.Findings = append(res.Findings, findingRow{
-				Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
+				ID: fn.ID, Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
 			})
 		}
 	}

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/kyleking/slop-strata/internal/config"
@@ -61,7 +59,7 @@ func staleProse(blobs []BlobPrint, out map[string][]Finding, treePaths []string)
 					note = "names no file in the tree"
 				}
 				out[b.Path] = append(out[b.Path], Finding{
-					Rule: "x/stale-prose", Line: line, Match: tok, Note: note,
+					Rule: ruleXStaleProse, Line: line, Match: tok, Note: note,
 				})
 			}
 		}
@@ -141,7 +139,7 @@ func RemovedNameProse(base, rev map[string]*Fingerprint, touched map[string]bool
 				continue
 			}
 			out[path] = append(out[path], Finding{
-				Rule: "x/stale-prose", Line: line, Match: tok, Note: "name removed by this change",
+				Rule: ruleXStaleProse, Line: line, Match: tok, Note: "name removed by this change",
 			})
 		}
 	}
@@ -554,66 +552,4 @@ func unusedOptions(blobs []BlobPrint, out map[string][]Finding) {
 			}
 		}
 	}
-}
-
-// Baseline is the set of findings a repository already accepted, keyed so a
-// suppressed hit stays suppressed until the code around it moves.
-type Baseline map[string]bool
-
-// baselineKey identifies one finding for the baseline file.
-func baselineKey(path, rule string, line int, match string) string {
-	return strings.Join([]string{path, rule, strconv.Itoa(line), match}, "\x00")
-}
-
-// LoadBaseline reads a baseline file: a JSON list of [path, rule, line, match]
-// tuples written by the tool's own baseline-write path.
-func LoadBaseline(entries []BaselineEntry) Baseline {
-	b := Baseline{}
-	for _, e := range entries {
-		b[baselineKey(e.Path, e.Rule, e.Line, e.Match)] = true
-	}
-
-	return b
-}
-
-// BaselineEntry is one recorded accepted finding.
-type BaselineEntry struct {
-	Path  string `json:"path"`
-	Rule  string `json:"rule"`
-	Match string `json:"match"`
-	Line  int    `json:"line"`
-}
-
-// Entries renders a live finding set into baseline entries.
-func Entries(files map[string][]Finding) []BaselineEntry {
-	var out []BaselineEntry
-	for path, fs := range files {
-		for _, f := range fs {
-			out = append(out, BaselineEntry{Path: path, Rule: f.Rule, Line: f.Line, Match: f.Match})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Path != out[j].Path {
-			return out[i].Path < out[j].Path
-		}
-
-		return out[i].Line < out[j].Line
-	})
-
-	return out
-}
-
-// Suppress drops findings the baseline already holds.
-func (b Baseline) Suppress(path string, fs []Finding) []Finding {
-	if len(b) == 0 {
-		return fs
-	}
-	var out []Finding
-	for _, f := range fs {
-		if !b[baselineKey(path, f.Rule, f.Line, f.Match)] {
-			out = append(out, f)
-		}
-	}
-
-	return out
 }

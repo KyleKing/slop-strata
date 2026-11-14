@@ -849,3 +849,83 @@ func TestChangeBriefSpeaksOnlyWhenWorthALook(t *testing.T) {
 		})
 	}
 }
+
+// snapshotFindings is the part of a snapshot envelope the labels test reads.
+type snapshotFindings struct {
+	Result struct {
+		Findings map[string][]struct {
+			ID    string `json:"id"`
+			Rule  string `json:"rule"`
+			Match string `json:"match"`
+		} `json:"findings"`
+	} `json:"result"`
+	Counts struct {
+		Suppressed report.Suppressed `json:"suppressed"`
+	} `json:"counts"`
+}
+
+// snapshotOf runs a JSON snapshot of the fixture's HEAD.
+func snapshotOf(t *testing.T, repo string) snapshotFindings {
+	t.Helper()
+	out, err := runCLI(t, repo, "snapshot", "--json")
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	var snap snapshotFindings
+	if err := json.Unmarshal([]byte(out), &snap); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+
+	return snap
+}
+
+// idOf answers the id of the first finding of a rule in a path, or "".
+func (s snapshotFindings) idOf(path, rule string) string {
+	for _, f := range s.Result.Findings[path] {
+		if f.Rule == rule {
+			return f.ID
+		}
+	}
+
+	return ""
+}
+
+func TestLabelledAndIgnoredFindingsAreSetAsideAndCounted(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	id := snapshotOf(t, repo).idOf("helper.py", "py/silent-except")
+	if id == "" {
+		t.Fatal("fixture has no py/silent-except finding in helper.py")
+	}
+	if _, err := runCLI(t, repo, "label", "no-such-id", "fp"); !errors.Is(err, errNoFinding) {
+		t.Fatalf("label of an unknown id = %v, want errNoFinding", err)
+	}
+	if _, err := runCLI(t, repo, "label", id, "fp", "--note", "fixture"); err != nil {
+		t.Fatalf("label: %v", err)
+	}
+	moved := "\n\n\ndef f(x):\n    try:\n        return x / 0\n    except Exception:\n        pass\n"
+	if err := os.WriteFile(filepath.Join(repo, "helper.py"), []byte(moved), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "commit", "-am", "chore: move the helper down")
+	snap := snapshotOf(t, repo)
+	if got := snap.idOf("helper.py", "py/silent-except"); got != "" {
+		t.Errorf("fp-labeled finding still reported after a line move: %s", got)
+	}
+	if snap.Counts.Suppressed.LabeledFP != 1 {
+		t.Errorf("labeled_fp = %d, want 1", snap.Counts.Suppressed.LabeledFP)
+	}
+	list, err := runCLI(t, repo, "label", "--list")
+	if err != nil || !strings.Contains(list, id) || !strings.Contains(list, "fixture") {
+		t.Errorf("label --list = %q, %v", list, err)
+	}
+	table, err := runCLI(t, repo, "rules")
+	if err != nil {
+		t.Fatalf("rules: %v", err)
+	}
+	want := []string{"py/silent-except", "default", "0", "1", "0%*", "(n=1)"}
+	hasRow := func(l string) bool { return slices.Equal(strings.Fields(l), want) }
+	if !slices.ContainsFunc(strings.Split(table, "\n"), hasRow) {
+		t.Errorf("rules table has no row %v:\n%s", want, table)
+	}
+}

@@ -91,15 +91,17 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
+	sup, err := s.suppressor()
 	if err != nil {
-		return fmt.Errorf("reading baseline: %w", err)
+		return err
 	}
 	touches, err := s.snapshotTouches(ctx, rev)
 	if err != nil {
 		return err
 	}
-	res := s.snapshotRollup(ctx, rev, reports, baseline, touches)
+	res := s.snapshotRollup(ctx, rev, reports, sup, touches)
+	counts := countRows(res.Skipped, res.Errors)
+	counts.Suppressed = suppressedCounts(sup)
 
 	if a.writeBaseline {
 		if err := s.writeBaseline(reports); err != nil {
@@ -107,7 +109,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 		}
 	}
 	if a.json {
-		if err := report.WriteJSON(w, "snapshot", s.root, res, countRows(res.Skipped, res.Errors), nil); err != nil {
+		if err := report.WriteJSON(w, "snapshot", s.root, res, counts, nil); err != nil {
 			return fmt.Errorf("writing result: %w", err)
 		}
 
@@ -115,7 +117,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 
 	printSnapshot(w, res, a.all)
-	report.WarnCounts(s.stderr, countRows(res.Skipped, res.Errors))
+	report.WarnCounts(s.stderr, counts)
 
 	return nil
 }
@@ -205,7 +207,7 @@ const secondsPerDay = 24 * 60 * 60
 // snapshotRollup folds the file reports into the snapshot result: skipped
 // blobs, live findings, and the per-directory aggregates ranked by hotspot.
 func (s *session) snapshotRollup(
-	ctx context.Context, rev string, reports []*engine.FileReport, baseline rules.Baseline, touches touchCounts,
+	ctx context.Context, rev string, reports []*engine.FileReport, sup *rules.Suppressor, touches touchCounts,
 ) *snapshotResult {
 	res := &snapshotResult{Rev: rev, Findings: map[string][]rules.Finding{}}
 	byDir := map[string][]structure.FileMetrics{}
@@ -231,14 +233,14 @@ func (s *session) snapshotRollup(
 				byDir[lineage.DirOf(r.Path)] = append(byDir[lineage.DirOf(r.Path)], r.Metrics)
 			}
 		}
-		fs := baseline.Suppress(r.Path, r.Findings)
+		fs := sup.Apply(r.Path, r.Findings)
 		if len(fs) > 0 {
 			res.Findings[r.Path] = fs
 			live[r.Path] = fs
 		}
 	}
 
-	s.astGrepFindings(ctx, rev, res, live, baseline)
+	s.astGrepFindings(ctx, rev, res, live, sup)
 	for _, fs := range res.Findings {
 		slices.SortFunc(fs, func(a, b rules.Finding) int {
 			return cmp.Or(
@@ -353,10 +355,10 @@ func btoi(b bool) int {
 }
 
 // astGrepFindings folds external ast-grep pack findings into the result,
-// suppressed by the baseline. Packs scan the working tree, so they only
+// suppressed by the baseline and the labels file. Packs scan the working tree, so they only
 // apply when the scored revision is what's checked out.
 func (s *session) astGrepFindings(ctx context.Context, rev string, res *snapshotResult,
-	live map[string][]rules.Finding, baseline rules.Baseline,
+	live map[string][]rules.Finding, sup *rules.Suppressor,
 ) {
 	if len(s.cfg.AstGrep) == 0 || (rev != defaultRev && rev != "") {
 		return
@@ -366,7 +368,7 @@ func (s *session) astGrepFindings(ctx context.Context, rev string, res *snapshot
 		res.Skipped = append(res.Skipped, skippedRow{"ast_grep", err.Error()})
 	}
 	for path, fs := range sgFindings {
-		fs = baseline.Suppress(path, fs)
+		fs = sup.Apply(path, fs)
 		if len(fs) > 0 {
 			res.Findings[path] = append(res.Findings[path], fs...)
 			live[path] = append(live[path], fs...)
@@ -374,12 +376,18 @@ func (s *session) astGrepFindings(ctx context.Context, rev string, res *snapshot
 	}
 }
 
-// writeBaseline records the current findings as the accepted baseline.
+// writeBaseline records the current findings as the accepted baseline. Findings
+// labeled false positive stay out, so removing the label brings the hit back.
 func (s *session) writeBaseline(reports []*engine.FileReport) error {
+	labels, err := s.readLabels()
+	if err != nil {
+		return err
+	}
+	live := rules.NewSuppressor(rules.Baseline{}, labels)
 	all := map[string][]rules.Finding{}
 	for _, r := range reports {
-		if len(r.Findings) > 0 {
-			all[r.Path] = r.Findings
+		if kept := live.Apply(r.Path, r.Findings); len(kept) > 0 {
+			all[r.Path] = kept
 		}
 	}
 	if err := rules.WriteBaseline(filepath.Join(s.root, s.cfg.Baseline), all); err != nil {
@@ -406,7 +414,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 		report.Fprintln(w)
 		for _, p := range report.SortedKeys(res.Findings) {
 			for _, f := range res.Findings[p] {
-				report.Fprintf(w, "%s:%d  %s  %s\n", p, f.Line, f.Rule, strings.TrimSpace(f.Match))
+				report.Fprintf(w, "%s:%d  %s  %s  %s\n", p, f.Line, f.ID, f.Rule, strings.TrimSpace(f.Match))
 			}
 		}
 	}

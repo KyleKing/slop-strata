@@ -148,7 +148,9 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
-- `findings` lists rule hits, each with a rule id, file, and line. `--explain findings`
+- `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
+- `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline or labeled false positive. `--explain suppressed`
+- `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
 - `pairing` compares author classes in the same week and directory. `--explain pairing`
 - `counts` says how many files the run could not score, and why. `--explain counts`
 
@@ -164,18 +166,41 @@ slop-strata raises questions about a change and leaves the answers to you. A cha
 
 A rule runs by default only when a sampled read of its hits on the corpus met 80% precision. Rules below that bar stay gated. Turn them on for one run with `--experimental`, or for a repository with `experimental = true` in `.slop-strata.toml`.
 
-The gate exists because a noisy rule teaches people to skip its output, and that includes the hits that are right. `--explain experimental` lists the rules still gated.
+The gate exists because a noisy rule teaches people to skip its output, and that includes the hits that are right. `--explain experimental` lists the rules still gated, with the precision your labels give each one.
+
+## Setting findings aside
+
+Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
+
+The baseline (`snapshot --write-baseline`, or `init`) accepts every current finding at once. It keys findings by id, so an older baseline file fails the run with a message to rewrite it. Labeled and baselined findings are counted in `counts.suppressed` and in one line on stderr, so a muted finding never vanishes without a trace.
+
+## Labeling findings
+
+When a finding is wrong, say so in a labels file instead of editing code around it. Take the id from `snapshot --json`, then record a verdict:
+
+```bash
+slop-strata label 3f9a1c20be fp --note "an example name in a doc"
+slop-strata label 7d41e5a9c0 tp
+slop-strata label --list
+slop-strata rules
+```
+
+`label` runs every rule, experimental ones included, against `HEAD` (or `--rev`) and fails when the tree does not produce the id. Labeling an id again replaces the earlier verdict. The file is `.slop-strata-labels.json` at the repository root, and `labels` in `.slop-strata.toml` renames it. Each entry holds the rule, verdict, path, matched text, note, and tool version. It does not hold who labeled it. Entries stay sorted, so a new label adds one block to the diff.
+
+A finding labeled `fp` is muted like a baselined one and counted as `labeled_fp`. A finding labeled `tp` stays. `slop-strata rules` lists every rule with its tier and, per rule, the labeled `tp`, `fp`, and precision with its `n`. A precision from fewer than 10 labels carries a `*`.
+
+The labels are evidence about this repository. A rule's precision here says nothing certain about its precision on other code, and the 80% bar that gates a rule is set on a corpus across repositories. slop-strata never moves a rule between the default and experimental tiers from labels. The owner decides that, now with a number beside the choice.
 
 ## JSON integration
 
-`change`, `snapshot`, and `history` all take `--json`, and that output is the integration surface. Every object is an envelope:
+`change`, `snapshot`, `history`, and `rules` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0}, "warnings": [], "schema": 3}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "suppressed": {"baseline": 0, "labeled_fp": 0}}, "warnings": [], "schema": 3}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
-- `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero
+- `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
 - `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 3
 
@@ -206,6 +231,7 @@ logins = ["release-bot"]
 - The built-in classes come after yours. `agent` matches co-author trailers from coding agents, and `bot` matches logins ending in `[bot]`. Your classes come first, so a repository can claim a login for a different class
 - `experimental` turns on the gated rules for every run
 - `baseline` names the file of accepted findings, which defaults to `.slop-strata-baseline.json`
+- `labels` names the file of verdicts on findings, which defaults to `.slop-strata-labels.json`
 - `entry_points` lists files whose exports the dead-export rule skips, and `config_paths` lists the config files the stale-config rule reads
 - `default_branch`, `max_file_bytes`, and `minified_avg_line` change which branch a change diffs against and which files get skipped as oversized or minified. On `history`, a file over `max_file_bytes` still counts as touched, but its lines stay out of the week totals, churn, and survival
 

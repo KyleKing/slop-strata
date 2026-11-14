@@ -973,3 +973,32 @@ func TestCaseTable(t *testing.T) {
 		})
 	}
 }
+
+func TestFindingIDsSurviveLineMovesAndBreakTies(t *testing.T) {
+	t.Parallel()
+	const body = "def f(x):\n    try:\n        g(x)\n    except ValueError:\n        pass\n" +
+		"    try:\n        h(x)\n    except ValueError:\n        pass\n"
+	at := func(path, src string) []rules.Finding {
+		return rules.Identify(path, findingsOf(t, path, src, false))
+	}
+	base := at("a.py", body)
+	moved := at("a.py", "\n\n# header\n"+body)
+	if len(base) != 2 || len(moved) != 2 {
+		t.Fatalf("want two findings each, got %d and %d", len(base), len(moved))
+	}
+	if base[0].Scope != "f" || base[0].Match != base[1].Match {
+		t.Fatalf("the fixture must give two hits with one scope and match: %+v", base)
+	}
+	if base[0].ID == base[1].ID {
+		t.Errorf("tied findings share id %s", base[0].ID)
+	}
+	for i := range base {
+		if base[i].ID != moved[i].ID || base[i].Line == moved[i].Line {
+			t.Errorf("finding %d: id %s moved from line %d to %d as %s",
+				i, base[i].ID, base[i].Line, moved[i].Line, moved[i].ID)
+		}
+	}
+	if renamed := at("b.py", body); renamed[0].ID == base[0].ID {
+		t.Errorf("the same hit in another path shares id %s", renamed[0].ID)
+	}
+}

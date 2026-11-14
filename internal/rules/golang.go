@@ -39,8 +39,23 @@ func goSilentError(ctx *Ctx, findings *[]Finding) {
 		if call == nil || ignoredCallees[lastSegment(ctx.calleeText(call))] {
 			return
 		}
-		*findings = append(*findings, Finding{Rule: "go/silent-error", Line: lineOf(n), Match: ctx.Text(right)})
+		*findings = append(*findings,
+			Finding{Rule: ruleGoSilentError, Line: lineOf(n), Match: oneLine(ctx.Text(right))})
 	})
+}
+
+// maxMatchLen caps the matched text a finding carries, so a call spanning many
+// lines stays one readable line in output, labels, and the baseline.
+const maxMatchLen = 80
+
+// oneLine collapses a call's whitespace and cuts it to maxMatchLen runes.
+func oneLine(text string) string {
+	runes := []rune(strings.Join(strings.Fields(text), " "))
+	if len(runes) <= maxMatchLen {
+		return string(runes)
+	}
+
+	return string(runes[:maxMatchLen]) + "…"
 }
 
 // exprItems lists an expression_list's items, or the node itself when the
