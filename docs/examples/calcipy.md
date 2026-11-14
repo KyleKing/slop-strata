@@ -57,7 +57,7 @@ cohort   added  alive  s_30d              s_90d
 2026-09  320    315    —                  —
 
 test files by class  added  dead<30d  dead<90d  s_30d  s_90d
-person               8      1         1         0.83   0.83
+person               9      1         1         0.86   0.86
 
 hotspot                score
 calcipy                35565
@@ -82,6 +82,27 @@ src/calcipy/experiments                 360    42       360        360        0 
 tests/tasks                             771    361      249        249        24      0.72           ▁▁█▁▁▁▃▁
 ...
 
+dir                       deaths_30d  pure  whole_file  within_7d  readd
+(all)                     3810        0.35  0.20        0.79       0.00
+.                         1293        0.62  0.45        0.93       0.00
+calcipy                   122         0.16  0.00        0.99       0.00
+...
+plan                      99          0.75  0.75        1.00       0.00
+src/calcipy/experiments   360         0.00  0.00        0.03       0.00
+tests                     123         0.50  0.46        1.00       0.00
+tests/experiments         349         0.73  0.06        0.11       0.00
+tests/tasks               249         0.29  0.00        0.98       0.00
+readd: lines of 30 or more bytes, deaths at least 30 days before the walk ended
+15 directories with fewer than 30 young deaths not listed
+
+dir                    oscillating_funcs  tests
+(all)                  11                 1
+calcipy/tasks          5                  0
+calcipy/markup_writer  3                  0
+calcipy                2                  0
+calcipy/noxfile        1                  0
+tests/tasks            0                  1
+
 rule                 first hit   spread by class
 py/mock-only-assert  2026-01-19  person:53
 ```
@@ -101,6 +122,18 @@ Churn is credited to the directory where a line was written. It is not charged t
 `calcipy/experiments` scores 2,897, which is 24 churned lines times 120.7 mass. An earlier version of slop-strata charged churn to where lines died, and it showed 381 for this directory. The difference is churn from lines written under `src/calcipy/experiments` before a rename moved them. That churn now sits on the `src` row, which shows 360.
 
 The score says where recent edits meet complexity. It does not say whether those edits were wrong, and a directory that is still being built will score high. `snapshot` ranks by a different hotspot: the commits that touched a directory in the 90 days up to the revision, times its mass (`--explain hotspot`).
+
+### Young deaths
+
+A young death is a line that died within 30 days of being written, so `deaths_30d` in each row equals that directory's `churn_30d`. The columns split the same lines by how they died. `pure` is the share removed without a replacement in the same hunk, `whole_file` the share removed because their file was deleted, and `within_7d` the share that died in the first week. The `self` column is hidden here because one person wrote nearly everything. `readd` is the share that a later commit added back to the same file.
+
+Three rows read differently. In `plan`, 99 lines died, and three quarters of them died as pure deletions with their whole file, all within a week. That reads as notes written and thrown away. In `tests/experiments`, 349 lines died, most of them pure deletions after the first week, and almost none with a whole file, so code was pruned in place. In `tests/tasks`, 249 lines died, nearly all within a week and mostly replaced in place, so those tests were rewritten while the design was still moving. A `readd` of 0.00 on these rows says none of the removed lines came back, so these directories did not flap. The highest in the full table is `docs/docs` at 0.02.
+
+A `*` on `readd` marks a share with fewer than 30 deaths old enough to come back. Directories with fewer than 30 young deaths are left out of the table and counted in the line below it.
+
+### Oscillating functions
+
+A function oscillates when its body changed in three commits within 14 days. `calcipy/tasks` has five, which is the most, and the whole repository has 11 production functions and one test function. The JSON names the ten busiest with their path, line, change count, and the span of their busiest stretch. A count like this says where code was being reworked in short bursts. It cannot say whether the rework was a test-first loop or hesitation about the design.
 
 ### Cohorts and survival
 

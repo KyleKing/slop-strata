@@ -1,6 +1,6 @@
 # Remaining work
 
-Checked against the code at 5c196df. Items from the v0.6.0 audit that are now done are left out.
+Checked against the code at 61b2aba. Items from the v0.6.0 audit that are now done are left out.
 
 ## Output that misleads
 
@@ -15,12 +15,7 @@ Checked against the code at 5c196df. Items from the v0.6.0 audit that are now do
 - `x/narrating-comment` is still gated. Drop it, or keep it gated, once labels across repositories show its precision.
 - `x/dead-export` skips Go methods, which avoids interface false positives. It does not resolve interface satisfaction.
 - `snapshot` reports `x/stale-prose` for every unresolved name, behind `--experimental`. It should flag only names the history shows existed and are now gone. The exemptions for changelogs, ADRs, and migration guides already exist.
-- `py/type-any` and `go/type-any` report every hit. They should report a count per file.
-
-## Cache and speed
-
-- `Cache.Get` runs one query per blob. Batch a tree's lookups into one read transaction, then measure cold and warm times to see whether it helps.
-- The only timings recorded are for calcipy, aragonite, and second-look, all under 600 files. The cold-run target for a large tree is unmeasured.
+- `py/type-any` and `go/type-any` report every hit. They should report a count per file. `go/type-any` already skips generic constraints and variadic `...any` parameters a function spreads into a call, and leaves fields that hold JSON of unknown shape to labels.
 
 ## Tests and corpus
 
@@ -30,7 +25,7 @@ Checked against the code at 5c196df. Items from the v0.6.0 audit that are now do
 
 ## Open from DESIGN.md
 
-- Progress output and a resumable cache for the first run
+- A resumable first run: the blob cache keeps finished blobs, but an interrupted `history` restarts its walk
 - Function-level move matching and per-hunk classification
 - Stale config: a key a config file defines that no code reads by name is reported, but a key code reads that no config defines is not
 - Stale prose: a TODO or "remove when" whose forward pointer is closed
