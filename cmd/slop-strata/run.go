@@ -71,11 +71,15 @@ func countRows(skipped, errs []skippedRow) report.Counts {
 	return c
 }
 
-// suppressor reads the baseline and the labels file into one Suppressor.
-func (s *session) suppressor() (*rules.Suppressor, error) {
-	baseline, err := rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline))
-	if err != nil {
-		return nil, fmt.Errorf("reading baseline: %w", err)
+// suppressor reads the baseline and the labels file into one Suppressor. With
+// replacing set the baseline is about to be rewritten, so it is not read.
+func (s *session) suppressor(replacing bool) (*rules.Suppressor, error) {
+	baseline := rules.Baseline{}
+	if !replacing {
+		var err error
+		if baseline, err = rules.ReadBaseline(filepath.Join(s.root, s.cfg.Baseline)); err != nil {
+			return nil, fmt.Errorf("reading baseline: %w", err)
+		}
 	}
 	labels, err := s.readLabels()
 	if err != nil {

@@ -91,7 +91,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	sup, err := s.suppressor()
+	sup, err := s.suppressor(a.writeBaseline)
 	if err != nil {
 		return err
 	}

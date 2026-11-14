@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/kyleking/slop-strata/internal/report"
+	"github.com/kyleking/slop-strata/internal/rules"
 )
 
 // TestMain points the user cache at a throwaway directory, so a run never reads
@@ -950,5 +951,27 @@ func TestInlineIgnoreNeedsAReason(t *testing.T) {
 	}
 	if snap.idOf("bare_test.go", "go/timing-hack") == "" || snap.idOf("bare_test.go", "x/ignore-without-reason") == "" {
 		t.Errorf("ignore without a reason must keep the hit and be reported: %+v", snap.Result.Findings["bare_test.go"])
+	}
+}
+
+func TestOldBaselineFailsLoudlyUntilRewritten(t *testing.T) {
+	t.Parallel()
+	repo := fixtureRepo(t)
+	path := filepath.Join(repo, ".slop-strata-baseline.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"entries":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCLI(t, repo, "snapshot"); !errors.Is(err, rules.ErrBaselineFormat) {
+		t.Fatalf("snapshot over a version-1 baseline = %v, want ErrBaselineFormat", err)
+	}
+	if _, err := runCLI(t, repo, "snapshot", "--write-baseline"); err != nil {
+		t.Fatalf("snapshot --write-baseline: %v", err)
+	}
+	data, err := os.ReadFile(path) //nolint:gosec // a test-owned temp path
+	if err != nil || !strings.Contains(string(data), `"version": 2`) {
+		t.Fatalf("baseline not rewritten: %v\n%s", err, data)
+	}
+	if _, err := runCLI(t, repo, "snapshot"); err != nil {
+		t.Fatalf("snapshot after the rewrite: %v", err)
 	}
 }

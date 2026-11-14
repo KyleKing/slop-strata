@@ -362,7 +362,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	if err != nil {
 		return nil, err
 	}
-	sup, err := s.suppressor()
+	sup, err := s.suppressor(false)
 	if err != nil {
 		return nil, err
 	}
