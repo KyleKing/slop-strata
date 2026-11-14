@@ -88,7 +88,7 @@ func (s *session) scorePair(ctx context.Context, p pair, withContext bool) (*cha
 		return nil, err
 	}
 	if withContext {
-		res.Context = s.buildContext(ctx, base, p.rev, files, res)
+		res.Context = s.buildContext(ctx, base, p.rev, files, res, true)
 	}
 
 	return res, nil

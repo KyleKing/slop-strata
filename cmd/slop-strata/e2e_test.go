@@ -554,7 +554,15 @@ func TestChangeOutputRepeats(t *testing.T) {
 		return env.Result
 	}
 	first, second := result(), result()
-	if got := strings.Count(string(first), `"x/last-ref"`); got != n {
+	var res struct {
+		Findings []struct {
+			Rule string `json:"rule"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(first, &res); err != nil {
+		t.Fatalf("parsing result: %v", err)
+	}
+	if got := len(res.Findings); got != n {
 		t.Fatalf("want %d last-ref findings, got %d", n, got)
 	}
 	if !bytes.Equal(first, second) {
@@ -739,6 +747,45 @@ func briefRepo(t *testing.T) string {
 	gitIn(t, dir, "commit", "-m", "feat: add branchy")
 
 	return dir
+}
+
+func TestChangeNextCarriesTheFunctionAndItsSource(t *testing.T) {
+	t.Parallel()
+	repo := briefRepo(t)
+	type nextEnvelope struct {
+		Result struct {
+			Context struct {
+				Snippets map[string]map[int]string `json:"snippets"`
+			} `json:"context"`
+			Next []nextItem `json:"next"`
+		} `json:"result"`
+	}
+	read := func(rev string) nextEnvelope {
+		t.Helper()
+		out, err := runCLI(t, repo, "change", "--json", "--context", "--base", rev+"~1", "--rev", rev)
+		if err != nil {
+			t.Fatalf("change %s: %v", rev, err)
+		}
+		var env nextEnvelope
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatalf("parsing JSON: %v\n%s", err, out)
+		}
+
+		return env
+	}
+	quiet := read("HEAD~1")
+	if len(quiet.Result.Next) != 0 {
+		t.Errorf("a docs-only change has next items: %+v", quiet.Result.Next)
+	}
+	loud := read("HEAD")
+	if len(loud.Result.Next) != 1 || loud.Result.Next[0].Kind != nextGrownFunction ||
+		loud.Result.Next[0].Name != "branchy" || loud.Result.Next[0].Line != 3 {
+		t.Fatalf("next = %+v, want the branchy function at line 3", loud.Result.Next)
+	}
+	lines := loud.Result.Context.Snippets["branchy.go"]
+	if lines[3] != "func branchy(a int) int {" || lines[38] != "}" || len(lines) != 36 {
+		t.Errorf("snippet = %d lines, line 3 %q, line 38 %q; want the whole function", len(lines), lines[3], lines[38])
+	}
 }
 
 func TestChangeBriefSpeaksOnlyWhenWorthALook(t *testing.T) {

@@ -58,7 +58,7 @@ type changeResult struct {
 	Skipped      []skippedRow  `json:"skipped,omitempty"`
 	Files        []fileDelta   `json:"files"`
 	TopFunctions []topFunc     `json:"top_functions"`
-	Next         []nextItem    `json:"-"`
+	Next         []nextItem    `json:"next"`
 	Findings     []findingRow  `json:"findings"`
 	Delta        deltaSummary  `json:"delta"`
 	highFuncs    funcCounts
@@ -180,7 +180,7 @@ func (s *session) changeCmd(ctx context.Context, a *args, w io.Writer) error {
 
 	if a.json {
 		if a.ctx {
-			res.Context = s.buildContext(ctx, base, end, files, res)
+			res.Context = s.buildContext(ctx, base, end, files, res, a.rev != "")
 		}
 		counts := countRows(res.Skipped, res.Errors)
 		if err := report.WriteJSON(w, "change", s.root, res, counts, warnings(res)); err != nil {
@@ -953,7 +953,7 @@ func warnings(res *changeResult) []string {
 
 // buildContext assembles what a model would open next.
 func (s *session) buildContext(ctx context.Context, base, end string, files []vcs.CommitFile,
-	res *changeResult,
+	res *changeResult, committed bool,
 ) *contextPayload {
 	cp := &contextPayload{
 		Hunks:    map[string][]vcs.DiffHunk{},
@@ -978,6 +978,7 @@ func (s *session) buildContext(ctx context.Context, base, end string, files []vc
 			cp.Snippets[fr.Path][fr.Line] = line
 		}
 	}
+	s.addNextSnippets(ctx, cp, files, committed, res.Next)
 	for path, m := range res.beforeByPath {
 		cp.Crossed = append(cp.Crossed, crossedFuncs(path, m, true)...)
 	}

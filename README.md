@@ -124,7 +124,7 @@ A coding agent reads the same lines. A hook that runs after the agent edits a fi
 slop-strata change --brief --exit-code >&2 || exit 2
 ```
 
-Claude Code treats exit 2 from a hook as "feed stderr to the model", so the agent sees the reading and the `next:` lines and keeps working. `--json` carries the same items in `result.next`.
+Claude Code treats exit 2 from a hook as "feed stderr to the model", so the agent sees the reading and the `next:` lines and keeps working. `--json` carries the same items in `result.next`, and `--json --context` adds the source lines of each function in it.
 
 ## What the numbers mean
 
@@ -133,6 +133,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `mass` is the sum of CC times the square root of SLOC over each function. `--explain mass`
 - `mass grown` and `mass removed` are the gross mass a change added to and took from its functions, new and deleted functions counted in full, for production and for tests apart. `--explain mass_grown`, `--explain mass_removed`
 - `top_functions` names the functions that grew most, with file, line, and CC before and after. `--explain top_functions`
+- `next` lists up to three places to look first, with the reason for each. `--explain next`
 - `erosion` is the share of mass held by functions with cyclomatic complexity over 10. `--explain erosion`
 - `over_limit` is the share of mass grown that lands in functions already over CC 10. `--explain over_limit`
 - `churn_14d` and `churn_30d` count lines removed or changed within 14 or 30 days of being written, credited to the directory they were written in. `--explain churn_30d`

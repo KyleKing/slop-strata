@@ -49,6 +49,7 @@ type topFunc struct {
 	MassAfter  float64 `json:"mass_after"`
 	MassGrown  float64 `json:"mass_grown"`
 	Test       bool    `json:"test"`
+	endLine    int
 }
 
 type massTotals struct {
@@ -263,6 +264,7 @@ func rankFunctions(changes []funcChange) []topFunc {
 		tf := topFunc{
 			File: c.path, Name: c.after.Name, Line: c.after.StartLine, CCAfter: c.after.CC,
 			MassAfter: structure.Mass(*c.after), MassGrown: grown, Test: lang.IsTestPath(c.path),
+			endLine: c.after.EndLine,
 		}
 		if c.before != nil {
 			tf.CCBefore = c.before.CC

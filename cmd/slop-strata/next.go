@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"io"
+
+	"github.com/kyleking/aragonite/vcs"
 
 	"github.com/kyleking/slop-strata/internal/report"
 	"github.com/kyleking/slop-strata/internal/structure"
@@ -20,12 +24,13 @@ const (
 
 // nextItem is one place a reader should look at, with the numbers that put it there.
 type nextItem struct {
-	Kind   string `json:"kind"`
-	File   string `json:"file,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Rule   string `json:"rule,omitempty"`
-	Reason string `json:"reason"`
-	Line   int    `json:"line,omitempty"`
+	Kind    string `json:"kind"`
+	File    string `json:"file,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Rule    string `json:"rule,omitempty"`
+	Reason  string `json:"reason"`
+	Line    int    `json:"line,omitempty"`
+	endLine int
 }
 
 // nextItems applies the worth-a-look rule to a scored change and returns up to
@@ -34,7 +39,7 @@ type nextItem struct {
 // or were added, by mass grown, then new findings by path and line, then a
 // stated intent the numbers argue against.
 func nextItems(res *changeResult) []nextItem {
-	var items []nextItem
+	items := []nextItem{}
 	for _, f := range res.grownFuncs {
 		if !f.Test && f.CCAfter > structure.CCLimit {
 			items = append(items, grownFunctionItem(f))
@@ -68,7 +73,9 @@ func grownFunctionItem(f topFunc) nextItem {
 			f.CCBefore, f.CCAfter, f.MassGrown, verb, structure.CCLimit)
 	}
 
-	return nextItem{Kind: nextGrownFunction, File: f.File, Line: f.Line, Name: f.Name, Reason: reason}
+	return nextItem{
+		Kind: nextGrownFunction, File: f.File, Line: f.Line, endLine: f.endLine, Name: f.Name, Reason: reason,
+	}
 }
 
 func (n nextItem) text() string {
@@ -103,4 +110,56 @@ func lookStatus(a *args, res *changeResult) error {
 	}
 
 	return nil
+}
+
+// snippetLineCap caps the source lines one next function adds to the snippets.
+const snippetLineCap = 80
+
+// addNextSnippets adds the after-side source lines of each next function to the
+// snippets, keyed by line number like a finding's line.
+func (s *session) addNextSnippets(ctx context.Context, cp *contextPayload, files []vcs.CommitFile,
+	committed bool, next []nextItem,
+) {
+	var want []vcs.CommitFile
+	for _, n := range next {
+		if n.Kind != nextGrownFunction {
+			continue
+		}
+		for i := range files {
+			if files[i].Path == n.File {
+				want = append(want, files[i])
+			}
+		}
+	}
+	blobs, err := s.newBlobs(ctx, want, committed)
+	if err != nil {
+		cp.Messages = append(cp.Messages, "next function source unavailable: "+err.Error())
+
+		return
+	}
+	for i := range want {
+		f := &want[i]
+		side := s.newContent(*f, committed, blobs)
+		if side.err != nil {
+			cp.Messages = append(cp.Messages, "next function source unavailable: "+side.err.Error())
+
+			continue
+		}
+		for _, n := range next {
+			if n.Kind == nextGrownFunction && n.File == f.Path {
+				addFunctionLines(cp, n, side.content)
+			}
+		}
+	}
+}
+
+func addFunctionLines(cp *contextPayload, n nextItem, content []byte) {
+	lines := bytes.Split(content, []byte{'\n'})
+	last := min(n.endLine, n.Line+snippetLineCap-1, len(lines))
+	if cp.Snippets[n.File] == nil {
+		cp.Snippets[n.File] = map[int]string{}
+	}
+	for i := n.Line; i <= last; i++ {
+		cp.Snippets[n.File][i] = string(lines[i-1])
+	}
 }
