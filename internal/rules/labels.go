@@ -13,8 +13,7 @@ import (
 // labelsVersion is the on-disk format of the labels file.
 const labelsVersion = 1
 
-// ErrLabelsFormat marks a labels file in a format this build does not read.
-var ErrLabelsFormat = errors.New("labels format is not supported")
+var errLabelsFormat = errors.New("labels format is not supported")
 
 // Verdicts a person gives a finding.
 const (
@@ -66,7 +65,7 @@ func ReadLabels(path string) (Labels, error) {
 	}
 	if lf.Version != labelsVersion {
 		return nil, fmt.Errorf("%w: %s is version %d and this build reads version %d",
-			ErrLabelsFormat, path, lf.Version, labelsVersion)
+			errLabelsFormat, path, lf.Version, labelsVersion)
 	}
 	labels := Labels{}
 	for _, l := range lf.Labels {
