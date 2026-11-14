@@ -90,25 +90,25 @@ func clamp(p int) int {
 }
 
 // deterministicRepo builds goldenHistory in a fresh repository.
-func deterministicRepo(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	gitIn(t, dir, "init", "--initial-branch=main")
+func deterministicRepo(tb testing.TB) string {
+	tb.Helper()
+	dir := tb.TempDir()
+	gitIn(tb, dir, "init", "--initial-branch=main")
 	for _, c := range goldenHistory {
 		for name, body := range c.files {
 			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
-				t.Fatal(err)
+				tb.Fatal(err)
 			}
 		}
-		gitIn(t, dir, "add", "-A")
-		cmd := exec.CommandContext(t.Context(), "git", "commit", "-m", c.msg) //nolint:gosec // args are test literals
+		gitIn(tb, dir, "add", "-A")
+		cmd := exec.CommandContext(tb.Context(), "git", "commit", "-m", c.msg) //nolint:gosec // args are test literals
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=Fixture", "GIT_AUTHOR_EMAIL=fixture@example.com",
 			"GIT_COMMITTER_NAME=Fixture", "GIT_COMMITTER_EMAIL=fixture@example.com",
 			"GIT_AUTHOR_DATE="+c.date, "GIT_COMMITTER_DATE="+c.date)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git commit: %v\n%s", err, out)
+			tb.Fatalf("git commit: %v\n%s", err, out)
 		}
 	}
 

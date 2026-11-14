@@ -96,14 +96,14 @@ func TestWaits(t *testing.T) { time.Sleep(1) }
 }
 
 // gitIn runs git in dir with a fixed identity.
-func gitIn(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // args are test literals
+func gitIn(tb testing.TB, dir string, args ...string) {
+	tb.Helper()
+	cmd := exec.CommandContext(tb.Context(), "git", args...) //nolint:gosec // args are test literals
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
+		tb.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 

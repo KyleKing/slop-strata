@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -39,5 +40,15 @@ func TestMarkNoiseFlagsWeeksWithinOneMAD(t *testing.T) {
 	}
 	if want := []bool{false, true, true, true, false}; !slices.Equal(got, want) {
 		t.Fatalf("within noise = %v, want %v", got, want)
+	}
+}
+
+func BenchmarkHistoryWalk(b *testing.B) {
+	repo := deterministicRepo(b)
+	argv := []string{"history", "--json", "--rev", "HEAD", "--since", "2025-12-01", "--repo", repo}
+	for b.Loop() {
+		if err := run(b.Context(), argv, io.Discard, io.Discard); err != nil {
+			b.Fatalf("history: %v", err)
+		}
 	}
 }
