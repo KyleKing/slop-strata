@@ -548,3 +548,54 @@ func TestYoungDeathsComeBackToTheSameFile(t *testing.T) {
 		})
 	}
 }
+
+func TestFileOverTheSizeCapLeavesTheWalkWithoutDying(t *testing.T) {
+	t.Parallel()
+	over := vcs.CommitFile{Path: "a.go", Binary: true}
+	edit := vcs.CommitFile{
+		Path: "a.go", Added: []string{"edited line"}, Removed: []string{"line a.go 0"},
+		Hunks: []vcs.DiffHunk{{OldStart: 1, OldLines: 1, NewStart: 1, NewLines: 1}},
+	}
+	cases := []struct {
+		name          string
+		steps         []vcs.CommitRecord
+		wantSurviving int
+		wantChurn30   int
+		wantRemoved   int
+	}{
+		{
+			name:          "tracked lines drop at the cap and later edits hit unattributed lines",
+			steps:         []vcs.CommitRecord{commitOn(10, over), commitOn(15, over), commitOn(20, edit)},
+			wantSurviving: 1, wantChurn30: 0, wantRemoved: 1,
+		},
+		{
+			name:          "an edit before the cap still kills the tracked line",
+			steps:         []vcs.CommitRecord{commitOn(5, edit), commitOn(10, over)},
+			wantSurviving: 0, wantChurn30: 1, wantRemoved: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := lineage.NewWalker(func(_, _, _ string) string { return "person" })
+			w.Commit(commitOn(0, addedFile("a.go", 5)), false, false)
+			for _, rec := range tc.steps {
+				w.Commit(rec, false, false)
+			}
+			res := w.Finish()
+			var march lineage.Survival
+			for _, s := range res.Survival {
+				if s.Cohort == "2025-03" {
+					march = s
+				}
+			}
+			if march.Added != 6 || march.Surviving != tc.wantSurviving {
+				t.Errorf("added, surviving = %d, %d; want 6, %d", march.Added, march.Surviving, tc.wantSurviving)
+			}
+			if got := res.Dirs["."]; got.Churn30 != tc.wantChurn30 || got.Removed != tc.wantRemoved {
+				t.Errorf("churn30, removed = %d, %d; want %d, %d",
+					got.Churn30, got.Removed, tc.wantChurn30, tc.wantRemoved)
+			}
+		})
+	}
+}

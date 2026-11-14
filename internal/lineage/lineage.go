@@ -262,6 +262,7 @@ type Walker struct {
 	testDeaths []testDeath
 	res        *Result
 	readd      *readdTracker
+	censored   map[int][]obs
 	deaths     []death
 	lastDay    int
 }
@@ -275,6 +276,7 @@ func NewWalker(class func(author, committer, body string) string) *Walker {
 		couples:    map[[2]string]int{},
 		authors:    map[string]struct{}{},
 		testBirths: map[string]testBirth{},
+		censored:   map[int][]obs{},
 		res:        &Result{Dirs: map[string]*DirStats{}},
 		readd:      newReaddTracker(),
 	}
@@ -419,13 +421,26 @@ func (w *Walker) Commit(rec vcs.CommitRecord, fixIntent, revert bool) {
 		case vcs.StatusDeleted:
 			w.removeFile(f.Path, f.Removed, dc, mv)
 		default:
-			if f.Status == vcs.StatusRenamed && f.OldPath != "" {
-				w.renameFile(f)
-			}
-			w.applyHunks(f, cohort, birth, klass, rec, dc, mv)
+			w.modifyFile(f, cohort, birth, klass, rec, dc, mv)
 		}
 	}
 	w.countCouples(touched)
+}
+
+// modifyFile applies a changed or renamed file's hunks, or drops the file when
+// its diff has none because it is over the size cap.
+func (w *Walker) modifyFile(f *vcs.CommitFile, cohort, birth int, klass string,
+	rec vcs.CommitRecord, dc deathCtx, mv *moves,
+) {
+	if f.Binary {
+		w.dropFile(f, birth)
+
+		return
+	}
+	if f.Status == vcs.StatusRenamed && f.OldPath != "" {
+		w.renameFile(f)
+	}
+	w.applyHunks(f, cohort, birth, klass, rec, dc, mv)
 }
 
 // addFile records a whole new file's lines as births at this commit, keeping
@@ -482,6 +497,26 @@ func (mv *moves) take(path string, idx int) (tag, bool) {
 	t, ok := mv.tags[addedLine{path, idx}]
 
 	return t, ok
+}
+
+// dropFile stops tracking a modified file whose diff came with no hunks, which
+// happens past the size cap. Its lines leave without dying and survival
+// censors them at this day. The lines the file has afterward start unattributed.
+func (w *Walker) dropFile(f *vcs.CommitFile, day int) {
+	tagPath := f.Path
+	if f.Status == vcs.StatusRenamed && f.OldPath != "" {
+		tagPath = f.OldPath
+	}
+	for _, t := range w.files[tagPath] {
+		if t.cohort >= 0 {
+			w.censored[t.cohort] = append(w.censored[t.cohort], obs{age: ageDays(t.birthDays, day)})
+		}
+	}
+	delete(w.files, tagPath)
+	if tb, ok := w.testBirths[tagPath]; ok && tagPath != f.Path {
+		w.testBirths[f.Path] = tb
+		delete(w.testBirths, tagPath)
+	}
 }
 
 // killAll records every live line of a deleted file as a death.
@@ -672,6 +707,9 @@ func (w *Walker) survival() []Survival {
 	obsByCohort := map[int][]obs{}
 	for _, d := range w.deaths {
 		obsByCohort[d.cohort] = append(obsByCohort[d.cohort], obs{age: d.age, dead: true})
+	}
+	for c, dropped := range w.censored {
+		obsByCohort[c] = append(obsByCohort[c], dropped...)
 	}
 	survivingByCohort := map[int]int{}
 	for _, lines := range w.files {
