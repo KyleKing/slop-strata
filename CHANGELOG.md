@@ -1,3 +1,9 @@
+## v0.16.0 (2026-11-24)
+
+### Feat
+
+- **history**: report how the inferred architecture changed over the window
+
 ## v0.15.0 (2026-11-24)
 
 ### Feat
