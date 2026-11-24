@@ -1225,7 +1225,9 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 }
 
 // lastRefs flags a symbol whose last live reference this change removed: its
-// declaration still stands at the end of the change, but nothing uses it now.
+// declaration still stands at the end of the change, but nothing uses it now,
+// its own file included. A name a package manifest or a Python __all__
+// publishes answers to callers outside the tree and is left alone.
 // The pass is observational — a failed tree read skips it, never fails the run.
 func (s *session) lastRefs(ctx context.Context, end string,
 	files []vcs.CommitFile, scored []scoredFile, basePrints map[string]*rules.Fingerprint, sup *rules.Suppressor,
@@ -1244,6 +1246,7 @@ func (s *session) lastRefs(ctx context.Context, end string,
 	usesBase := useCounts(basePrints)
 	usesEnd := useCounts(endPrints)
 	declared := declNames(endPrints)
+	published := rules.EntryNames(endPrints)
 	for i := range scored {
 		bp := scored[i].beforePrint
 		if bp == nil {
@@ -1255,7 +1258,7 @@ func (s *session) lastRefs(ctx context.Context, end string,
 			if ap != nil && ap.Referenced[name] > 0 {
 				continue
 			}
-			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] {
+			if usesBase[name] > 0 && usesEnd[name] == 0 && declared[name] && !published[name] {
 				hits = append(hits, rules.Finding{Rule: "x/last-ref", Line: removedLine(&files[i], name), Match: name})
 			}
 		}
@@ -1401,8 +1404,10 @@ func addNewFindings(path string, kept []rules.Finding, res *changeResult) {
 	}
 }
 
-// useCounts tallies how many files use each name, discounting a file's own
-// declaration of it: a name with zero uses is dead even where it is declared.
+// useCounts tallies how many files use each name. A file that only declares a
+// name, or only passes it on in an export clause, mentions it once and is no
+// user of it, so a name with zero uses is dead even where it is declared. A
+// file that declares a name and mentions it again uses it.
 func useCounts(prints map[string]*rules.Fingerprint) map[string]int {
 	uses := map[string]int{}
 	for _, fp := range prints {
@@ -1410,12 +1415,12 @@ func useCounts(prints map[string]*rules.Fingerprint) map[string]int {
 			uses[n]++
 		}
 		for n := range fp.Declared {
-			if fp.Referenced[n] > 0 {
+			if fp.Referenced[n] == 1 {
 				uses[n]--
 			}
 		}
 		for n := range fp.Exported {
-			if fp.Referenced[n] > 0 {
+			if _, declared := fp.Declared[n]; !declared && fp.Referenced[n] == 1 {
 				uses[n]--
 			}
 		}

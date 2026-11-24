@@ -243,6 +243,27 @@ func TestBuildResolvesGoImports(t *testing.T) {
 			want: []string{"cmd/app/main.go -> internal/store/store.go runtime [Open]"},
 		},
 		{
+			name: "a name the importer mentions without reading it off the package adds no edge",
+			files: []depgraph.File{
+				goMod("go.mod", "example.com/app"),
+				{
+					Path: "cmd/app/main.go",
+					Imports: []depgraph.Import{
+						{Spec: "example.com/app/store", Local: "store", Kind: depgraph.Runtime},
+					},
+					Referenced: map[string]int{"Open": 1, "Rows": 1, "Limit": 1},
+					Selected:   map[string][]string{"store": {"Open", "Limit"}},
+				},
+				{Path: "store/store.go", Exported: map[string]int{"Open": 3}},
+				{Path: "store/rows.go", Exported: map[string]int{"Rows": 3}},
+				{Path: "store/limits.go", Exported: map[string]int{"Limit": 3}},
+			},
+			want: []string{
+				"cmd/app/main.go -> store/limits.go runtime [Limit]",
+				"cmd/app/main.go -> store/store.go runtime [Open]",
+			},
+		},
+		{
 			name: "an import that uses no name the tool can place goes to every file of the package",
 			files: []depgraph.File{
 				goMod("go.mod", "example.com/app"),

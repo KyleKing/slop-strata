@@ -16,14 +16,15 @@ var ignoredCallees = map[string]bool{ //nolint:gochecknoglobals // a fixed vocab
 }
 
 // goSilentError flags an assignment whose last target is `_` and whose right
-// side is a single call, which discards the call's error. Without type
-// information, a bound `err` target or an ignored callee clears the hit.
+// side is a single call, which discards the call's error, or the name err,
+// which discards an error bound a line earlier. Without type information, a
+// bound `err` target or an ignored callee clears the hit.
 func goSilentError(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Go {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "assignment_statement" && n.Kind() != "short_var_declaration" {
+		if n.Kind() != "assignment_statement" && n.Kind() != kindShortVar {
 			return
 		}
 		left := n.ChildByFieldName("left")
@@ -36,7 +37,7 @@ func goSilentError(ctx *Ctx, findings *[]Finding) {
 			return
 		}
 		call := soleCall(right)
-		if call == nil || ignoredCallees[lastSegment(ctx.calleeText(call))] {
+		if (call == nil || ignoredCallees[lastSegment(ctx.calleeText(call))]) && !soleErr(ctx, right) {
 			return
 		}
 		*findings = append(*findings,
@@ -61,7 +62,7 @@ func oneLine(text string) string {
 // exprItems lists an expression_list's items, or the node itself when the
 // grammar did not wrap it.
 func exprItems(n *ts.Node) []*ts.Node {
-	if n.Kind() != "expression_list" {
+	if n.Kind() != kindExprList {
 		return []*ts.Node{n}
 	}
 
@@ -92,6 +93,13 @@ func soleCall(right *ts.Node) *ts.Node {
 	}
 
 	return items[0]
+}
+
+// soleErr reports whether a right-hand side is the name err and nothing else.
+func soleErr(ctx *Ctx, right *ts.Node) bool {
+	items := exprItems(right)
+
+	return len(items) == 1 && items[0].Kind() == kindIdentifier && ctx.Text(items[0]) == "err"
 }
 
 // lastSegment answers the final dot-separated part of a callee.
@@ -165,7 +173,7 @@ func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	ctx.eachCall(func(n *ts.Node, callee string) {
 		for _, suffix := range []string{".ReadFile", ".Open", ".OpenFile", ".ReadAll"} {
 			if strings.HasSuffix(callee, suffix) {
-				if readsRepoFile(firstArgText(ctx, n)) {
+				if readsRepoFile(ctx.boundText(firstArg(n))) {
 					*findings = append(*findings, Finding{Rule: "go/test-reads-source", Line: lineOf(n), Match: callee})
 				}
 
@@ -175,14 +183,27 @@ func goTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// goTimingHack flags sleeps in tests.
+// goTimingHack flags sleeps in tests: a call to Sleep, and a receive from
+// time.After that stands alone as a statement, which waits the same way. A
+// timeout arm of a select is no sleep.
 func goTimingHack(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Go {
 		return
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
-		if strings.HasSuffix(callee, ".Sleep") {
+		if strings.HasSuffix(callee, ".Sleep") || (strings.HasSuffix(callee, ".After") && bareReceive(n)) {
 			*findings = append(*findings, Finding{Rule: "go/timing-hack", Line: lineOf(n), Match: callee})
 		}
 	})
+}
+
+// bareReceive reports whether a call is received from as a whole statement.
+func bareReceive(call *ts.Node) bool {
+	recv := call.Parent()
+	if recv == nil || recv.Kind() != "unary_expression" || recv.Child(0).Kind() != "<-" {
+		return false
+	}
+	stmt := recv.Parent()
+
+	return stmt != nil && stmt.Kind() == kindExpressionStmt
 }

@@ -499,7 +499,7 @@ func TestChangeLastRef(t *testing.T) {
 	}
 
 	run("init", "--initial-branch=main")
-	write("a.go", "package main\n\nfunc helper() {}\n\nfunc main() { helper() }\n")
+	write("a.go", "package main\n\nfunc helper() {}\n\nfunc main() {}\n")
 	write("b.go", "package main\n\nfunc other() { helper() }\n")
 	run("add", "-A")
 	run("commit", "-m", "feat: init")

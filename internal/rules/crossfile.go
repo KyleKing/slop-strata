@@ -3,6 +3,7 @@ package rules
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -29,7 +30,15 @@ func CrossFile(
 	if crossEnabled(ruleXDupLiteral, experimental) {
 		dupLiterals(blobs, out)
 	}
-	deadExports(blobs, out, entryPoints, experimental)
+	exports := crossEnabled(ruleXDeadExport, experimental) || crossEnabled(ruleXCouldBePrivate, experimental)
+	cycles := crossEnabled(ruleXImportCycle, experimental)
+	var imports *Imports
+	if exports || cycles {
+		imports = ResolveImports(blobs, treePaths)
+	}
+	if exports {
+		deadExports(imports, out, entryPoints, experimental)
+	}
 	if crossEnabled(ruleXStaleProse, experimental) {
 		staleProse(blobs, out, treePaths)
 	}
@@ -38,8 +47,10 @@ func CrossFile(
 	unusedOptions(blobs, out)
 	staleConfig(blobs, out, configPaths)
 	textIgnoresWithoutReason(blobs, out)
-	if crossEnabled(ruleXImportCycle, experimental) {
-		importCycles(blobs, out, treePaths)
+	if cycles {
+		for p, fs := range imports.CycleFindings() {
+			out[p] = append(out[p], fs...)
+		}
 	}
 
 	return out
@@ -315,29 +326,41 @@ func normKey(name string) string {
 }
 
 // dupLiterals flags a literal carried by minDupFiles or more files and
-// appearing minDupOccurrences or more times across the tree.
+// appearing minDupOccurrences or more times across the tree. Literals are
+// joined on their content, so the quote a file writes one with is not part
+// of it, and each file reports the literal as it spells it.
 func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
-	byLiteral := map[string][]BlobPrint{}
+	owners := map[string]map[string]string{} // content -> path -> the literal as that file first writes it
 	occurrences := map[string]int{}
 	for _, b := range blobs {
-		for lit, use := range b.Print.Literals {
-			byLiteral[lit] = append(byLiteral[lit], b)
-			occurrences[lit] += use.Count
+		for _, lit := range slices.Sorted(maps.Keys(b.Print.Literals)) {
+			content := unquote(lit)
+			if owners[content] == nil {
+				owners[content] = map[string]string{}
+			}
+			if _, seen := owners[content][b.Path]; !seen {
+				owners[content][b.Path] = lit
+			}
+			occurrences[content] += b.Print.Literals[lit].Count
 		}
 	}
-	for lit, owners := range byLiteral {
-		if len(owners) < minDupFiles || occurrences[lit] < minDupOccurrences {
+	prints := make(map[string]*Fingerprint, len(blobs))
+	for _, b := range blobs {
+		prints[b.Path] = b.Print
+	}
+	for content, files := range owners {
+		if len(files) < minDupFiles || occurrences[content] < minDupOccurrences {
 			continue
 		}
-		short := lit
-		if len(short) > 60 { //nolint:mnd // a display cap, not a rule
-			short = short[:60] + "…"
-		}
-		for _, b := range owners {
-			out[b.Path] = append(out[b.Path], Finding{
-				Rule: ruleXDupLiteral, Line: b.Print.Literals[lit].Line,
+		for path, lit := range files {
+			short := lit
+			if len(short) > 60 { //nolint:mnd // a display cap, not a rule
+				short = short[:60] + "…"
+			}
+			out[path] = append(out[path], Finding{
+				Rule: ruleXDupLiteral, Line: prints[path].Literals[lit].Line,
 				Match: short,
-				Note:  fmt.Sprintf("shared by %d files", len(owners)),
+				Note:  fmt.Sprintf("shared by %d files", len(files)),
 			})
 		}
 	}
@@ -345,15 +368,18 @@ func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
 
 // deadExports flags an exported name no other file references, split by
 // whether the declaring file uses it: a name used only in its own file is
-// could-be-private. Names a package manifest names as entry points count as
-// referenced. Go methods are never reported, because a method can satisfy an
-// interface declared outside the tree. Entry-point globs and test files are
-// exempt, since their exports answer a caller outside the tree.
-func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []string, experimental bool) {
+// could-be-private. Names a package manifest or a Python __all__ names count
+// as referenced. Go methods are never reported, because a method can satisfy
+// an interface declared outside the tree. Entry-point globs and test files
+// are exempt, since their exports answer a caller outside the tree, and so is
+// a file another file binds whole (`from m import *`, `export * from`), whose
+// every export that file hands on.
+func deadExports(im *Imports, out map[string][]Finding, entryPoints []string, experimental bool) {
+	blobs := im.blobs
 	refCount := referenceIndex(blobs)
 	entryNames, entryGlobs := manifestEntries(blobs, entryPoints)
 	for _, b := range blobs {
-		if lang.IsTestPath(b.Path) || matchAny(entryGlobs, b.Path) {
+		if lang.IsTestPath(b.Path) || matchAny(entryGlobs, b.Path) || handedOn(im, b) {
 			continue
 		}
 		for name, line := range b.Print.Exported {
@@ -368,12 +394,40 @@ func deadExports(blobs []BlobPrint, out map[string][]Finding, entryPoints []stri
 				continue
 			}
 			finding := exportFinding(b.Print, name, line)
-			if !crossEnabled(finding.Rule, experimental) {
+			if !crossEnabled(finding.Rule, experimental) || heldBack(b.Print.Kinds[name], finding.Rule) {
 				continue
 			}
 			out[b.Path] = append(out[b.Path], finding)
 		}
 	}
+}
+
+// heldBack reports whether a rule leaves a kind of declaration alone. A Go
+// type, constant, or variable and a TypeScript class are in neither rule:
+// on the labeled sample under half of those hits were real, most of them a
+// library's public API. A Python assignment or decorated definition that
+// nothing reads by name is read by convention or registered by its
+// decorator, so it is never dead, and may still be used only in its own file.
+func heldBack(kind, rule string) bool {
+	switch kind {
+	case declType, declValue, declClass:
+		return true
+	case declAssigned, declDecorated:
+		return rule == ruleXDeadExport
+	}
+
+	return false
+}
+
+// handedOn reports whether another file binds everything a file exports. A
+// Python module that sets __all__ hands on those names alone, which are
+// already entry names, so a star import of it exempts nothing more.
+func handedOn(im *Imports, b BlobPrint) bool {
+	if _, listed := b.Print.Declared[pyAll]; listed {
+		return false
+	}
+
+	return im.Graph.Starred(b.Path)
 }
 
 // exportFinding names an unreferenced export dead, or could-be-private when its
@@ -418,6 +472,22 @@ func manifestEntries(blobs []BlobPrint, entryPoints []string) (map[string]bool, 
 	}
 
 	return names, globs
+}
+
+// EntryNames lists the names the tree publishes by name: the targets of
+// console scripts and entry points in a package manifest, and the members of
+// a Python __all__.
+func EntryNames(prints map[string]*Fingerprint) map[string]bool {
+	names := map[string]bool{}
+	for _, fp := range prints {
+		for _, ref := range fp.EntryRefs {
+			if i := strings.LastIndexByte(ref, ':'); i >= 0 {
+				names[ref[i+1:]] = true
+			}
+		}
+	}
+
+	return names
 }
 
 // selfUses counts a file's uses of a name it declares, discounting the

@@ -17,6 +17,7 @@ const (
 	rulePyTestReadsSource    = "py/test-reads-source"
 	rulePyTimingHack         = "py/timing-hack"
 	ruleTSAsUnknownAs        = "ts/as-unknown-as"
+	ruleTSRecordUnknown      = "ts/record-unknown"
 	ruleXIgnoreWithoutReason = "x/ignore-without-reason"
 	ruleXNarratingComment    = "x/narrating-comment"
 	ruleXStaleProse          = "x/stale-prose"
@@ -97,7 +98,7 @@ var all = []Rule{ //nolint:gochecknoglobals // the registry is fixed at compile 
 	{ID: rulePyTimingHack, TestOnly: true, Apply: pyTimingHack},
 	{ID: "ts/silent-catch", Apply: tsSilentCatch},
 	{ID: ruleTSAsUnknownAs, Apply: tsAsUnknownAs},
-	{ID: "ts/record-unknown", Apply: tsRecordUnknown},
+	{ID: ruleTSRecordUnknown, Apply: tsRecordUnknown},
 	{ID: "ts/type-any", Apply: tsTypeAny, Experimental: true},
 	{ID: "ts/module-mock", Apply: tsModuleMock},
 	{ID: "ts/test-reads-source", TestOnly: true, Apply: tsTestReadsSource, Experimental: true},

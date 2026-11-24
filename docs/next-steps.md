@@ -30,8 +30,52 @@ Checked against the code at 61b2aba. Items from the v0.6.0 audit that are now do
 - `x/dead-export` skips Go methods, which avoids interface false positives. It does not resolve interface satisfaction.
 - `snapshot` reports `x/stale-prose` for every unresolved name, behind `--experimental`. It should flag only names the history shows existed and are now gone. The exemptions for changelogs, ADRs, and migration guides already exist.
 - `x/import-cycle` is gated until its hits are labeled. On eight public repositories it reported the same components as an independent resolver, but TypeScript path aliases and workspace package names add no edge, a value import that is only used as a type still counts as a runtime edge, and Python imports of a submodule do not count as importing its parent packages.
-- `x/dead-export` and `x/could-be-private` read `Declared` and `Exported`, which miss Go types, constants, and variables, Python decorated functions and module-level assignments, and TypeScript classes and `const` declarations. The module depth pass lists all of those as units. Moving the two rules onto the units would widen what they see, and needs labels first.
+- `x/dead-export` and `x/could-be-private` cannot tell a library's public API from an export nobody wants. They skip what a manifest, an `__all__`, or a whole-module re-export publishes, and still report a name a library exports from a file its entry point imports by name. That is why Go types, constants, and variables (10 of 23 sampled hits real) and TypeScript classes (0 of 4) are recorded and not reported. Following re-exports from each manifest entry to the names it publishes, and treating a Go package outside `internal/` and `main` as importable, would let those kinds in.
+- The same two rules count a reference by name in any file the tool parses. A name imported only from a `.vue`, `.svelte`, `.mdx`, `.js`, or `.mjs` file reads as unused (3 of 7 false positives in a sample of 40), and so does one a framework reaches through a namespace import.
+- Chained and tuple assignments at module level in Python (`a = b = 1`, `a, b = 1, 2`) declare names the fingerprint does not record.
+- `x/last-ref` asks whether any declaration of the name is left, not whether the one the change stopped using is. Over the last 200 commits of six repositories it reported 11 findings, 7 of them a helper the change left behind and 4 a name some unrelated file also declares (a Next.js page component, a test fixture). Before the declaring file's own uses counted and an exported declaration was discounted once, the same commits gave 28, and none of the 12 sampled was unused. Attributing the name through the import graph would settle the 4.
 - `py/type-any` and `go/type-any` report every hit. They should report a count per file. `go/type-any` already skips generic constraints and variadic `...any` parameters a function spreads into a call, and leaves fields that hold JSON of unknown shape to labels.
+
+## Dodges the rules lose to
+
+Each of these is a variant in `Gaps` of an adversarial fixture (`internal/rules/adversarial_*_test.go`, `cmd/slop-strata/lastref_test.go`), which asserts the rule reports nothing. Closing one fails its test until the variant is moved to `Dodges` or `Persists`.
+
+Needs types or a call graph:
+
+- `go/silent-error`: call the function bare, or hand its error to a function that ignores it
+- `go/type-any`: a type parameter constrained by `any`, which the rule exempts on purpose
+- `go/test-reads-source`, `py/test-reads-source`, `ts/test-reads-source`: read the file through a helper or fixture that takes the path, `import` the JSON, or bind a computed path to a name first. Only a name bound once to a string literal is read through: reading through any binding added 6 hits, 4 of them test data found from `__file__`
+- `go/timing-hack`, `py/timing-hack`, `ts/timing-hack`: sleep in a helper outside the test files or under another name (`from time import sleep as pause`, `settle(50)`, `timers/promises`), or wait on an event nobody sets. Two TypeScript sleeps are left alone because most hits were a simulated delay inside a handler or a query function and not a test waiting on time: a bare `sleep(n)` (1,916 hits on four repositories, 1,909 of them in one) and `new Promise(r => setTimeout(r, n))` (78 hits, 7 of 20 sampled a test waiting)
+- `py/type-any`: `Any` under another name, behind a module-level alias, or in a quoted annotation. `ts/type-any`: an implicit `any`, or `object | Function`
+- `py/mock-patch`, `ts/module-mock`: `patch` or `vi` under another name, assigning over the attribute by hand, or `vi.spyOn(...).mockResolvedValue`
+- `ts/as-unknown-as`: widen through a variable annotated `unknown`, or cast inside a generic helper
+- `ts/record-unknown`: `Map<string, unknown>`, `object`, or an index signature. Matching `[key: string]: unknown` added 33 hits, and about 5 of 20 sampled were a type with nothing but unknown values: the rest were open objects with named fields or the expected side of a type test
+- `x/single-impl-iface`: a second method or member, an unrelated type sharing the method name, or no `implements` clause
+
+Needs a judgment the rule does not make:
+
+- `py/silent-except`, `ts/silent-catch`: return a default from the handler, `contextlib.suppress`, `void err`, or a comment in the `catch` block. The comment is the documented-intent case and is left alone on purpose, as ESLint's `no-empty` leaves it: 59 corpus blocks carry one, each saying why
+- `py/or-default`: `if not rows: rows = []`
+- `py/mock-only-assert`, `ts/mock-only-assert`: copy the call record into a variable first. `assert mock.called` and `mock.call_count` are left alone, since hand-written flags and counters carry those names. `expect(...).rejects` and `.resolves` are not read as assertions, which is 3 of the 4 false hits in 35 sampled
+- `py/constant-echo`, `ts/constant-echo`: wrap the constant in a call, use `assertEqual`, copy it into a local, use a looser matcher, or read it off an object. The last is left alone: `expect(process.env.X)` and `expect(schema.enum.A)` were all five corpus hits
+- `x/ignore-without-reason`: a reason of one character
+- `x/case-table`: two tables of eight, or the records in a list
+- `x/comment-density`: move the comments above the function or into the docstring, fold them into one block comment, or pad the body with blank lines. Counting comment lines over non-blank lines closed the last two and added 98 hits, of which a sample of 20 was mostly explanation, commented-out code, `@ts-expect-error`, and `@see` blocks, so the count is as it was
+- `x/clone-function`, `x/dup-test-case`: one extra statement, a docstring, a dropped return type, `it.only`, or a move to another file (which `x/clone-function` then reports)
+- `x/dup-literal`: name the literal in one file, which takes the count under four
+
+Matches a name and nothing more:
+
+- `x/dead-export`, `x/could-be-private`, `x/unused-option`, `x/last-ref`: a reference from a test, an unrelated identifier with the same name, an import left unused, `__all__`, a decorator, or a whole-module re-export. The last three are the exemptions that keep a library's API quiet
+- `x/single-entry-registry`, `x/narrating-comment`, `x/spent-test`, `x/unused-option`: a word outside the rule's vocabulary, a registry filled after it is created, or a narration moved into a docstring
+- `x/stale-config`, `x/stale-prose`: the key or the name kept alive in an unrelated identifier or string, a negation in front of the name, or a fenced block
+
+`py/silent-except` and `ts/silent-catch` treat a comment differently, as they did before these fixtures. In Python a comment on its own line above `pass` sits outside the handler's block in the grammar and the handler is reported, while `pass  # reason` is not. A comment that only silences a linter (`pass  # noqa`) is now read as no reason. In TypeScript any comment in the block clears the finding.
+
+## Pruning aids measured and not built
+
+- Dead files, as a list of production files nothing imports. A prototype over the import graph listed 802 candidates on eight Python and TypeScript repositories after leaving out tests, manifest entries, declaration files, `*.config.*`, `conftest.py`, `__init__.py`, `__main__.py`, main guards, and Python scripts outside a package. Of 36 sampled, 3 were dead, 4 could not be told, and 29 were in use by something the graph does not see: a framework route or layout (5), an import from a `.vue` or `.svelte` file (5), a path alias (4), a script, benchmark, or example that a package script, a workflow, a `bin` entry, or an `index.html` runs (9), a codemod, fixture, or data module loaded by path (5), and a test double only tests import (1). It needs path aliases, workspace names, the non-TypeScript importers, and package scripts in the graph first. Go was left out: a package is a directory, and files of one package import nothing from each other.
+- Wide directories and long files need nothing new: a snapshot's directory rows carry `files` and its file rows carry `sloc`.
 
 ## Tests and corpus
 

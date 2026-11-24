@@ -6,6 +6,13 @@
 // change nothing, and a rule that passes its fixes stops reporting once the
 // problem is gone.
 //
+// Two more sorts cover the edits someone makes to get past a rule. A variant
+// in Persists renames or moves what a finding ID is made of, so the IDs may
+// change and a finding must still be there. A variant in Gaps is a dodge the
+// rule is known to lose to: it must report nothing, so the case fails the day
+// the rule is fixed and the variant can move to Dodges or Persists. Gaps
+// record a limit, never excuse one: each is listed in docs/next-steps.md.
+//
 // A metric has the same two sorts under other names (MetricCase): a variant
 // in Same must leave the number exactly as it was, and one in Moved must
 // change it, so a number that ignores a real change fails as surely as one a
@@ -83,6 +90,11 @@ type Case struct {
 	Name string
 	// Dodges must each produce exactly the base's finding IDs.
 	Dodges []Variant
+	// Persists must each still produce a finding, under any ID.
+	Persists []Variant
+	// Gaps must each produce no finding: the rule's known losses, kept so
+	// that closing one is noticed.
+	Gaps []Variant
 	// Fixes must each produce no finding.
 	Fixes []Variant
 }
@@ -98,7 +110,8 @@ type Reporter interface {
 }
 
 // Check evaluates one case: the base must produce a finding, every dodge the
-// same IDs, and every fix none.
+// same IDs, every persisting variant some finding, and every gap and every
+// fix none.
 func Check(r Reporter, c Case, eval Eval) {
 	r.Helper()
 	want := sorted(eval(c.Base))
@@ -110,6 +123,17 @@ func Check(r Reporter, c Case, eval Eval) {
 	for _, v := range c.Dodges {
 		if got := sorted(eval(v.Apply(c.Base))); !slices.Equal(got, want) {
 			r.Errorf("%s: dodge %q changed the finding IDs: got %v, want %v", c.Name, v.Name, got, want)
+		}
+	}
+	for _, v := range c.Persists {
+		if got := eval(v.Apply(c.Base)); len(got) == 0 {
+			r.Errorf("%s: %q left no finding, and the problem is still there", c.Name, v.Name)
+		}
+	}
+	for _, v := range c.Gaps {
+		if got := sorted(eval(v.Apply(c.Base))); len(got) != 0 {
+			r.Errorf("%s: gap %q no longer defeats the rule, which reports %v: move it out of Gaps",
+				c.Name, v.Name, got)
 		}
 	}
 	for _, v := range c.Fixes {

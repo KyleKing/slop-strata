@@ -2,6 +2,7 @@ package depgraph
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -24,7 +25,10 @@ func (r *resolver) indexGo(nodes []string) {
 
 // resolveGo adds the edges of one import. Go imports a package, which is a
 // directory, so the edge goes to each file of it whose exported names the
-// importer uses, and to every file when none can be told apart.
+// importer uses, and to every file when none can be told apart. The names
+// are the ones the importer reads off the package's local name where it
+// reads any, so a field or a local that shares a name with an export of the
+// package adds no edge.
 func (r *resolver) resolveGo(f *File, imp Import) {
 	dir, ok := r.goDir(imp.Spec)
 	if !ok {
@@ -35,8 +39,13 @@ func (r *resolver) resolveGo(f *File, imp Import) {
 	for _, to := range targets {
 		r.bind(f, to, &imp, nil)
 	}
+	selected, qualified := f.Selected[imp.Local]
 	for _, to := range targets {
-		if used := usedNames(f, r.files[to]); len(used) > 0 {
+		used := usedNames(f, r.files[to])
+		if qualified {
+			used = slices.DeleteFunc(used, func(name string) bool { return !slices.Contains(selected, name) })
+		}
+		if len(used) > 0 {
 			r.add(f, to, imp, used)
 			matched = true
 		}

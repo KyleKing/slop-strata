@@ -46,10 +46,11 @@ func (e Edge) Cost() int {
 
 // Graph is a set of files and the import edges between them.
 type Graph struct {
-	out   map[string][]int
-	nodes []string
-	edges []Edge
-	uses  []Use
+	out     map[string][]int
+	starred map[string]bool
+	nodes   []string
+	edges   []Edge
+	uses    []Use
 }
 
 // New builds a graph. Edges between the same two files with the same kind
