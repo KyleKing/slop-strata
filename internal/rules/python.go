@@ -27,7 +27,7 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 		// The clause's body is its last child; pass or an ellipsis alone means
 		// the handler does nothing.
 		body := n.NamedChild(children - 1)
-		if body.Kind() != "block" {
+		if body.Kind() != kindBlock {
 			return
 		}
 		stmt := onlyStatement(ctx, body)

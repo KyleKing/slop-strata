@@ -131,6 +131,13 @@ func TestCollectListsTheUnitsOfAFile(t *testing.T) {
 			want: []string{"T+", "U+", "v", "K+", "k1", "K2+", "A+", "b", "T.Get+ 4.90", "T.set 1.00", "F+ 1.00"},
 		},
 		{
+			name: "go: a method of a generic type is named for the type, whatever its parameters",
+			path: "g.go",
+			src: "package a\n\nfunc (c *Cache[K, V]) Get(k K) V { return c.m[k] }\n\n" +
+				"func (Stack[T]) Len() int { return 0 }\n",
+			want: []string{"Cache.Get+ 1.00", "Stack.Len+ 1.00"},
+		},
+		{
 			name: "python: decorated functions, classes with their methods, plain assignments",
 			path: "a.py", src: pyUnitsSrc,
 			want: []string{"X+", "_y", "f+ 4.00", "_g 1.41", "C+ 1.41", "C.m+ 1.41", "C._p 2.83"},

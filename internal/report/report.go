@@ -263,7 +263,8 @@ var Docs = map[string]string{
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
-		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, and snapshot stale-prose rules " +
+		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, and snapshot " +
+		"stale-prose rules " +
 		"and the type-any and test-reads-source families. Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
@@ -281,8 +282,8 @@ var Docs = map[string]string{
 		"The reason is required. An ignore without one suppresses nothing and is reported as " +
 		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
 		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp. " +
-		"The one exception is x/last-ref, which only change reports: label cannot find its id, so accept it " +
-		"with a baseline or labels file entry for the id.",
+		"The exceptions are x/last-ref and x/new-duplicate, which only change reports: label cannot find " +
+		"their ids, so accept one with a baseline or labels file entry for the id. See new_duplicate.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
 		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
@@ -291,7 +292,8 @@ var Docs = map[string]string{
 	"stale_baseline": "In counts.stale_baseline, on snapshot: baseline entries that no finding of the scored " +
 		"tree carries the id of. The finding was fixed, its line or matched text was edited, or it is an import " +
 		"cycle that shrank, which the entry still covers by its members. Entries of rules this run did not " +
-		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref) are not counted. " +
+		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref, x/new-duplicate) are " +
+		"not counted. " +
 		"Run slop-strata snapshot --write-baseline to drop them, so a fixed finding that comes back reads as " +
 		"new. It never changes the exit status. change and history do not score the whole tree against the " +
 		"baseline and always report 0.",
@@ -451,6 +453,30 @@ var Docs = map[string]string{
 		"another is not reported. Information only: it adds nothing to next, and --brief and --exit-code " +
 		"ignore it. When a name you meant to keep internal appears here, the change made another directory " +
 		"depend on it.",
+	"new_duplicate": "x/new-duplicate, on change with --experimental: code the change added that repeats " +
+		"code the tree already holds, or that the change added twice. Each file is read as a sequence of " +
+		"statements, an if or a loop being one statement and each line of its body another. A run of added " +
+		"statements is a repeat when it lines up, statement for statement, with a run elsewhere: the same " +
+		"tokens in the same order once identifiers and literals are set aside. Its score is the tokens of " +
+		"its new statements less 8 for each distinct identifier or literal pair the two sites differ in, " +
+		"which is a parameter a shared function would take. At most 3 such pairs are allowed and a score of " +
+		"20 is needed. A statement whose shape more than 4 other places in the tree hold counts for less, " +
+		"and for nothing at 32, so an error check or a log line cannot carry a finding. The signature of a " +
+		"function, class, or type lines up and never counts, and a run never ends on an if or a loop whose " +
+		"body is outside it. The finding sits on the first line of the new copy, its match names the file " +
+		"and function it repeats, and its note says where that is (this file, the same directory, or " +
+		"another), up to two more places, the size, and what differs. --brief prints the note as the " +
+		"reason of the next line. Not reported: a file in a test directory or under a directory named " +
+		"example, demo, sample, bench, benchmark, e2e, or playground (or the plural), where a copy is the " +
+		"point; a statement the change also removed somewhere, as written or under other names, which " +
+		"makes a move, a re-indent, or a body pulled into a helper; a run right behind the code it " +
+		"repeats in the same function, which is two arms of one branch; two files of one name that are " +
+		"80% alike, which is a tree kept in step with a copy of itself; and generated files. It does not " +
+		"see a repeated expression inside a larger statement, a copy with a statement added, dropped, or " +
+		"reordered beyond the run that still lines up, or a copy that renames more than three things. " +
+		"Only change reports it, so label cannot find its id. When a hit is right, call or widen the code " +
+		"the note names. When the two sites should stay apart, say why in a slop-strata:ignore comment on " +
+		"the finding's line.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +

@@ -100,19 +100,19 @@ func FunctionName(l *Language, node *ts.Node, src []byte) string {
 	return owner + "." + name
 }
 
-// receiverType reads the type name out of a Go receiver such as "(s *Session)"
-// or "(Stack[T])".
+// receiverType reads the type name out of a Go receiver such as "(s *Session)",
+// "(Stack[T])", or "(c *Cache[K, V])".
 func receiverType(receiver string) string {
-	fields := strings.Fields(strings.Trim(receiver, "()"))
-	if len(fields) == 0 {
-		return ""
-	}
-	typ := strings.TrimLeft(fields[len(fields)-1], "*")
+	typ := strings.TrimSpace(strings.Trim(receiver, "()"))
 	if i := strings.IndexByte(typ, '['); i >= 0 {
 		typ = typ[:i]
 	}
+	fields := strings.Fields(typ)
+	if len(fields) == 0 {
+		return ""
+	}
 
-	return typ
+	return strings.TrimLeft(fields[len(fields)-1], "*")
 }
 
 // enclosingClass names the class a function is a method of, or "" when a

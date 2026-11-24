@@ -79,6 +79,7 @@ type Fingerprint struct {
 	Units       []Unit                `json:"units,omitempty"`       // declarations and methods, for module depth
 	Passed      []string              `json:"passed,omitempty"`      // imported names bound and never used
 	Members     []string              `json:"members,omitempty"`     // names read off a value, not a module
+	Frags       Fragments             `json:"frags,omitempty"`       // statements, for the duplicate pass
 	Barrel      bool                  `json:"barrel,omitempty"`      // only imports and re-exports, declares nothing
 }
 
@@ -98,8 +99,8 @@ func Collect(ctx *Ctx) *Fingerprint {
 	fp := &Fingerprint{}
 	uses := &nameUse{selected: map[string][]string{}, inImports: map[string]int{}}
 
-	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		kind := n.Kind()
+	frags := newFragCollector(ctx)
+	frags.walk(ctx.Root, fragWalk{}, func(n *ts.Node, kind string) {
 		collectImportRef(ctx, n, kind, fp)
 		collectIface(ctx, n, kind, fp)
 		uses.note(ctx, n, kind)
@@ -124,6 +125,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 			fp.Referenced[ctx.Text(n)]++
 		}
 	})
+	fp.Frags = frags.fragments()
 	collectUnits(ctx, fp)
 	uses.finish(ctx, fp)
 	fp.Barrel = isBarrel(ctx, fp)

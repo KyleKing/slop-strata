@@ -26,6 +26,8 @@ const (
 // Tree-sitter node kinds and texts several rules match on.
 const (
 	kindAssignment      = "assignment"
+	kindBlock           = "block"
+	kindStatementBlock  = "statement_block"
 	kindCallExpression  = "call_expression"
 	kindExportStatement = "export_statement"
 	kindExpressionStmt  = "expression_statement"
@@ -187,7 +189,7 @@ func lineOf(n *ts.Node) int {
 func blockStatements(n *ts.Node) int {
 	for i := range n.NamedChildCount() {
 		child := n.NamedChild(i)
-		if child.Kind() == "block" || child.Kind() == "statement_block" {
+		if child.Kind() == kindBlock || child.Kind() == kindStatementBlock {
 			return int(child.NamedChildCount())
 		}
 	}
