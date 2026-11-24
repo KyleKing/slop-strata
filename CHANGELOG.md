@@ -1,3 +1,9 @@
+## v0.17.0 (2026-11-24)
+
+### Feat
+
+- **change**: report code a change copies as x/new-duplicate
+
 ## v0.16.1 (2026-11-24)
 
 ### Fix
