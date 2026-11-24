@@ -30,9 +30,9 @@ func depthText(ratio *float64) string {
 // function to weigh.
 const countMark = "#"
 
-// depthTableWidth is how wide the depth table may grow before it shortens
-// directory paths.
-const depthTableWidth = 100
+// tableWidth is how wide a table that shortens its first column may grow: the
+// depth table, the architecture tables, and the two refactoring tables.
+const tableWidth = 100
 
 // widestNameCap is the longest file name the widest_surface column prints.
 const widestNameCap = 24
@@ -41,7 +41,7 @@ const widestNameCap = 24
 // shallowest first, with the provisional ones after the rest. With all it
 // adds the directories nothing outside uses, which have no depth. Masses and
 // forwarders are in the JSON: the directory table above carries each
-// directory's mass, and the table has to fit depthTableWidth columns.
+// directory's mass, and the table has to fit tableWidth columns.
 func printDepthTable(w io.Writer, dirs []dirSnapshot, all bool) {
 	ranked := make([]dirSnapshot, 0, len(dirs))
 	for i := range dirs {
@@ -58,7 +58,7 @@ func printDepthTable(w io.Writer, dirs []dirSnapshot, all bool) {
 	for i := range ranked {
 		rows = append(rows, depthRow(&ranked[i]))
 	}
-	shortenFirstColumn(header, rows, depthTableWidth)
+	shortenFirstColumn(header, rows)
 	report.Fprintf(w, "\nmodule depth, shallowest first\n")
 	report.Table(w, header, rows)
 	provisionalNote(w, ranked, func(d dirSnapshot) bool { return d.Module.Provisional }, depth.ProvisionalNames)
@@ -68,8 +68,9 @@ func printDepthTable(w io.Writer, dirs []dirSnapshot, all bool) {
 }
 
 // shortenFirstColumn elides the paths of a table's first column so that the
-// table, with its other columns as wide as they are, fits width columns.
-func shortenFirstColumn(header []string, rows [][]string, width int) {
+// table, with its other columns as wide as they are, fits tableWidth columns.
+func shortenFirstColumn(header []string, rows [][]string) {
+	width := tableWidth
 	for col := 1; col < len(header); col++ {
 		widest := utf8.RuneCountInString(header[col])
 		for _, r := range rows {

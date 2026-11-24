@@ -583,9 +583,6 @@ func solidDepth(m *depth.Module) bool {
 	return m.Depth != nil && m.DepthAttributed != nil && !m.Provisional
 }
 
-// archTableWidth is how wide an architecture table may grow.
-const archTableWidth = 100
-
 // pairPathWidth is the longest path a hidden coupling row prints per file.
 const pairPathWidth = 28
 
@@ -609,7 +606,7 @@ func printArchitecture(w io.Writer, arch *architecture) {
 			})
 		}
 		header := []string{"depth_moved", colDepth, "depth_attributed"}
-		shortenFirstColumn(header, rows, archTableWidth)
+		shortenFirstColumn(header, rows)
 		report.Fprintln(w)
 		report.Table(w, header, rows)
 	}
@@ -664,7 +661,7 @@ func printCycleOrigins(w io.Writer, cycles []cycleOrigin) {
 		rows = append(rows, row)
 	}
 	header := []string{"cycle with", "id", "files", "first_seen", "then", "commit", "by"}
-	shortenFirstColumn(header, rows, archTableWidth)
+	shortenFirstColumn(header, rows)
 	report.Fprintln(w)
 	report.Table(w, header, rows)
 }

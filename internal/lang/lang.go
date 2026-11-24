@@ -21,6 +21,22 @@ const (
 	kindForStatement     = "for_statement"
 	kindWhileStatement   = "while_statement"
 	kindMethodDefinition = "method_definition"
+	kindTypeSwitch       = "type_switch_statement"
+	kindArrowFunction    = "arrow_function"
+	kindForInStatement   = "for_in_statement"
+	kindDoStatement      = "do_statement"
+	kindCatchClause      = "catch_clause"
+)
+
+// AllChildren is the BindKinds field of a node whose every named child holds
+// a name it binds.
+const AllChildren = "*"
+
+// Field names the BindKinds tables share.
+const (
+	fieldName    = "name"
+	fieldLeft    = "left"
+	fieldPattern = "pattern"
 )
 
 // Language describes one grammar's node vocabulary for the metric walkers.
@@ -57,6 +73,18 @@ type Language struct {
 	NestKinds map[string]bool
 	// DecisionOps are operator spellings that each add one complexity point.
 	DecisionOps map[string]bool
+	// BlockKinds are node types whose named children are the statements of a
+	// function body, a loop body, or a branch arm.
+	BlockKinds map[string]bool
+	// LoopKinds are node types a break or a continue inside them ends at.
+	LoopKinds map[string]bool
+	// SwitchKinds are the other node types a break inside them ends at.
+	SwitchKinds map[string]bool
+	// BindKinds maps a node type that gives names a value to the field that
+	// holds those names, or to "*" when every named child holds one.
+	BindKinds map[string]string
+	// UpdateKinds are the BindKinds that read the name they write (i++).
+	UpdateKinds map[string]bool
 	ID          string
 	Extensions  []string
 	kinds       []Kind
@@ -119,10 +147,22 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 		kindIfStatement:               true,
 		kindForStatement:              true,
 		"expression_switch_statement": true,
-		"type_switch_statement":       true,
+		kindTypeSwitch:                true,
 		"select_statement":            true,
 	},
-	FlatKinds:   map[string]bool{"else": true},
+	FlatKinds:  map[string]bool{"else": true},
+	BlockKinds: map[string]bool{"statement_list": true},
+	LoopKinds:  map[string]bool{kindForStatement: true},
+	SwitchKinds: map[string]bool{
+		"expression_switch_statement": true, kindTypeSwitch: true, "select_statement": true,
+	},
+	BindKinds: map[string]string{
+		"parameter_declaration": fieldName, "variadic_parameter_declaration": fieldName,
+		"var_spec": fieldName, "const_spec": fieldName, "short_var_declaration": fieldLeft,
+		"range_clause": fieldLeft, "assignment_statement": fieldLeft, "receive_statement": fieldLeft,
+		kindTypeSwitch: "alias", "inc_statement": AllChildren, "dec_statement": AllChildren,
+	},
+	UpdateKinds: map[string]bool{"inc_statement": true, "dec_statement": true},
 	newLanguage: func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
 }
 
@@ -174,7 +214,15 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"match_statement":        true,
 		"conditional_expression": true,
 	},
-	FlatKinds:   map[string]bool{"else_clause": true},
+	FlatKinds:  map[string]bool{"else_clause": true},
+	BlockKinds: map[string]bool{"block": true},
+	LoopKinds:  map[string]bool{kindForStatement: true, kindWhileStatement: true},
+	BindKinds: map[string]string{
+		"parameters": AllChildren, "lambda_parameters": AllChildren,
+		"default_parameter": fieldName, "typed_default_parameter": fieldName, "named_expression": fieldName,
+		"assignment": fieldLeft, "augmented_assignment": fieldLeft, kindForStatement: fieldLeft,
+		"for_in_clause": fieldLeft, "as_pattern": "alias",
+	},
 	newLanguage: func() *ts.Language { return ts.NewLanguage(tspy.Language()) },
 }
 
@@ -186,7 +234,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	FunctionKinds: map[string]bool{
 		"function_declaration":           true,
 		"function_expression":            true,
-		"arrow_function":                 true,
+		kindArrowFunction:                true,
 		kindMethodDefinition:             true,
 		"generator_function_declaration": true,
 	},
@@ -207,11 +255,11 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	DecisionKinds: map[string]bool{
 		kindIfStatement:      true,
 		kindForStatement:     true,
-		"for_in_statement":   true,
+		kindForInStatement:   true,
 		kindWhileStatement:   true,
-		"do_statement":       true,
+		kindDoStatement:      true,
 		"switch_case":        true,
-		"catch_clause":       true,
+		kindCatchClause:      true,
 		"ternary_expression": true,
 	},
 	OpContainerKinds: map[string]bool{"binary_expression": true, "augmented_assignment_expression": true},
@@ -221,14 +269,26 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	NestKinds: map[string]bool{
 		kindIfStatement:      true,
 		kindForStatement:     true,
-		"for_in_statement":   true,
+		kindForInStatement:   true,
 		kindWhileStatement:   true,
-		"do_statement":       true,
+		kindDoStatement:      true,
 		"switch_statement":   true,
-		"catch_clause":       true,
+		kindCatchClause:      true,
 		"ternary_expression": true,
 	},
-	FlatKinds: map[string]bool{"else_clause": true},
+	FlatKinds:  map[string]bool{"else_clause": true},
+	BlockKinds: map[string]bool{"statement_block": true},
+	LoopKinds: map[string]bool{
+		kindForStatement: true, kindForInStatement: true, kindWhileStatement: true, kindDoStatement: true,
+	},
+	SwitchKinds: map[string]bool{"switch_statement": true},
+	BindKinds: map[string]string{
+		"required_parameter": fieldPattern, "optional_parameter": fieldPattern, "variable_declarator": fieldName,
+		"assignment_expression": fieldLeft, "augmented_assignment_expression": fieldLeft,
+		kindForInStatement: fieldLeft, kindCatchClause: "parameter", kindArrowFunction: "parameter",
+		"update_expression": "argument",
+	},
+	UpdateKinds: map[string]bool{"update_expression": true},
 	newLanguage: func() *ts.Language {
 		return ts.NewLanguage(tests.LanguageTypescript())
 	},
@@ -250,6 +310,11 @@ var TSX = &Language{ //nolint:gochecknoglobals // language vocabularies are cons
 	DecisionOps:      TypeScript.DecisionOps,
 	NestKinds:        TypeScript.NestKinds,
 	FlatKinds:        TypeScript.FlatKinds,
+	BlockKinds:       TypeScript.BlockKinds,
+	LoopKinds:        TypeScript.LoopKinds,
+	SwitchKinds:      TypeScript.SwitchKinds,
+	BindKinds:        TypeScript.BindKinds,
+	UpdateKinds:      TypeScript.UpdateKinds,
 	newLanguage:      func() *ts.Language { return ts.NewLanguage(tests.LanguageTSX()) },
 }
 

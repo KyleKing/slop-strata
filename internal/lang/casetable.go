@@ -69,7 +69,7 @@ func mapEntryKind(l *Language, n *ts.Node) string {
 
 // structuredKinds are the value nodes that make a map entry a record.
 var structuredKinds = map[string]bool{ //nolint:gochecknoglobals // a fixed vocabulary
-	"arrow_function": true, "array": true, "call": true, kindCallExpression: true,
+	kindArrowFunction: true, "array": true, "call": true, kindCallExpression: true,
 	"composite_literal": true, "dictionary": true, "func_literal": true, "lambda": true,
 	"list": true, "literal_value": true, "new_expression": true, "object": true,
 	"set": true, "tuple": true,

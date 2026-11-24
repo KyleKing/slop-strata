@@ -71,11 +71,19 @@ type dupFile struct {
 	fresh []bool // per statement, added and not accounted for by a statement the change removed
 	fragDecoded
 	fragHashes
-	aside  bool // a test, an example, or a benchmark
+	taken  []bool // per statement, already in a group of the snapshot's pass
+	aside  bool   // a test, an example, or a benchmark
+	whole  bool   // every statement counts as new: the snapshot's pass, which has no change
 	loaded bool
 }
 
 func (f *dupFile) count() int { return len(f.shapes) / hashWidth }
+
+// counts reports whether the file's i-th statement may be part of a run.
+func (f *dupFile) counts(i int) bool { return f.whole || f.added[i] }
+
+// isFresh reports whether the file's i-th statement adds weight to a run.
+func (f *dupFile) isFresh(i int) bool { return f.whole || f.fresh[i] }
 
 // wasAdded reports whether the change added the file's i-th statement.
 func (f *dupFile) wasAdded(i int) bool { return i < len(f.added) && f.added[i] }
@@ -209,7 +217,12 @@ func coveredBy(q *dupFile, hits []dupHit) []bool {
 var asideDirs = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
 	"example": true, "examples": true, "demo": true, "demos": true, "sample": true, "samples": true,
 	"bench": true, "benchmark": true, "benchmarks": true, "e2e": true, "playground": true, "playgrounds": true,
+	"template": true, "templates": true, "__testfixtures__": true,
 }
+
+// asidePrefix marks a directory of files a generator copies out, one
+// directory per flavor: `template-react`, `template-vue-ts`.
+const asidePrefix = "template-"
 
 // dupAside reports whether a file is a test or sits in a tree of stand-alone
 // files. The rule reports neither, and never pairs one with production code.
@@ -219,7 +232,7 @@ func dupAside(file string) bool {
 	}
 	dir := path.Dir(file)
 	for dir != "." && dir != "/" {
-		if asideDirs[path.Base(dir)] {
+		if base := path.Base(dir); asideDirs[base] || strings.HasPrefix(base, asidePrefix) {
 			return true
 		}
 		dir = path.Dir(dir)
@@ -227,6 +240,11 @@ func dupAside(file string) bool {
 
 	return false
 }
+
+// Aside reports whether a file is a test, an example, a benchmark, or another
+// file that stands alone by design: the files the duplicate passes leave out,
+// for a caller that ranks code worth reworking and wants the same ones out.
+func Aside(file string) bool { return dupAside(file) }
 
 // dupScored reports whether the pass reads a file: code with statements.
 func dupScored(file string, fp *Fingerprint) bool {
@@ -436,11 +454,19 @@ func (p *dupPass) pairsFile(q, c *dupFile, added bool) bool {
 	return !p.mirror(q, c)
 }
 
-// mirror reports whether two files of one base name hold mostly the same
-// statements: a tree copied whole and kept in step, where every change lands
-// twice by design.
+// stem is a file's name without its extension: `index.cts` and `index.mts`
+// are one file written out twice.
+func stem(file string) string {
+	base := path.Base(file)
+
+	return strings.TrimSuffix(base, path.Ext(base))
+}
+
+// mirror reports whether two files of one name, whatever their extensions,
+// hold mostly the same statements: a tree copied whole and kept in step,
+// where every change lands twice by design.
 func (p *dupPass) mirror(a, b *dupFile) bool {
-	if path.Base(a.path) != path.Base(b.path) {
+	if stem(a.path) != stem(b.path) {
 		return false
 	}
 	key := [2]string{min(a.path, b.path), max(a.path, b.path)}
@@ -471,7 +497,7 @@ func extend(q *dupFile, i int, site dupSite) dupRun {
 	c := site.file
 	cs := c.decoded()
 	same := func(a, b int) bool {
-		if a < 0 || b < 0 || a >= len(q.stmts) || b >= len(cs) || !q.added[a] {
+		if a < 0 || b < 0 || a >= len(q.stmts) || b >= len(cs) || !q.counts(a) {
 			return false
 		}
 		x, y := &q.stmts[a], &cs[b]
@@ -548,7 +574,7 @@ func (r *dupRun) backToBack() bool {
 func (p *dupPass) grow(w *dupRun, seen map[[2]string]bool) bool {
 	a := &w.file.stmts[w.q+w.n]
 	b := &w.with.decoded()[w.c+w.n]
-	fresh := w.file.fresh[w.q+w.n]
+	fresh := w.file.isFresh(w.q + w.n)
 	w.tokens += a.ntok
 	w.n++
 	if a.header {

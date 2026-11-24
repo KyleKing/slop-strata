@@ -471,7 +471,7 @@ func TestHistoryTextListsTheArchitecture(t *testing.T) {
 		}
 	}
 	for _, line := range strings.Split(section, "\n") {
-		if n := len([]rune(line)); n > archTableWidth {
+		if n := len([]rune(line)); n > tableWidth {
 			t.Errorf("architecture line is %d columns wide: %q", n, line)
 		}
 	}

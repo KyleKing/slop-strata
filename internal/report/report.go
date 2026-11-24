@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 6
+const Version = 7
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -265,7 +265,9 @@ var Docs = map[string]string{
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
 		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, and snapshot " +
 		"stale-prose rules " +
-		"and the type-any and test-reads-source families. Enable them per run with --experimental, or for a " +
+		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
+		"duplicate_groups list, which is gated for the same reason. Enable them per run with " +
+		"--experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
 		"repository, which slop-strata rules prints and the table below repeats from the labels file of the " +
@@ -476,11 +478,13 @@ var Docs = map[string]string{
 		"file, the same directory, or another), up to two more places, the size, and what differs. " +
 		"--brief prints the note as the reason of the next line. Not reported: a file in a test " +
 		"directory or under a directory named " +
-		"example, demo, sample, bench, benchmark, e2e, or playground (or the plural), where a copy is the " +
-		"point; a statement the change also removed somewhere, as written or under other names, which " +
+		"example, demo, sample, bench, benchmark, e2e, playground, or template (or the plural), under " +
+		"template-<name>, or under __testfixtures__, where a copy is the point; a statement the change " +
+		"also removed somewhere, as written or under other names, which " +
 		"makes a move, a re-indent, or a body pulled into a helper; a run right behind the code it " +
-		"repeats in the same function, which is two arms of one branch; two files of one name that are " +
-		"80% alike, which is a tree kept in step with a copy of itself; and generated files. An " +
+		"repeats in the same function, which is two arms of one branch; two files of one name, whatever " +
+		"their extensions, that are 80% alike, which is a tree kept in step with a copy of itself; and " +
+		"generated files. An " +
 		"expression is not reported in a signature, inside the function that already holds it, or when " +
 		"it holds statements, as a call does that is passed a function; stretches are not added up " +
 		"inside one function. It does not see an expression under 20 tokens or one taken apart over " +
@@ -489,6 +493,59 @@ var Docs = map[string]string{
 		"Only change reports it, so label cannot find its id. When a hit is right, call or widen the code " +
 		"the note names. When the two sites should stay apart, say why in a slop-strata:ignore comment on " +
 		"the finding's line.",
+	"split_candidates": "result.split_candidates on snapshot: the functions, tests and examples aside, that " +
+		"hold a block worth moving into a function of its own, with total and the 20 a split relieves " +
+		"most. A function is read once its cognitive complexity reaches 15. Every run of statements at " +
+		"one nesting level in it is tried: a whole loop or branch, a loop body, a branch arm, or part " +
+		"of one. For a run, split.cognitive and split.cc are the run's as a function of its own, so " +
+		"the nesting it sat under no longer counts against it, and split.remainder and " +
+		"split.remainder_cc are the function's without it. split.drop is the function's cognitive " +
+		"complexity less the larger of the two, which is what the split takes off the worse of the " +
+		"functions it leaves, and it must be 5 or more and a fifth of the function's complexity. The " +
+		"run with the largest drop is listed, among the 64 largest, when it holds no defer and no " +
+		"yield and when few variables cross its ends: split.inputs, at most 5, counts the variables " +
+		"the function gives a value before the run whose first use in the run reads them, and " +
+		"split.outputs, at most 1, the ones the run gives a value whose first use after it reads them. " +
+		"split.exits counts the return, break, and continue statements in the run that leave it, and " +
+		"is not held to a limit. The counts read names, with no scopes and no types: a variable a " +
+		"closure takes from the function around it is not counted, a method's receiver is, a write " +
+		"through a field or an index counts as a read, and a value a loop carries back to code above " +
+		"the run is not seen. So a low count says the block may come out cleanly and never that it " +
+		"will. On 60 listed candidates in twelve public repositories, read by one person, 34 were a " +
+		"block to move as it stands, 22 a judgment call (a slice of a larger step, or early exits " +
+		"that need a flag), and 4 wrong. No target: it is a place to start reading a long function, " +
+		"ranked by how much a cut there would take off it.",
+	"drop": "split.drop in result.split_candidates on snapshot: a function's cognitive complexity less " +
+		"the larger of what the split leaves in it and what the moved block scores alone. See " +
+		"split_candidates.",
+	"duplicate_groups": "result.duplicate_groups on snapshot with --experimental: code the tree holds " +
+		"more than once, with total, the removable tokens summed over every group, and the 20 groups " +
+		"with the most. It is the pass behind x/new-duplicate (see new_duplicate) with every " +
+		"statement of the tree read as new. Two stretches of statements pair when they line up " +
+		"statement for statement once identifiers and literals are set aside, and the pair's score, " +
+		"its tokens weighted by how rare each statement's shape is less 8 per name the two differ in, " +
+		"reaches 20. The heaviest pair becomes a group, and every other stretch of the tree with the " +
+		"same statements joins it, fewest differences first, while the group still meets that floor " +
+		"and its sites differ in at most 3 names together. No statement is in two groups. Then an " +
+		"expression of 20 tokens or more that repeats in statements no group holds becomes a group of " +
+		"its own (expression is true and statements 0), each site in a different function. Per group: " +
+		"sites (path, unit, the line it starts on, and last_line, where its last statement starts), " +
+		"statements and tokens of one site with signatures left out, parameters (per name the sites " +
+		"spell differently, each site's text in the order of sites, which is what a shared function " +
+		"would take), and removable. Left out as for x/new-duplicate: tests and directories of " +
+		"stand-alone files, two files of one name that are 80% alike, a stretch right behind its " +
+		"copy in one function, shapes the tree holds in 32 other places, and generated files; and " +
+		"also a group that is a table of values, where under a tenth of the identifiers and " +
+		"literals are identifiers. Gated because of what it still lists: of the top 5 groups of " +
+		"twelve public repositories, read by one person, 32 were worth merging, 16 a judgment call, " +
+		"and 12 not (all 20 Go groups held up, 15 of 20 Python, 13 of 20 TypeScript). The 12 were " +
+		"one file per locale, package, or API flavor that is kept parallel on purpose, declarations " +
+		"a TypedDict and its class both need, and public wrappers whose body is one forwarding call. " +
+		"No target. Start from the top: the list is where a merge would remove the most.",
+	"removable": "Per group in result.duplicate_groups: tokens x (sites - 1) - 8 x parameters, the tokens " +
+		"a merge of the group into one function would take out, with 8 charged for each argument the " +
+		"function would need. The sum over all groups is duplicate_groups.removable. No statement is " +
+		"counted in two groups.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +
