@@ -1,3 +1,9 @@
+## v0.14.0 (2026-11-24)
+
+### Feat
+
+- **snapshot**: infer the import graph, count fan-in, fan-out, and cycles, and report cycles as x/import-cycle
+
 ## v0.13.0 (2026-11-14)
 
 ### Feat
