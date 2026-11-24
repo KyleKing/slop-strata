@@ -248,11 +248,16 @@ func ByPath(path string) *Language {
 }
 
 // Text kinds for files with no grammar that still carry facts the cross-file
-// passes read: prose holds names of things, config holds keys code reads.
+// passes read: prose holds names of things, config holds keys code reads, and
+// a module manifest names the import path its directory answers to.
 const (
-	TextProse  = "prose"
-	TextConfig = "config"
+	TextProse    = "prose"
+	TextConfig   = "config"
+	TextManifest = "manifest"
 )
+
+// goModFile is the Go module manifest, the one file named by its whole name.
+const goModFile = "go.mod"
 
 // textExt maps non-code extensions to their text kind.
 var textExt = map[string]string{ //nolint:gochecknoglobals // fixed vocabulary
@@ -262,9 +267,13 @@ var textExt = map[string]string{ //nolint:gochecknoglobals // fixed vocabulary
 	".json": TextConfig, ".pkl": TextConfig,
 }
 
-// TextKind classifies a file with no grammar as prose or config, or "" when it
-// is neither. Such files get a text fingerprint, never a parse.
+// TextKind classifies a file with no grammar as prose, config, or a module
+// manifest, or "" when it is none. Such files get a text fingerprint, never a parse.
 func TextKind(path string) string {
+	if filepath.Base(path) == goModFile {
+		return TextManifest
+	}
+
 	return textExt[strings.ToLower(filepath.Ext(path))]
 }
 

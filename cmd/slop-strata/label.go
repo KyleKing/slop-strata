@@ -69,9 +69,10 @@ func (s *session) findingByID(ctx context.Context, rev, id string) (string, rule
 		return "", rules.Finding{}, err
 	}
 	for _, r := range reports {
-		for _, f := range rules.Identify(r.Path, r.Findings) {
-			if f.ID == id {
-				return r.Path, f, nil
+		found := rules.Identify(r.Path, r.Findings)
+		for i := range found {
+			if found[i].ID == id {
+				return r.Path, found[i], nil
 			}
 		}
 	}

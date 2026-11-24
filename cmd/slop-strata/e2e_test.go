@@ -678,7 +678,7 @@ func TestExplain(t *testing.T) {
 // metricHeaders are the text table columns that name a metric. Each needs the
 // same --explain entry as the JSON docs map.
 var metricHeaders = []string{ //nolint:gochecknoglobals // the header vocabulary is fixed
-	"churn_14d", "churn_30d", "concentration", "erosion", "hotspot", "mass", "mass_8w",
+	"churn_14d", "churn_30d", "concentration", "erosion", "fan_in", "fan_out", "hotspot", "mass", "mass_8w",
 	"oscillating_funcs", "over_50", "readd", "rework", "rule_hits", "s_30d", "s_90d",
 }
 
@@ -992,7 +992,7 @@ func TestOldBaselineFailsLoudlyUntilRewritten(t *testing.T) {
 		t.Fatalf("snapshot --write-baseline: %v", err)
 	}
 	data, err := os.ReadFile(path) //nolint:gosec // a test-owned temp path
-	if err != nil || !strings.Contains(string(data), `"version": 2`) {
+	if err != nil || !strings.Contains(string(data), `"version": 3`) {
 		t.Fatalf("baseline not rewritten: %v\n%s", err, data)
 	}
 	if _, err := runCLI(t, repo, "snapshot"); err != nil {

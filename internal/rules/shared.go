@@ -131,7 +131,7 @@ func registryEntries(ctx *Ctx, n *ts.Node) (int, string) {
 
 		return namedLiteralEntries(ctx, n, "literal_value", "keyed_element")
 	case lang.Python:
-		if n.Kind() != "assignment" {
+		if n.Kind() != kindAssignment {
 			return 0, ""
 		}
 

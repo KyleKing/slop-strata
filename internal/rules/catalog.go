@@ -18,6 +18,7 @@ const (
 	ruleXDeadExport     = "x/dead-export"
 	ruleXDupLiteral     = "x/dup-literal"
 	ruleXDupTestCase    = "x/dup-test-case"
+	ruleXLastRef        = "x/last-ref"
 	ruleXSpentTest      = "x/spent-test"
 )
 
@@ -29,7 +30,8 @@ var crossRules = []RuleInfo{ //nolint:gochecknoglobals // a fixed vocabulary
 	{ID: ruleXDeadExport, Experimental: true},
 	{ID: ruleXDupLiteral, Experimental: true},
 	{ID: ruleXDupTestCase, Experimental: true},
-	{ID: "x/last-ref"},
+	{ID: ruleXImportCycle, Experimental: true},
+	{ID: ruleXLastRef},
 	{ID: "x/single-impl-iface"},
 	{ID: ruleXSpentTest, Experimental: true},
 	{ID: "x/stale-config"},
@@ -54,4 +56,20 @@ func Catalog() []RuleInfo {
 	slices.SortFunc(out, func(a, b RuleInfo) int { return strings.Compare(a.ID, b.ID) })
 
 	return out
+}
+
+// SnapshotRule reports whether a snapshot with the given experimental setting
+// runs a built-in rule. Rules that only a change can report, and rules from
+// ast-grep packs, are not among them.
+func SnapshotRule(id string, experimental bool) bool {
+	if id == ruleXLastRef {
+		return false
+	}
+	for _, r := range Catalog() {
+		if r.ID == id {
+			return experimental || !r.Experimental
+		}
+	}
+
+	return false
 }

@@ -93,6 +93,7 @@ type findingRow struct {
 	Path  string `json:"path"`
 	Rule  string `json:"rule"`
 	Match string `json:"match,omitempty"`
+	Note  string `json:"note,omitempty"`
 	Line  int    `json:"line"`
 	New   bool   `json:"new"`
 }
@@ -479,7 +480,8 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 		sf.beforePrint = rep.Print
 		res.beforeByPath[oldPathOf(*f)] = rep.Metrics
 		sf.delta.MassBefore = fileMass(rep.Metrics)
-		for _, fn := range rep.Findings {
+		for i := range rep.Findings {
+			fn := &rep.Findings[i]
 			old[fn.Rule+"\x00"+fn.Match] = true
 			oldAt[ruleLine(fn.Rule, fn.Line)] = true
 		}
@@ -506,7 +508,9 @@ func (s *session) scoreFile(ctx context.Context, f *vcs.CommitFile, oldBlobs map
 	sf.delta.MassAfter = fileMass(rep.Metrics)
 	sf.delta.Lang = rep.Lang
 	added := addedLines(f.Hunks)
-	for _, fn := range sup.Apply(f.Path, rep.Print, rep.Findings) {
+	kept := sup.Apply(f.Path, rep.Print, rep.Findings)
+	for i := range kept {
+		fn := &kept[i]
 		row := findingRow{ID: fn.ID, Path: f.Path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match}
 		if oldLine, ok := added[fn.Line]; ok {
 			row.New = fn.Match != "" || !oldAt[ruleLine(fn.Rule, oldLine)]
@@ -1205,7 +1209,9 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 ) {
 	if basePrints, err := s.treePrints(ctx, base); err == nil {
 		s.lastRefs(ctx, end, files, scored, basePrints, sup, res)
-		s.removedNameProse(ctx, basePrints, files, newSides, scored, sup, res)
+		rev, touched := s.revPrints(ctx, basePrints, files, newSides, scored)
+		addCrossFindings(rules.RemovedNameProse(basePrints, rev, touched), rev, sup, res)
+		addCrossFindings(rules.NewImportCycles(basePrints, rev, s.cfg.Experimental), rev, sup, res)
 	}
 	sortFindings(res.Findings)
 }
@@ -1246,11 +1252,7 @@ func (s *session) lastRefs(ctx context.Context, end string,
 			}
 		}
 		path := scored[i].delta.Path
-		for _, f := range sup.Apply(path, ap, hits) {
-			res.Findings = append(res.Findings, findingRow{
-				ID: f.ID, Path: path, Rule: f.Rule, Line: f.Line, Match: f.Match, New: true,
-			})
-		}
+		addNewFindings(path, sup.Apply(path, ap, hits), res)
 	}
 }
 
@@ -1343,10 +1345,10 @@ func (s *session) readTreePrints(ctx context.Context, rev string) (map[string]*r
 	return prints, nil
 }
 
-// removedNameProse flags prose naming a name this change removed, reading the revision as base plus changed files.
-func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*rules.Fingerprint,
-	files []vcs.CommitFile, newSides []side, scored []scoredFile, sup *rules.Suppressor, res *changeResult,
-) {
+// revPrints reads the end of a change as its base tree plus the changed files, and names the files it touched.
+func (s *session) revPrints(ctx context.Context, basePrints map[string]*rules.Fingerprint,
+	files []vcs.CommitFile, newSides []side, scored []scoredFile,
+) (map[string]*rules.Fingerprint, map[string]bool) {
 	rev := maps.Clone(basePrints)
 	touched := map[string]bool{}
 	for i := range files {
@@ -1369,13 +1371,25 @@ func (s *session) removedNameProse(ctx context.Context, basePrints map[string]*r
 		}
 	}
 
-	hits := rules.RemovedNameProse(basePrints, rev, touched)
+	return rev, touched
+}
+
+// addCrossFindings sets aside what the suppressor covers and adds the rest as new findings of the change.
+func addCrossFindings(hits map[string][]rules.Finding, prints map[string]*rules.Fingerprint,
+	sup *rules.Suppressor, res *changeResult,
+) {
 	for _, path := range report.SortedKeys(hits) {
-		for _, fn := range sup.Apply(path, rev[path], hits[path]) {
-			res.Findings = append(res.Findings, findingRow{
-				ID: fn.ID, Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, New: true,
-			})
-		}
+		addNewFindings(path, sup.Apply(path, prints[path], hits[path]), res)
+	}
+}
+
+// addNewFindings lists one file's cross-file findings as new to the change.
+func addNewFindings(path string, kept []rules.Finding, res *changeResult) {
+	for i := range kept {
+		fn := &kept[i]
+		res.Findings = append(res.Findings, findingRow{
+			ID: fn.ID, Path: path, Rule: fn.Rule, Line: fn.Line, Match: fn.Match, Note: fn.Note, New: true,
+		})
 	}
 }
 

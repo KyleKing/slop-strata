@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 3. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 4. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 3}
+    "schema": {"const": 4}
   },
   "allOf": [
     {
@@ -39,11 +39,12 @@
     "counts": {
       "description": "Files the run could not score, and findings it set aside. A non-zero errors or skipped count means the numbers cover less of the tree.",
       "type": "object",
-      "required": ["errors", "skipped", "suppressed"],
+      "required": ["errors", "skipped", "suppressed", "stale_baseline"],
       "additionalProperties": false,
       "properties": {
         "errors": {"type": "integer", "minimum": 0},
         "skipped": {"type": "integer", "minimum": 0},
+        "stale_baseline": {"type": "integer", "minimum": 0, "description": "Baseline entries no finding of the snapshot carries the id of; see the stale_baseline doc. Always zero on change and history, which do not score the whole tree against the baseline."},
         "suppressed": {
           "description": "Findings set aside, each counted once under the first of ignored, labeled_fp, and baseline. Always zero on history.",
           "type": "object",
@@ -100,8 +101,9 @@
         "path": {"type": "string"},
         "rule": {"type": "string"},
         "match": {"type": "string"},
+        "note": {"type": "string", "description": "What a cross-file finding adds to its match, such as an import cycle's cheapest cut."},
         "line": {"type": "integer", "minimum": 0},
-        "new": {"type": "boolean", "description": "True when the finding sits on a line the change added."}
+        "new": {"type": "boolean", "description": "True when the finding sits on a line the change added, or is a cross-file finding the change caused, such as a new or grown import cycle."}
       }
     },
     "fileDelta": {
@@ -232,7 +234,7 @@
     },
     "snapshotDir": {
       "type": "object",
-      "required": ["dir", "files", "erosion", "mass", "table_mass", "funcs", "over_50", "touches_90d", "hotspot", "findings"],
+      "required": ["dir", "files", "erosion", "mass", "table_mass", "funcs", "over_50", "touches_90d", "hotspot", "findings", "fan_in", "fan_out"],
       "properties": {
         "dir": {"type": "string"},
         "files": {"type": "integer"},
@@ -244,12 +246,14 @@
         "touches_90d": {"type": "integer", "description": "Commits that touched the directory in the 90 days ending at the scored revision; see the touches_90d doc."},
         "hotspot": {"type": "number", "description": "touches_90d times mass; see the hotspot doc."},
         "findings": {"type": "integer"},
+        "fan_in": {"type": "integer", "minimum": 0, "description": "Distinct other directories whose files import this one's; see the fan_in doc."},
+        "fan_out": {"type": "integer", "minimum": 0, "description": "Distinct other directories this one's files import; see the fan_out doc."},
         "provisional": {"type": "boolean"}
       }
     },
     "snapshotResult": {
       "type": "object",
-      "required": ["rev", "dirs", "files", "top_functions", "findings", "total"],
+      "required": ["rev", "dirs", "files", "top_functions", "findings", "total", "imports"],
       "properties": {
         "rev": {"type": "string"},
         "dirs": {"type": "array", "items": {"$ref": "#/$defs/snapshotDir"}},
@@ -312,12 +316,26 @@
                 "match": {"type": "string"},
                 "scope": {"type": "string", "description": "The enclosing function, when the rule reads one."},
                 "anchor": {"type": "string", "description": "Eight hex characters hashed from the trimmed text of the finding's line. Part of the id."},
-                "note": {"type": "string"}
+                "note": {"type": "string"},
+                "members": {"type": "array", "items": {"type": "string"}, "description": "On a set-shaped finding such as x/import-cycle, the sorted files that key it. The id is then hashed from the rule and these alone."}
               }
             }
           }
         },
         "total": {"$ref": "#/$defs/aggregates"},
+        "imports": {
+          "type": "object",
+          "description": "The resolved import graph of the tree; see the import_edges and import_cycles docs.",
+          "required": ["edges", "type_edges", "deferred_edges", "cycles", "largest_cycle"],
+          "additionalProperties": false,
+          "properties": {
+            "edges": {"type": "integer", "minimum": 0, "description": "File-to-file imports resolved inside the tree, of every kind."},
+            "type_edges": {"type": "integer", "minimum": 0, "description": "Of edges, the ones only a type checker reads."},
+            "deferred_edges": {"type": "integer", "minimum": 0, "description": "Of edges, the ones inside a function body, a dynamic import(), or a Python main guard."},
+            "cycles": {"type": "integer", "minimum": 0, "description": "Groups of two or more non-test files that import each other at module level."},
+            "largest_cycle": {"type": "integer", "minimum": 0, "description": "Files in the largest such group, or 0 with none."}
+          }
+        },
         "skipped": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}},
         "errors": {"type": "array", "items": {"$ref": "#/$defs/skippedRow"}}
       }

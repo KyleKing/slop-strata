@@ -13,6 +13,7 @@ import (
 
 	"github.com/kyleking/aragonite/vcs"
 
+	"github.com/kyleking/slop-strata/internal/depgraph"
 	"github.com/kyleking/slop-strata/internal/engine"
 	"github.com/kyleking/slop-strata/internal/lang"
 	"github.com/kyleking/slop-strata/internal/lineage"
@@ -32,6 +33,16 @@ type snapshotResult struct {
 	Skipped  []skippedRow               `json:"skipped,omitempty"`
 	Errors   []skippedRow               `json:"errors,omitempty"`
 	Total    structure.Aggregates       `json:"total"`
+	Imports  importSummary              `json:"imports"`
+}
+
+// importSummary counts the resolved import graph of the scored tree.
+type importSummary struct {
+	Edges         int `json:"edges"`
+	TypeEdges     int `json:"type_edges"`
+	DeferredEdges int `json:"deferred_edges"`
+	Cycles        int `json:"cycles"`
+	LargestCycle  int `json:"largest_cycle"`
 }
 
 // dirSnapshot is one directory's rollup.
@@ -46,6 +57,8 @@ type dirSnapshot struct {
 	Touches90d  int     `json:"touches_90d"`
 	Hotspot     float64 `json:"hotspot"`
 	Findings    int     `json:"findings"`
+	FanIn       int     `json:"fan_in"`
+	FanOut      int     `json:"fan_out"`
 	Provisional bool    `json:"provisional,omitempty"`
 }
 
@@ -91,6 +104,10 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		paths = append(paths, e.Path)
+	}
 	sup, err := s.suppressor(a.writeBaseline)
 	if err != nil {
 		return err
@@ -100,8 +117,12 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 		return err
 	}
 	res := s.snapshotRollup(ctx, rev, reports, sup, touches)
+	res.addImports(engine.ResolveImports(reports, paths))
 	counts := countRows(res.Skipped, res.Errors)
 	counts.Suppressed = suppressedCounts(sup)
+	counts.StaleBaseline = sup.StaleBaseline(func(rule string) bool {
+		return rules.SnapshotRule(rule, s.cfg.Experimental)
+	})
 
 	if a.writeBaseline {
 		if err := s.writeBaseline(reports); err != nil {
@@ -166,6 +187,36 @@ func (s *session) treeReports(ctx context.Context, entries []vcs.TreeEntry) ([]*
 	engine.CrossFile(reports, paths, s.cfg)
 
 	return reports, nil
+}
+
+// addImports folds the import graph into the result: the totals, and each directory's fan-in and fan-out.
+// A production directory counts the edges between production files. A test directory counts the edges that
+// start or end at a test file.
+func (res *snapshotResult) addImports(im *rules.Imports) {
+	for _, e := range im.Graph.Edges() {
+		res.Imports.Edges++
+		switch e.Kind {
+		case depgraph.TypeOnly:
+			res.Imports.TypeEdges++
+		case depgraph.Deferred, depgraph.MainGuard:
+			res.Imports.DeferredEdges++
+		case depgraph.Runtime:
+		}
+	}
+	cycles := im.Cycles()
+	res.Imports.Cycles = len(cycles)
+	for i := range cycles {
+		res.Imports.LargestCycle = max(res.Imports.LargestCycle, len(cycles[i].Members))
+	}
+	touchesTest := func(e depgraph.Edge) bool { return lang.IsTestPath(e.From) || lang.IsTestPath(e.To) }
+	production := im.Graph.Filter(func(e depgraph.Edge) bool { return !touchesTest(e) }).Fans(lineage.DirOf)
+	for i, d := range res.Dirs {
+		res.Dirs[i].FanIn, res.Dirs[i].FanOut = production[d.Dir].In, production[d.Dir].Out
+	}
+	tests := im.Graph.Filter(touchesTest).Fans(lineage.DirOf)
+	for i, d := range res.TestDirs {
+		res.TestDirs[i].FanIn, res.TestDirs[i].FanOut = tests[d.Dir].In, tests[d.Dir].Out
+	}
 }
 
 // recentSnapshotDays is the window of the touches behind a snapshot's hotspot.
@@ -399,6 +450,10 @@ func (s *session) writeBaseline(reports []*engine.FileReport) error {
 func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	report.Fprintf(w, "erosion %.2f · mass %.0f · %d funcs · %d over 50 lines\n\n",
 		res.Total.Erosion, res.Total.Mass, res.Total.FuncCount, res.Total.Over50)
+	if im := res.Imports; im.Edges > 0 {
+		report.Fprintf(w, "imports: %d edges · %d import_cycles · largest %d files\n\n",
+			im.Edges, im.Cycles, im.LargestCycle)
+	}
 	printDirTable(w, res.Dirs)
 	provisionalNote(w, res.Dirs, func(d dirSnapshot) bool { return d.Provisional }, structure.ProvisionalFuncs)
 	printFileTable(w, res.Files, all)
@@ -411,7 +466,8 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	if all && len(res.Findings) > 0 {
 		report.Fprintln(w)
 		for _, p := range report.SortedKeys(res.Findings) {
-			for _, f := range res.Findings[p] {
+			for i := range res.Findings[p] {
+				f := &res.Findings[p][i]
 				report.Fprintf(w, "%s:%d  %s  %s  %s\n", p, f.Line, f.ID, f.Rule, strings.TrimSpace(f.Match))
 			}
 		}
@@ -430,10 +486,13 @@ func printDirTable(w io.Writer, dirs []dirSnapshot) {
 		rows = append(rows, []string{
 			d.Dir, strconv.Itoa(d.Files), provisionalMarked(fmt.Sprintf("%.2f", d.Erosion), d.Provisional),
 			fmt.Sprintf("%.0f", d.Mass), fmt.Sprintf("%.0f", d.TableMass),
-			strconv.Itoa(d.Over50), strconv.Itoa(d.Findings), fmt.Sprintf("%.0f", d.Hotspot),
+			strconv.Itoa(d.Over50), strconv.Itoa(d.Findings), strconv.Itoa(d.FanIn), strconv.Itoa(d.FanOut),
+			fmt.Sprintf("%.0f", d.Hotspot),
 		})
 	}
-	header := []string{colDir, "files", colErosion, colMass, "table_mass", "over_50", "rule_hits", colHotspot}
+	header := []string{
+		colDir, "files", colErosion, colMass, "table_mass", "over_50", "rule_hits", "fan_in", "fan_out", colHotspot,
+	}
 	report.Table(w, header, rows)
 }
 

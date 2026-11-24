@@ -26,11 +26,24 @@ func CollectText(path string, content []byte) *Fingerprint {
 		fp.ProseRefs = proseTokens(outsideFences(string(content)), 0)
 	case lang.TextConfig:
 		fp.ConfigKeys = configKeys(path, content)
+	case lang.TextManifest:
+		fp.GoModule = goModulePath(content)
 	}
 	fp.EntryRefs = packageEntryRefs(path, content)
 	fp.Directives = textDirectives(path, content)
 
 	return fp
+}
+
+// goModulePath reads the module path a go.mod declares, or "" without one.
+func goModulePath(content []byte) string {
+	for _, line := range strings.Split(string(content), "\n") {
+		if fields := strings.Fields(line); len(fields) > 1 && fields[0] == "module" {
+			return strings.Trim(fields[1], "\"`")
+		}
+	}
+
+	return ""
 }
 
 // entryManifests maps each package manifest's file name to the reader of the

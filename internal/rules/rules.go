@@ -24,15 +24,21 @@ const (
 
 // Tree-sitter node kinds and texts several rules match on.
 const (
+	kindAssignment      = "assignment"
 	kindCallExpression  = "call_expression"
 	kindExportStatement = "export_statement"
+	kindExpressionStmt  = "expression_statement"
 	kindFunctionDecl    = "function_declaration"
 	kindFunctionDef     = "function_definition"
 	kindIdentifier      = "identifier"
+	kindImport          = "import"
+	kindImportFrom      = "import_from_statement"
+	kindImportStmt      = "import_statement"
 	kindMethodDecl      = "method_declaration"
 	kindTypeIdentifier  = "type_identifier"
 	kindGenericType     = "generic_type"
 	textAny             = "any"
+	textRequire         = "require"
 	textUnknown         = "unknown"
 )
 
@@ -47,7 +53,10 @@ type Finding struct {
 	// Anchor hashes the trimmed text of the finding's line, so an ID keeps to its line when a
 	// hit with the same rule, scope, and match appears above it.
 	Anchor string `json:"anchor,omitempty"`
-	Line   int    `json:"line"`
+	// Members are the sorted files of a set-shaped finding such as an import cycle. When set
+	// they alone, with the rule, make the ID, so the ID holds while lines and imports move.
+	Members []string `json:"members,omitempty"`
+	Line    int      `json:"line"`
 }
 
 // Ctx is what a per-blob rule sees.

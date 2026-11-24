@@ -563,7 +563,8 @@ func scoreBlob(cs *commitScore, f vcs.CommitFile, rep *engine.FileReport, massBe
 	delta := mass - massBefore
 	cs.wk.MassNet += delta
 	pairCell(cs.pairs, cs.week, lineage.DirOf(f.Path)).ClassMass[cs.klass] += delta
-	for _, fn := range rep.Findings {
+	for i := range rep.Findings {
+		fn := &rep.Findings[i]
 		v := cs.viral[fn.Rule]
 		if v == nil {
 			v = &viralRow{Rule: fn.Rule, FirstWeek: cs.week, HitsByClass: map[string]int{}, dirs: map[string]bool{}}
