@@ -231,7 +231,15 @@ faac203451 repeats loadUsers at store/users.go:5, in the same directory: 12 stat
 
 The rule reads each file as a sequence of statements and looks for a run of added statements that lines up with a run somewhere else, the same tokens in the same order once names and literals are set aside. A whole function is not needed: two statements can be enough when they are long and rare. Each name or literal the two sites differ in costs the run 8 tokens, since a shared function would take it as a parameter, and more than three ends it. Statements whose shape the tree holds in many places, such as an error check, count for little or nothing.
 
-It stays quiet about tests, examples, and benchmarks, about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name that are 80% alike), and about generated files. It does not see a repeated expression inside a longer statement, or a copy with a statement added, dropped, or reordered beyond the part that still lines up. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
+It finds a copy two more ways. Stretches too short to report alone are added up when they sit between the same two functions, so a copy with a line added, dropped, reshaped, or moved is still one finding, and its note says how many stretches it is in. An expression of 20 tokens or more that a new statement shares with a statement of another shape in another function is reported as an expression, with the advice to give it a name:
+
+```text
+repeats an expression of total at bill/total.go:4, in the same directory: 36 tokens, identical. Give it one name that both places use instead of writing it again
+```
+
+A change that adds the same copy several times reports it once, and the note ends with how many times and where.
+
+It stays quiet about tests, examples, and benchmarks, about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name that are 80% alike), and about generated files. An expression is left alone in a signature, inside the function that already holds it, and when it is a call wrapped around a function body. It does not see an expression under 20 tokens, one taken apart over several statements, or a copy that renames a name or two in every statement. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
 
 ## Setting findings aside
 
@@ -354,6 +362,15 @@ A fingerprint also keeps each file's statements, which `x/new-duplicate` reads. 
 | vite           | 631   | 1.99 s      | 1.95 s     | 0.40 s      | 0.42 s     | 4.3 MB       | 6.0 MB      |
 | TanStack Query | 2,107 | 4.83 s      | 4.86 s     | 0.97 s      | 0.95 s     | 10.5 MB      | 13.6 MB     |
 | pydantic       | 3,163 | 4.97 s      | 5.46 s     | 1.02 s      | 1.12 s     | 12.8 MB      | 16.9 MB     |
+
+The same rule also keeps a record of every expression of 20 tokens or more. That added 1.3% to 2.5% to the cache and nothing a run shows: `BenchmarkCollect` medians moved by under 2%, which is inside what they vary by. The table is the build before those records and the one after, measured the same way with the best of five warm runs:
+
+| Repository     | Files | Cold before | Cold after | Warm before | Warm after | Cache before | Cache after |
+| -------------- | ----- | ----------- | ---------- | ----------- | ---------- | ------------ | ----------- |
+| fzf            | 91    | 1.00 s      | 1.02 s     | 0.12 s      | 0.12 s     | 1.51 MB      | 1.53 MB     |
+| vite           | 631   | 1.99 s      | 1.90 s     | 0.41 s      | 0.40 s     | 6.03 MB      | 6.14 MB     |
+| TanStack Query | 2,107 | 4.71 s      | 4.79 s     | 0.86 s      | 0.91 s     | 13.55 MB     | 13.89 MB    |
+| pydantic       | 3,163 | 5.20 s      | 4.99 s     | 1.06 s      | 0.97 s     | 16.92 MB     | 17.30 MB    |
 
 ## Read more
 

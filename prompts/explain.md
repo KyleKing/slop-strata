@@ -25,7 +25,9 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    <reason>` on its line, with the reason a reviewer would accept.
    An `x/new-duplicate` finding's `note` names the code the new lines repeat.
    Read both sites before you agree, and when it is right, call or widen
-   that code: a copy under new names is the finding again.
+   that code: a copy under new names is the finding again. A note that
+   starts "repeats an expression of" is about one expression inside a
+   statement, and the repair is one name both places use.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

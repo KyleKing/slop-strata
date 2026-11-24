@@ -387,29 +387,48 @@ const (
 	guardSame = "\t\treturn store.Reserve(req.Tenant, req.User.ID, cfg.Limits[req.User.Plan]-req.Used)\n"
 )
 
+// TestNewDuplicatesNeedsMoreThanASharedCondition pins that a run of code never
+// ends on a shared `if` line: a long condition over two bodies is reported as
+// the expression it is, and a short one not at all.
 func TestNewDuplicatesNeedsMoreThanASharedCondition(t *testing.T) {
 	t.Parallel()
 	admit := guardOpen + guardCheck + guardSame + "\t}\n\n\treturn errDenied\n}\n"
 	tests := []struct {
 		name string
 		body string
-		want int
+		want string
 	}{
 		{
 			name: "the condition and what it guards",
-			body: guardCheck + guardSame + "\t}\n\n\treturn nil\n}\n", want: 1,
+			body: guardCheck + guardSame + "\t}\n\n\treturn nil\n}\n", want: "repeats admit at gate/admit.go:3",
 		},
-		{name: "the condition alone", body: guardCheck + "\t\tlog.Print(req.Tenant)\n\t}\n\n\treturn nil\n}\n"},
+		{
+			name: "the condition alone",
+			body: guardCheck + "\t\tlog.Print(req.Tenant)\n\t}\n\n\treturn nil\n}\n",
+			want: "repeats an expression of admit at gate/admit.go:4",
+		},
+		{
+			name: "a short condition alone",
+			body: "\tif req.User != nil && req.User.Active {\n\t\tlog.Print(req.Tenant)\n\t}\n\n\treturn nil\n}\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tree := map[string]string{"gate/admit.go": strings.Replace(admit, "NAME", "admit", 1)}
+			tree := map[string]string{
+				"gate/admit.go": strings.Replace(admit, "NAME", "admit", 1),
+				"gate/probe.go": strings.Replace(guardOpen, "NAME", "probe", 1) +
+					"\tif req.User != nil && req.User.Active {\n\t\treturn nil\n\t}\n\n\treturn errDenied\n}\n",
+			}
 			got := newDuplicates(t, tree, []dupChange{
 				{path: "gate/extend.go", after: strings.Replace(guardOpen, "NAME", "extend", 1) + tt.body},
 			}, true)
-			if len(got["gate/extend.go"]) != tt.want {
-				t.Errorf("got %+v, want %d findings", got, tt.want)
+			fs := got["gate/extend.go"]
+			if tt.want == "" && len(fs) != 0 {
+				t.Errorf("got %+v, want no finding", fs)
+			}
+			if tt.want != "" && (len(fs) != 1 || !strings.HasPrefix(fs[0].Note, tt.want)) {
+				t.Errorf("got %+v, want one finding that %s", fs, tt.want)
 			}
 		})
 	}

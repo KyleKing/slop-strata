@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"cmp"
 	"fmt"
 	"maps"
 	"math"
@@ -66,15 +65,14 @@ const (
 
 // dupFile is one code file of the tree, decoded as far as the pass needed.
 type dupFile struct {
-	fp     *Fingerprint
-	path   string
-	added  []bool // per statement, on a line the change added; nil for an untouched file
-	fresh  []bool // per statement, added and not accounted for by a statement the change removed
-	stmts  []fragStmt
-	names  []string
-	shapes []byte
-	exacts []byte
+	fp    *Fingerprint
+	path  string
+	added []bool // per statement, on a line the change added; nil for an untouched file
+	fresh []bool // per statement, added and not accounted for by a statement the change removed
+	fragDecoded
+	fragHashes
 	aside  bool // a test, an example, or a benchmark
+	loaded bool
 }
 
 func (f *dupFile) count() int { return len(f.shapes) / hashWidth }
@@ -84,8 +82,9 @@ func (f *dupFile) wasAdded(i int) bool { return i < len(f.added) && f.added[i] }
 
 // decoded answers the file's statements, unpacked on first use.
 func (f *dupFile) decoded() []fragStmt {
-	if f.stmts == nil {
-		f.stmts, f.names = f.fp.Frags.decode()
+	if !f.loaded {
+		f.fragDecoded = f.fp.Frags.decode()
+		f.loaded = true
 	}
 
 	return f.stmts
@@ -98,22 +97,38 @@ type dupSite struct {
 }
 
 // dupRun is two aligned stretches of statements: n of them from q in the
-// changed file and from c in the file that already held them.
+// changed file and from c in the file that already held them. A run of one
+// expression has n of 1 and says which expression of each statement it is. A
+// run joined from several stretches lists them as parts, in the order of the
+// changed file, and is itself the first of them with the sums of all.
 type dupRun struct {
 	file, with *dupFile
 	pairs      [][2]string // the distinct texts the two sites differ in
+	parts      []dupRun
 	q, c, n    int
+	qsub, csub int // the expression of each side, when expr is set
 	tokens     int
 	weight     float64
 	score      float64
+	expr       bool
 }
 
 // dupPass is one run of the rule over a change.
 type dupPass struct {
 	files   map[string]*dupFile
-	df      map[uint32]int
-	occ     map[uint32][]dupSite
+	df      map[uint32]int       // per statement shape the change added, the places that hold it
+	occ     map[uint32][]dupSite // those places, while under the cap
+	subDF   map[uint32]int       // the same two for the expressions the change added
+	subOcc  map[uint32][]dupSite
 	mirrors map[[2]string]bool
+	net     netCount
+}
+
+func newDupPass() *dupPass {
+	return &dupPass{
+		files: map[string]*dupFile{}, df: map[uint32]int{}, occ: map[uint32][]dupSite{},
+		subDF: map[uint32]int{}, subOcc: map[uint32][]dupSite{}, mirrors: map[[2]string]bool{},
+	}
 }
 
 // NewDuplicates flags code a change added that repeats code the tree already
@@ -130,23 +145,62 @@ func NewDuplicates(rev map[string]*Fingerprint, changes []DupChange, experimenta
 		return nil
 	}
 
-	p := &dupPass{
-		files: map[string]*dupFile{}, df: map[uint32]int{}, occ: map[uint32][]dupSite{},
-		mirrors: map[[2]string]bool{},
+	out := map[string][]Finding{}
+	for _, fh := range dupHits(rev, changes) {
+		if fs := dupFindings(fh.file, fh.hits); len(fs) > 0 {
+			out[fh.file.path] = fs
+		}
 	}
+
+	return out
+}
+
+// fileHits is the hits of one changed file.
+type fileHits struct {
+	file *dupFile
+	hits []dupHit
+}
+
+// dupHits runs the pass: per changed file with new statements, the stretches
+// that repeat code, each with every site it repeats. Whole statements that
+// line up come first, then stretches too short alone that add up between two
+// functions, then an expression inside statements nothing else covered.
+func dupHits(rev map[string]*Fingerprint, changes []DupChange) []fileHits {
+	p := newDupPass()
 	queries := p.queries(rev, changes)
 	if len(queries) == 0 {
 		return nil
 	}
 	p.scan(rev, queries)
-	out := map[string][]Finding{}
+	out := make([]fileHits, 0, len(queries))
 	for _, q := range queries {
-		if fs := dupFindings(q, pickRuns(p.runs(q))); len(fs) > 0 {
-			out[q.path] = fs
+		runs, parts := p.runs(q)
+		hits := pickRuns(runs)
+		hits = append(hits, joins(q, parts, hits)...)
+		hits = append(hits, p.exprs(q, coveredBy(q, hits))...)
+		slices.SortStableFunc(hits, byLine)
+		out = append(out, fileHits{file: q, hits: hits})
+	}
+
+	return mergeCopies(out)
+}
+
+// coveredBy marks the statements of q that a hit already reports.
+func coveredBy(q *dupFile, hits []dupHit) []bool {
+	covered := make([]bool, len(q.stmts))
+	for i := range hits {
+		first := &hits[i].runs[0]
+		for k := first.q; k < first.q+first.n; k++ {
+			covered[k] = true
+		}
+		for j := range first.parts {
+			for k := first.parts[j].q; k < first.parts[j].q+first.parts[j].n; k++ {
+				covered[k] = true
+			}
 		}
 	}
 
-	return out
+	return covered
 }
 
 // asideDirs are the directories, beside the test ones, whose files stand
@@ -182,7 +236,8 @@ func dupScored(file string, fp *Fingerprint) bool {
 // queries lists the changed files that hold a new statement, with each
 // statement marked added and fresh.
 func (p *dupPass) queries(rev map[string]*Fingerprint, changes []DupChange) []*dupFile {
-	net := netCounts(changes)
+	p.net = netCounts(changes)
+	net := p.net
 	var out []*dupFile
 	for i := range changes {
 		ch := &changes[i]
@@ -210,22 +265,30 @@ func (p *dupPass) queries(rev map[string]*Fingerprint, changes []DupChange) []*d
 }
 
 // netCount is, per exact hash and per shape hash, how many more statements
-// the after sides of a change hold than its before sides did.
+// the after sides of a change hold than its before sides did, and the same
+// for expressions.
 type netCount struct {
-	exact, shape map[uint32]int
+	exact, shape       map[uint32]int
+	subExact, subShape map[uint32]int
 }
 
 // netCounts tallies a change's statements, after sides less before sides.
 func netCounts(changes []DupChange) netCount {
-	net := netCount{exact: map[uint32]int{}, shape: map[uint32]int{}}
+	net := netCount{
+		exact: map[uint32]int{}, shape: map[uint32]int{}, subExact: map[uint32]int{}, subShape: map[uint32]int{},
+	}
 	tally := func(fp *Fingerprint, by int) {
 		if fp == nil {
 			return
 		}
-		shapes, exacts, _ := fp.Frags.hashes()
-		for i := range len(shapes) / hashWidth {
-			net.shape[hashAt(shapes, i)] += by
-			net.exact[hashAt(exacts, i)] += by
+		h := fp.Frags.hashes()
+		for i := range len(h.shapes) / hashWidth {
+			net.shape[hashAt(h.shapes, i)] += by
+			net.exact[hashAt(h.exacts, i)] += by
+		}
+		for i := range len(h.subShapes) / hashWidth {
+			net.subShape[hashAt(h.subShapes, i)] += by
+			net.subExact[hashAt(h.subExacts, i)] += by
 		}
 	}
 	for i := range changes {
@@ -241,8 +304,7 @@ func (p *dupPass) file(name string, fp *Fingerprint) *dupFile {
 	if f, ok := p.files[name]; ok {
 		return f
 	}
-	f := &dupFile{path: name, fp: fp, aside: dupAside(name)}
-	f.shapes, f.exacts, _ = fp.Frags.hashes()
+	f := &dupFile{path: name, fp: fp, aside: dupAside(name), fragHashes: fp.Frags.hashes()}
 	p.files[name] = f
 
 	return f
@@ -258,30 +320,40 @@ func (p *dupPass) scan(rev map[string]*Fingerprint, queries []*dupFile) {
 				p.df[st.shape] = 0
 			}
 		}
+		for i := range q.subs {
+			if q.fresh[q.subs[i].stmt] {
+				p.subDF[q.subs[i].shape] = 0
+			}
+		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(rev)) {
-		if dupScored(name, rev[name]) {
-			p.scanFile(name, rev[name])
+		if !dupScored(name, rev[name]) {
+			continue
 		}
+		h := rev[name].Frags.hashes()
+		p.scanTable(name, rev[name], h.shapes, p.df, p.occ)
+		p.scanTable(name, rev[name], h.subShapes, p.subDF, p.subOcc)
 	}
 }
 
-// scanFile adds one file's statements to the counts and the kept places.
-func (p *dupPass) scanFile(name string, fp *Fingerprint) {
-	shapes, _, _ := fp.Frags.hashes()
+// scanTable adds one file's statements or expressions to the counts and the
+// kept places.
+func (p *dupPass) scanTable(name string, fp *Fingerprint, shapes []byte, df map[uint32]int,
+	occ map[uint32][]dupSite,
+) {
 	var f *dupFile
 	for i := range len(shapes) / hashWidth {
 		h := hashAt(shapes, i)
-		n, wanted := p.df[h]
+		n, wanted := df[h]
 		if !wanted {
 			continue
 		}
-		p.df[h] = n + 1
+		df[h] = n + 1
 		if n <= dupCap {
 			if f == nil {
 				f = p.file(name, fp)
 			}
-			p.occ[h] = append(p.occ[h], dupSite{file: f, idx: i})
+			occ[h] = append(occ[h], dupSite{file: f, idx: i})
 		}
 	}
 }
@@ -289,8 +361,11 @@ func (p *dupPass) scanFile(name string, fp *Fingerprint) {
 // idf weighs a statement by how rare its shape is: 1 while the tree holds it
 // in at most dupFree other places, falling with the logarithm of the count to
 // 0 at dupCap.
-func (p *dupPass) idf(shape uint32) float64 {
-	others := p.df[shape] - 1
+func (p *dupPass) idf(shape uint32) float64 { return rarity(p.df[shape]) }
+
+// rarity is the weight of a shape the tree holds in so many places.
+func rarity(places int) float64 {
+	others := places - 1
 	switch {
 	case others <= dupFree:
 		return 1
@@ -302,9 +377,10 @@ func (p *dupPass) idf(shape uint32) float64 {
 }
 
 // runs lists the best window of every aligned run that starts from a fresh,
-// rare statement of q and meets the floors.
-func (p *dupPass) runs(q *dupFile) []dupRun {
-	var out []dupRun
+// rare statement of q: first the ones that meet the floor, then the ones that
+// do not and may still add up with others.
+func (p *dupPass) runs(q *dupFile) ([]dupRun, []dupRun) {
+	var out, parts []dupRun
 	type start struct {
 		with *dupFile
 		q, c int
@@ -323,13 +399,18 @@ func (p *dupPass) runs(q *dupFile) []dupRun {
 				continue
 			}
 			seen[start{run.with, run.q, run.c}] = true
-			if best, ok := p.window(run); ok && !best.backToBack() {
+			best, ok := p.window(run)
+			switch {
+			case best.n == 0 || best.backToBack():
+			case ok:
 				out = append(out, best)
+			default:
+				parts = append(parts, best)
 			}
 		}
 	}
 
-	return out
+	return out, parts
 }
 
 // pairs reports whether statement i of q may be matched with a site: not with
@@ -341,10 +422,14 @@ func (p *dupPass) pairs(q *dupFile, i int, site dupSite) bool {
 	if c == q {
 		return site.idx != i && (!q.wasAdded(site.idx) || site.idx < i)
 	}
-	if c.aside {
-		return false
-	}
-	if c.wasAdded(site.idx) && c.path > q.path {
+
+	return p.pairsFile(q, c, c.wasAdded(site.idx))
+}
+
+// pairsFile reports whether a statement of q may be matched with one of
+// another file, which the change added or did not.
+func (p *dupPass) pairsFile(q, c *dupFile, added bool) bool {
+	if c.aside || (added && c.path > q.path) {
 		return false
 	}
 
@@ -486,156 +571,6 @@ func (p *dupPass) grow(w *dupRun, seen map[[2]string]bool) bool {
 	}
 
 	return gain > 0
-}
-
-// dupHit is one stretch of a changed file with every site it repeats, the
-// heaviest first.
-type dupHit struct {
-	runs []dupRun
-}
-
-// pickRuns orders a file's runs by score and nearness and keeps one hit per
-// stretch of the file: a run over statements a heavier run already covers
-// joins that run's hit as one more site, or is dropped.
-func pickRuns(runs []dupRun) []dupHit {
-	slices.SortFunc(runs, func(a, b dupRun) int {
-		return cmp.Or(
-			cmp.Compare(b.score, a.score),
-			cmp.Compare(a.distance(), b.distance()),
-			strings.Compare(a.with.path, b.with.path),
-			cmp.Compare(a.c, b.c), cmp.Compare(a.q, b.q),
-		)
-	})
-	var hits []dupHit
-	for _, r := range runs {
-		joined := false
-		for i := range hits {
-			first := &hits[i].runs[0]
-			over := min(first.q+first.n, r.q+r.n) - max(first.q, r.q)
-			if over <= 0 {
-				continue
-			}
-			if 2*over >= first.n && !hits[i].has(r) {
-				hits[i].runs = append(hits[i].runs, r)
-			}
-			joined = true
-
-			break
-		}
-		if !joined {
-			hits = append(hits, dupHit{runs: []dupRun{r}})
-		}
-	}
-	slices.SortFunc(hits, func(a, b dupHit) int { return cmp.Compare(a.runs[0].q, b.runs[0].q) })
-
-	return hits
-}
-
-// has reports whether a hit already lists the site a run points at.
-func (h *dupHit) has(r dupRun) bool {
-	for i := range h.runs {
-		o := &h.runs[i]
-		if o.with == r.with && o.c < r.c+r.n && r.c < o.c+o.n {
-			return true
-		}
-	}
-
-	return false
-}
-
-// distance ranks where the repeated code lives: 0 in the same file, 1 in the
-// same directory, 2 anywhere else.
-func (r *dupRun) distance() int {
-	switch {
-	case r.file == r.with:
-		return 0
-	case path.Dir(r.file.path) == path.Dir(r.with.path):
-		return 1
-	}
-
-	return 2 //nolint:mnd // the third rank
-}
-
-// dupFindings renders a file's hits as findings.
-func dupFindings(q *dupFile, hits []dupHit) []Finding {
-	out := make([]Finding, 0, len(hits))
-	for i := range hits {
-		first := &hits[i].runs[0]
-		line := q.stmts[first.q].line
-		out = append(out, Finding{
-			Rule: RuleNewDuplicate, Line: line, Scope: unitAt(q.fp, line),
-			Match: first.siteName(), Note: hits[i].note(),
-		})
-	}
-
-	return out
-}
-
-// siteName names the site a run repeats by its file and enclosing unit. A
-// finding's id is made of it, so it leaves the line out and survives line moves.
-func (r *dupRun) siteName() string {
-	if unit := unitAt(r.with.fp, r.with.decoded()[r.c].line); unit != "" {
-		return r.with.path + " " + unit
-	}
-
-	return r.with.path
-}
-
-// siteAt names the site a run repeats for a reader: its unit, when it has
-// one, and where it starts.
-func (r *dupRun) siteAt() string {
-	line := r.with.decoded()[r.c].line
-	at := fmt.Sprintf("%s:%d", r.with.path, line)
-	if unit := unitAt(r.with.fp, line); unit != "" {
-		return unit + " at " + at
-	}
-
-	return at
-}
-
-// note says what a hit repeats, where that is, how much of it there is, how
-// the sites differ, and what to do instead.
-func (h *dupHit) note() string {
-	first := &h.runs[0]
-	var b strings.Builder
-	b.WriteString("repeats " + first.siteAt())
-	if first.with.wasAdded(first.c) {
-		b.WriteString(", which this change also adds")
-	}
-	b.WriteString([]string{", in this file", ", in the same directory", ", in another directory"}[first.distance()])
-	for i := 1; i < len(h.runs) && i < maxDupSites; i++ {
-		b.WriteString(", and " + h.runs[i].siteAt())
-	}
-	if more := len(h.runs) - maxDupSites; more > 0 {
-		b.WriteString(", and " + plural(more, "more place"))
-	}
-	fmt.Fprintf(&b, ": %s, %d tokens, %s. Extend or parameterise that code instead of adding a copy",
-		plural(first.n, "statement"), first.tokens, first.difference())
-
-	return b.String()
-}
-
-// difference lists what the new site spells differently from the first one
-// it repeats.
-func (r *dupRun) difference() string {
-	if len(r.pairs) == 0 {
-		return "identical"
-	}
-	shown := make([]string, 0, maxDupPairs)
-	for i := 0; i < len(r.pairs) && i < maxDupPairs; i++ {
-		shown = append(shown, slotText(r.pairs[i][0])+"→"+slotText(r.pairs[i][1]))
-	}
-
-	return plural(len(r.pairs), "difference") + " (" + strings.Join(shown, ", ") + ")"
-}
-
-// slotText shows a slot's text, without the hash a clipped one ends in.
-func slotText(text string) string {
-	if cut := strings.Index(text, slotClip); cut >= 0 {
-		return text[:cut+len(slotClip)]
-	}
-
-	return text
 }
 
 // plural counts a noun: "1 statement", "2 statements".
