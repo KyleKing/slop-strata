@@ -1,3 +1,9 @@
+## v0.18.0 (2026-11-24)
+
+### Feat
+
+- **change**: find copied expressions and copies with lines between
+
 ## v0.17.0 (2026-11-24)
 
 ### Feat
