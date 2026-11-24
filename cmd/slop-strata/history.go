@@ -52,12 +52,15 @@ type historyResult struct {
 	Lineage     *lineage.Result    `json:"lineage"`
 	Oscillation *oscillationResult `json:"oscillation"`
 	Hotspots    map[string]float64 `json:"hotspots"`
-	Range       string             `json:"range"`
-	Weeks       []weekRow          `json:"weeks"`
-	Viral       []viralRow         `json:"virality"`
-	Pairs       []pairRow          `json:"pairing"`
-	Changes     int                `json:"changes"`
-	NoiseFloor  float64            `json:"noise_floor"`
+	// Architecture is the import graph's cycles, depth, and hidden coupling
+	// over the window. See Docs["architecture"].
+	Architecture *architecture `json:"architecture"`
+	Range        string        `json:"range"`
+	Weeks        []weekRow     `json:"weeks"`
+	Viral        []viralRow    `json:"virality"`
+	Pairs        []pairRow     `json:"pairing"`
+	Changes      int           `json:"changes"`
+	NoiseFloor   float64       `json:"noise_floor"`
 }
 
 // weekRow is one week of first-parent activity.
@@ -137,6 +140,7 @@ type historyWalk struct {
 	ruleFirst map[string]string
 	liveMass  map[string]float64
 	osc       *oscillation
+	arch      *archWalk
 	gaps      *scoreGaps
 	progress  *progress
 	changes   int
@@ -174,7 +178,7 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 	hw := &historyWalk{
 		walker: lineage.NewWalker(s.cfg.Classify), weeks: map[string]*weekRow{}, pairs: map[string]*pairRow{},
 		viral: map[string]*viralRow{}, ruleFirst: map[string]string{}, liveMass: map[string]float64{},
-		osc: newOscillation(), gaps: newScoreGaps(), progress: prog,
+		osc: newOscillation(), arch: newArchWalk(), gaps: newScoreGaps(), progress: prog,
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -201,18 +205,28 @@ func (s *session) walkHistory(ctx context.Context, rangeSpec, since string) (*hi
 	if err := s.walkWindow(ctx, hw, window, reader); err != nil {
 		return nil, nil, errors.Join(err, reader.Close())
 	}
+	arch, err := s.architecture(ctx, hw.arch, reader)
+	if err != nil {
+		return nil, nil, errors.Join(err, reader.Close())
+	}
 	if err := reader.Close(); err != nil {
 		return nil, nil, fmt.Errorf("reading blobs: %w", err)
 	}
 
+	return historyRollup(rangeSpec, hw, arch), hw.gaps, nil
+}
+
+// historyRollup folds a finished walk into the history result.
+func historyRollup(rangeSpec string, hw *historyWalk, arch *architecture) *historyResult {
 	res := &historyResult{
 		Range: rangeSpec, Lineage: hw.walker.Finish(), Oscillation: hw.osc.result(), Changes: hw.changes,
+		Architecture: arch, Weeks: []weekRow{}, Viral: []viralRow{}, Pairs: []pairRow{},
 	}
 	collectRollups(res, hw.weeks, hw.pairs, hw.viral)
 	markNoise(res)
 	res.Hotspots = hotspotScores(res.Lineage, hw.liveMass)
 
-	return res, hw.gaps, nil
+	return res
 }
 
 // logItem is one step of a log walk: a commit, or the error that ended it.
@@ -263,6 +277,7 @@ func (s *session) walkCommit(hw *historyWalk, rec *vcs.CommitRecord, reports map
 	klass := s.cfg.Classify(rec.AuthorName+" <"+rec.AuthorEmail+">",
 		rec.CommitterName+" <"+rec.CommitterEmail+">", rec.Body)
 	hw.walker.Commit(*rec, in.Kind == intent.Fix, in.Revert)
+	hw.arch.commit(rec, klass, string(in.Kind), reports)
 	week := mondayOf(rec.AuthorTime)
 	wk := weekCell(hw.weeks, week)
 	wk.Commits++
@@ -637,6 +652,8 @@ func printHistory(w io.Writer, res *historyResult) {
 		}
 		report.Table(w, []string{colRule, "first hit", "spread by class"}, rows)
 	}
+
+	printArchitecture(w, res.Architecture)
 }
 
 // printDeaths renders the young-death shares per directory. The self column drops out for a one-author window.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 5. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 6. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 5}
+    "schema": {"const": 6}
   },
   "allOf": [
     {
@@ -397,7 +397,7 @@
     },
     "historyResult": {
       "type": "object",
-      "required": ["range", "changes", "lineage", "oscillation", "weeks", "virality", "pairing", "hotspots"],
+      "required": ["range", "changes", "lineage", "oscillation", "weeks", "virality", "pairing", "hotspots", "architecture"],
       "properties": {
         "range": {"type": "string"},
         "changes": {"type": "integer", "description": "First-parent commits in the window."},
@@ -514,7 +514,99 @@
             }
           }
         },
-        "hotspots": {"type": "object", "additionalProperties": {"type": "number"}}
+        "hotspots": {"type": "object", "additionalProperties": {"type": "number"}},
+        "architecture": {"$ref": "#/$defs/architecture"}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "description": "How the inferred import graph changed over the window; see the architecture doc. Metrics only: nothing here is a finding or feeds a gate. Every list is empty when the window has no commit.",
+      "required": ["periods", "depth_moved", "cycles", "hidden_coupling"],
+      "additionalProperties": false,
+      "properties": {
+        "periods": {
+          "type": "array",
+          "description": "One row per week with a commit, oldest first, read from the tree after the week's last first-parent commit.",
+          "items": {
+            "type": "object",
+            "required": ["week", "rev", "cycles", "largest_cycle", "files_in_cycles", "depth_dirs", "median_depth", "median_depth_attributed"],
+            "additionalProperties": false,
+            "properties": {
+              "week": {"type": "string", "format": "date", "description": "The Monday of the week."},
+              "rev": {"type": "string", "description": "The commit whose tree was read."},
+              "cycles": {"type": "integer", "minimum": 0, "description": "Import cycles, as result.imports.cycles on snapshot."},
+              "largest_cycle": {"type": "integer", "minimum": 0},
+              "files_in_cycles": {"type": "integer", "minimum": 0, "description": "Files in any cycle; see the files_in_cycles doc."},
+              "depth_dirs": {"type": "integer", "minimum": 0, "description": "Directories with a depth read off at least 5 names; see the depth_dirs doc."},
+              "median_depth": {"type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "Median depth of those directories, null with none; see the median_depth doc."},
+              "median_depth_attributed": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "depth_moved": {
+          "type": "array",
+          "description": "Up to 5 directories whose depth moved most from the first week to the last; see the depth_moved doc.",
+          "items": {
+            "type": "object",
+            "required": ["dir", "depth_from", "depth_to", "depth_attributed_from", "depth_attributed_to", "moved"],
+            "additionalProperties": false,
+            "properties": {
+              "dir": {"type": "string"},
+              "depth_from": {"type": "number"},
+              "depth_to": {"type": "number"},
+              "depth_attributed_from": {"type": "number"},
+              "depth_attributed_to": {"type": "number"},
+              "moved": {"type": "number", "description": "The smaller of the depth move and the depth_attributed move, signed."}
+            }
+          }
+        },
+        "cycles": {
+          "type": "array",
+          "description": "Each import cycle of the last week and where it came from, largest first; see the cycle_origin doc.",
+          "items": {
+            "type": "object",
+            "required": ["id", "members", "size", "first_week", "first_size", "before_window", "introduced"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "description": "The id of the cycle's x/import-cycle finding at the last week's rev."},
+              "members": {"type": "array", "items": {"type": "string"}, "description": "The sorted files the id is hashed over: every member, less the files that only re-export when two others remain."},
+              "size": {"type": "integer", "minimum": 2, "description": "Every file of the cycle."},
+              "first_week": {"type": "string", "description": "The week the cycle first appeared in, empty when before_window is set."},
+              "first_size": {"type": "integer", "minimum": 2, "description": "Its files that week, or in the tree before the window."},
+              "before_window": {"type": "boolean", "description": "The cycle is older than the window, or the tree before the window could not be read."},
+              "introduced": {
+                "type": ["object", "null"],
+                "description": "The first-parent commit the cycle is first present after, null when before_window is set.",
+                "required": ["commit", "author_class", "intent"],
+                "additionalProperties": false,
+                "properties": {
+                  "commit": {"type": "string"},
+                  "author_class": {"type": "string", "description": "The configured class of the commit: person, agent, bot, or a repository's own."},
+                  "intent": {"type": "string", "description": "The commit's stated intent, such as feat, fix, refactor, or unknown."}
+                }
+              }
+            }
+          }
+        },
+        "hidden_coupling": {
+          "type": "array",
+          "description": "Up to 10 pairs of files that change together with no chain of imports between them, best supported first; see the hidden_coupling doc.",
+          "items": {
+            "type": "object",
+            "required": ["a", "b", "co_changes", "changes_a", "changes_b", "support", "confidence", "shared_importer"],
+            "additionalProperties": false,
+            "properties": {
+              "a": {"type": "string"},
+              "b": {"type": "string"},
+              "co_changes": {"type": "integer", "minimum": 4, "description": "Commits that changed both and no file both import."},
+              "changes_a": {"type": "integer", "minimum": 1},
+              "changes_b": {"type": "integer", "minimum": 1},
+              "support": {"type": "number", "minimum": 1.5, "description": "co_changes weighed by how few other files each commit changed; see the support doc."},
+              "confidence": {"type": "number", "minimum": 0.5, "maximum": 1, "description": "co_changes over the smaller of changes_a and changes_b."},
+              "shared_importer": {"type": "boolean", "description": "Some file imports both."}
+            }
+          }
+        }
       }
     }
   }

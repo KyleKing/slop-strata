@@ -12,6 +12,15 @@ Checked against the code at 61b2aba. Items from the v0.6.0 audit that are now do
 - Module depth reads a library's public API as hidden when only tests and the outside world use it, since test files are not users.
 - The directory table runs past 100 columns on deep paths. The depth table shortens a path in the middle, and two directories can then read alike.
 
+- `history` samples the import graph once per week. A cycle that comes and goes inside one week is never seen, and a cycle that goes away for a week and comes back is dated to its return.
+- A cycle's introducing commit is a first-parent commit, so a merge commit stands for its whole branch. The author class is the walk's, and a squash that carries a bot's co-author trailer reads `bot`.
+- `median_depth` is taken over the directories with five or more names, often a handful, and jumps when one directory crosses that line.
+- Hidden coupling lists few pairs: 7 across twelve public repositories at the shipped floors. It leaves out every pair of TypeScript files in two workspace packages, because a package-name import adds no edge. Resolving workspace package names in the import graph would let those pairs be judged, and would change the cycle counts too.
+- Hidden coupling treats a file as production when the path rules do. `test.ts` beside its subject (date-fns) and `__testfixtures__` inputs (query) are not recognised as tests, and pair under looser floors.
+- Hidden coupling reads intent from the commit subject. A typing or lint sweep with no Conventional Commit type counts, and two such pairs (requests, chi) sat just under the support floor.
+- `history` resolves a graph for every sampled week on every run, which about doubles a warm run (TanStack Query over three years: 4.1 s to 9.2 s). Storing each sampled commit's cycle sets and depths in the cache, keyed by the commit and the digests of the packages that compute them, would leave a warm run only the last tree to read.
+- The `history` walk stores blobs under the abbreviated ids `git log` prints, so `snapshot` and `history` do not share cache entries for the same blob. The architecture pass maps the ids for its own lookups. Asking the log for full ids (aragonite) would remove the mapping and the duplicate entries.
+
 ## Rules below the bar
 
 `slop-strata label` records verdicts per repository and `slop-strata rules` prints each rule's labeled precision, but the gate is still a judgment call on the corpus. Label more findings across repositories, record precision per release, and move a rule out of the gate only on that evidence. `slop-strata --explain experimental` lists the gated rules.

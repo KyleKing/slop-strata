@@ -97,6 +97,15 @@ func (im *Imports) Cycles() []depgraph.Cycle {
 	}).Cycles()
 }
 
+// CycleID names a cycle as its x/import-cycle finding is named, and answers
+// the files the name is hashed over: the members, less the barrels when two
+// or more other files remain.
+func (im *Imports) CycleID(members []string) (string, []string) {
+	key := im.keyMembers(members)
+
+	return SetID(ruleXImportCycle, key), key
+}
+
 // CycleFindings renders each cycle as one finding on the import line of its
 // cheapest edge, keyed by the cycle's members.
 func (im *Imports) CycleFindings() map[string][]Finding {
