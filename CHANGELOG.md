@@ -1,3 +1,9 @@
+## v0.15.0 (2026-11-24)
+
+### Feat
+
+- **snapshot**: measure module depth per directory from use, and report a widened surface on change
+
 ## v0.14.0 (2026-11-24)
 
 ### Feat
