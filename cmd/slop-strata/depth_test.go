@@ -256,7 +256,7 @@ func TestDepthTableFitsAHundredColumnsOnDeepPaths(t *testing.T) {
 		t.Errorf("the deep directory is not shortened to its ends:\n%s", section)
 	}
 	for _, line := range strings.Split(section, "\n") {
-		if n := len([]rune(line)); n > depthTableWidth {
+		if n := len([]rune(line)); n > tableWidth {
 			t.Errorf("depth table line is %d columns wide: %q", n, line)
 		}
 	}

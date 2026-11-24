@@ -25,16 +25,18 @@ import (
 
 // snapshotResult is the snapshot subcommand's JSON shape.
 type snapshotResult struct {
-	Findings map[string][]rules.Finding `json:"findings"`
-	Rev      string                     `json:"rev"`
-	Dirs     []dirSnapshot              `json:"dirs"`
-	TestDirs []dirSnapshot              `json:"test_dirs,omitempty"`
-	Files    []fileSnapshot             `json:"files"`
-	TopFuncs []snapFunc                 `json:"top_functions"`
-	Skipped  []skippedRow               `json:"skipped,omitempty"`
-	Errors   []skippedRow               `json:"errors,omitempty"`
-	Total    structure.Aggregates       `json:"total"`
-	Imports  importSummary              `json:"imports"`
+	Findings   map[string][]rules.Finding `json:"findings"`
+	Duplicates *duplicateList             `json:"duplicate_groups,omitempty"`
+	Splits     *splitList                 `json:"split_candidates"`
+	Rev        string                     `json:"rev"`
+	Dirs       []dirSnapshot              `json:"dirs"`
+	TestDirs   []dirSnapshot              `json:"test_dirs,omitempty"`
+	Files      []fileSnapshot             `json:"files"`
+	TopFuncs   []snapFunc                 `json:"top_functions"`
+	Skipped    []skippedRow               `json:"skipped,omitempty"`
+	Errors     []skippedRow               `json:"errors,omitempty"`
+	Total      structure.Aggregates       `json:"total"`
+	Imports    importSummary              `json:"imports"`
 }
 
 // importSummary counts the resolved import graph of the scored tree.
@@ -122,6 +124,9 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	}
 	res := s.snapshotRollup(ctx, rev, reports, sup, touches)
 	res.addImports(engine.ResolveImports(reports, paths))
+	if s.cfg.Experimental {
+		res.Duplicates = duplicateGroups(reports)
+	}
 	counts := countRows(res.Skipped, res.Errors)
 	counts.Suppressed = suppressedCounts(sup)
 	counts.StaleBaseline = sup.StaleBaseline(func(rule string) bool {
@@ -316,6 +321,7 @@ func (s *session) snapshotRollup(
 	res.TestDirs = rankDirs(byTestDir, live, touches.dirs, true)
 	res.Files = rankFiles(metrics, live, touches.files)
 	res.TopFuncs = rankSnapFuncs(metrics)
+	res.Splits = splitCandidates(metrics)
 
 	return res
 }
@@ -469,6 +475,8 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	printDepthTable(w, res.Dirs, all)
 	printFileTable(w, res.Files, all)
 	printSnapFuncs(w, res.TopFuncs)
+	printSplits(w, res.Splits, all)
+	printDuplicates(w, res.Duplicates, all)
 	if len(res.TestDirs) > 0 {
 		report.Fprintf(w, "\ntests, not ranked with the above\n")
 		printDirTable(w, res.TestDirs)

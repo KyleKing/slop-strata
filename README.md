@@ -58,7 +58,7 @@ calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
 calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
 ```
 
-`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. When the tool can resolve imports between files of the tree, a line under the totals counts the import edges and the import cycles, and each directory row carries `fan_in` and `fan_out` (the sample below predates those two columns). A second table, `module depth`, lists the directories that other directories use names of, shallowest first: how many names are `shown` and `hidden`, how many of the shown are only matched by name, and `depth`. Long directory paths are shortened in the middle there, so the table stays inside 100 columns. `--json` lists every file under `files`:
+`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. After them it lists the functions a split would relieve most, each with the block to move out (see [Where to rework](#where-to-rework)). A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. When the tool can resolve imports between files of the tree, a line under the totals counts the import edges and the import cycles, and each directory row carries `fan_in` and `fan_out` (the sample below predates those two columns). A second table, `module depth`, lists the directories that other directories use names of, shallowest first: how many names are `shown` and `hidden`, how many of the shown are only matched by name, and `depth`. Long directory paths are shortened in the middle there, so the table stays inside 100 columns. `--json` lists every file under `files`:
 
 ```bash
 slop-strata snapshot
@@ -180,6 +180,8 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `deaths_30d` splits the lines behind `churn_30d` by how they died: removed by their own author (`self`), deleted without a replacement (`pure`), taken out with their whole file (`whole_file`), removed in a revert, and by age (a day, a week, 30 days). `history` prints the shares per directory with at least 30 such deaths. Squash merges hide what happens inside a branch. `--explain deaths_30d`, `--explain self`, `--explain pure`, `--explain whole_file`, `--explain within_7d`, `--explain in_revert`
 - `readd` is the share of young deaths where a later commit added the same line back to the same file within 30 days, for lines of 30 or more bytes. Deaths in a revert, and re-additions by one, are counted apart as `readded_by_revert`. Deaths in the last 30 days of the window are left out of the share, because they have not had time to come back. `--explain readd`
 - `oscillating_funcs` counts the functions whose body changed in at least three commits within 14 days, per directory, with test files counted apart. The JSON names the ten busiest. A formatting commit or a test-first loop on one function can raise it. `--explain oscillating_funcs`
+- `split_candidates` lists, on `snapshot`, the functions that hold a block worth moving into a function of its own, with the block's lines and the cognitive complexity before and after. `--explain split_candidates`
+- `duplicate_groups` lists, on `snapshot --experimental`, code the tree holds more than once, ranked by `removable`, the tokens a merge would take out. `--explain duplicate_groups`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
 - `shown` and `hidden` count, per directory on `snapshot`, the declared names that a file of another directory uses and the ones none does. Use decides it and never a visibility keyword, so adding `export` or renaming to a capital changes nothing. `depth` is the hidden share by mass: near 1 the directory hides most of what it holds, near 0 its callers see nearly all of it, and `-` means nothing outside uses it. `widest_surface` names the file with the most shown names. The JSON adds `shown_mass`, `hidden_mass`, and `forwarders`, the pass-through functions left out of both. `--explain shown`, `--explain hidden`, `--explain shown_mass`, `--explain hidden_mass`, `--explain forwarders`, `--explain depth`, `--explain widest_surface`
@@ -200,6 +202,47 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `counts` says how many files the run could not score, and why. `--explain counts`
 
 Two markers appear in the text output. A `*` marks a rate that rests on too few samples, and `~` marks a week whose net mass sits inside the noise floor. `--explain provisional` and `--explain noise_floor` say what sets each one.
+
+## Where to rework
+
+`snapshot` answers where refactoring effort would pay with two lists, each made of numbers you can check against the code.
+
+```bash
+slop-strata snapshot --experimental
+```
+
+```text
+split candidates, 5 of 8 (cognitive: before → rest + block)
+function                                   block    cognitive      in  out  exits
+tree.go:410                node.findRoute  445-500  125 → 51 + 35  5   0    6
+tree.go:735                patNextSegment  755-793  36 → 7 + 19    2   0    1
+tree.go:886                walk            903-921  30 → 13 + 12   4   0    2
+tree.go:636                <anonymous>     663-676  26 → 10 + 11   4   0    0
+middleware/compress.go:72  NewCompressor   79-89    17 → 6 + 5     3   0    0
+
+duplicate groups, 5 of 11 (523 tokens removable in all)
+site                                               removable  sites  tokens  differs
+tree.go:470                  node.findRoute        121        2      121
+tree.go:518                  node.findRoute
+tree.go:566                  node.findEdge         75         2      83      nds/ns
+tree.go:853                  nodes.findEdge
+middleware/strip.go:14       StripSlashes          59         2      59
+middleware/strip.go:41       RedirectSlashes
+mux.go:203                   Mux.NotFound          55         2      71      notFoundHandler/met…
+mux.go:223                   Mux.MethodNotAllowed
+middleware/clean_path.go:14  CleanPath             50         2      50
+middleware/get_head.go:13    GetHead
+```
+
+That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates` and `result.duplicate_groups`.
+
+**Split candidates** are on by default. For every function whose cognitive complexity is 15 or more, the tool tries each run of statements at one nesting level (a whole loop or branch, a loop body, a branch arm, or part of one) and asks what the function would score without it and what the run would score as a function of its own, where the nesting it sat under no longer counts. `125 → 51 + 35` reads: 125 now, 51 left behind, 35 in the new function. Functions are ranked by `drop`, the complexity now less the larger of those two. A run is listed only when few variables cross its ends: `in` (at most 5) counts the variables given a value before the run that it reads, and `out` (at most 1) the ones it gives a value that the function reads afterwards. `exits` counts the `return`, `break`, and `continue` statements that leave the run, and a run that holds a `defer` or a `yield` is never listed. Tests, examples, and benchmarks are left out.
+
+The three counts are read off names, with no scopes and no types, so they say a block may come out cleanly and never that it will. A variable a closure takes from the function around it is not counted, a method's receiver is, a write through a field or an index counts as a read, and a value a loop carries back to code above the block is not seen. Of the top five candidates in each of twelve public repositories (60 in all, read by one person), 34 were a block to move as it stands, 22 a judgment call (a slice of a larger step, or early exits that would need a flag), and 4 wrong.
+
+**Duplicate groups** are gated behind `--experimental`. They come from the pass behind [`x/new-duplicate`](#code-a-change-copies), run over the whole tree: stretches of statements that line up once names and literals are set aside, then expressions of 20 tokens or more that repeat inside statements that differ. Each group lists every site, the tokens of one site, and what the sites spell differently, which is what a shared function would take as parameters (at most 3). `removable` is tokens × (sites − 1) − 8 per parameter, and no statement is counted in two groups. The same things are left out as for the change rule, and also a group that is a table of values.
+
+They are gated because of what the list still holds. Of the top five groups in the same twelve repositories, 32 were worth merging, 16 a judgment call, and 12 not: files kept parallel on purpose (a locale per file, an adapter package per framework, two flavours of one API), declarations a `TypedDict` and its class both need, and public wrappers whose body is one forwarding call. All 20 Go groups were worth merging or a judgment call, 15 of 20 in Python, and 13 of 20 in TypeScript.
 
 ## Guardrails
 
@@ -239,7 +282,7 @@ repeats an expression of total at bill/total.go:4, in the same directory: 36 tok
 
 A change that adds the same copy several times reports it once, and the note ends with how many times and where.
 
-It stays quiet about tests, examples, and benchmarks, about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name that are 80% alike), and about generated files. An expression is left alone in a signature, inside the function that already holds it, and when it is a call wrapped around a function body. It does not see an expression under 20 tokens, one taken apart over several statements, or a copy that renames a name or two in every statement. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
+It stays quiet about tests, examples, benchmarks, scaffolding templates (`template`, `templates`, `template-<name>`), and codemod fixtures (`__testfixtures__`), about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name, whatever their extensions, that are 80% alike), and about generated files. An expression is left alone in a signature, inside the function that already holds it, and when it is a call wrapped around a function body. It does not see an expression under 20 tokens, one taken apart over several statements, or a copy that renames a name or two in every statement. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
 
 ## Setting findings aside
 
@@ -288,7 +331,7 @@ The labels are evidence about this repository. A rule's precision here says noth
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 6
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 7
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 
@@ -371,6 +414,15 @@ The same rule also keeps a record of every expression of 20 tokens or more. That
 | vite           | 631   | 1.99 s      | 1.90 s     | 0.41 s      | 0.40 s     | 6.03 MB      | 6.14 MB     |
 | TanStack Query | 2,107 | 4.71 s      | 4.79 s     | 0.86 s      | 0.91 s     | 13.55 MB     | 13.89 MB    |
 | pydantic       | 3,163 | 5.20 s      | 4.99 s     | 1.06 s      | 0.97 s     | 16.92 MB     | 17.30 MB    |
+
+`snapshot` looks for a block to move out of each complex function while it parses, and with `--experimental` it pairs up the statements of the whole tree. The table is `snapshot --json` before and after both were added, on the same VM: one cold run and the best of five warm runs. The split search adds up to 0.2 s to a cold run and 0.2% to 0.8% to the cache, and a warm run stays within 0.01 s. The duplicate pass adds 0.02 s to 0.08 s to a warm `--experimental` run.
+
+| Repository     | Files | Cold before | Cold after | Warm before | Warm after | Warm before, `--experimental` | Warm after, `--experimental` |
+| -------------- | ----- | ----------- | ---------- | ----------- | ---------- | ----------------------------- | ---------------------------- |
+| fzf            | 91    | 0.53 s      | 0.62 s     | 0.06 s      | 0.06 s     | 0.06 s                        | 0.08 s                       |
+| vite           | 631   | 1.25 s      | 1.29 s     | 0.21 s      | 0.21 s     | 0.25 s                        | 0.27 s                       |
+| TanStack Query | 2,107 | 3.39 s      | 3.55 s     | 0.60 s      | 0.59 s     | 0.83 s                        | 0.89 s                       |
+| pydantic       | 3,163 | 3.05 s      | 3.14 s     | 0.45 s      | 0.46 s     | 0.59 s                        | 0.67 s                       |
 
 ## Read more
 

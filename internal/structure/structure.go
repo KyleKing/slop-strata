@@ -11,6 +11,9 @@ import (
 // FuncMetrics is one function's structural profile. Lines are 1-based and
 // inclusive, matching the rows an editor shows.
 type FuncMetrics struct {
+	// Split is the block whose extraction would cut the function's cognitive
+	// complexity most, when the function is complex enough to have one.
+	Split     *Split `json:"split,omitempty"`
 	Name      string `json:"name"`
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
@@ -158,7 +161,15 @@ func (c *complexity) walk(node *ts.Node, level int) {
 	if c.l.FunctionKinds[kind] {
 		return
 	}
+	level = c.own(node, kind, level)
+	for i := range node.NamedChildCount() {
+		c.walk(node.NamedChild(i), level)
+	}
+}
 
+// own counts what one node adds by itself, its keyword children included,
+// and answers the nesting level its children sit at.
+func (c *complexity) own(node *ts.Node, kind string, level int) int {
 	if c.l.DecisionKinds[kind] {
 		c.cc++
 	}
@@ -176,16 +187,13 @@ func (c *complexity) walk(node *ts.Node, level int) {
 	case c.l.FlatKinds[kind]:
 		c.cognitive++
 	}
-
 	for i := range node.ChildCount() {
-		child := node.Child(i)
-		switch {
-		case child.IsNamed():
-			c.walk(child, level)
-		case c.l.FlatKinds[child.Kind()]:
+		if child := node.Child(i); !child.IsNamed() && c.l.FlatKinds[child.Kind()] {
 			c.cognitive++
 		}
 	}
+
+	return level
 }
 
 // isCountedOp reports whether an expression node's operator is a counted
@@ -301,7 +309,13 @@ func measureFunc(l *lang.Language, node *ts.Node, src []byte, idx *lines) FuncMe
 		}
 	}
 
+	var split *Split
+	if c.cognitive >= SplitMinCognitive {
+		split = findSplit(l, node, src, c.cognitive, c.cc)
+	}
+
 	return FuncMetrics{
+		Split:     split,
 		Name:      lang.FunctionName(l, node, src),
 		StartLine: startRow + 1,
 		EndLine:   endRow + 1,
