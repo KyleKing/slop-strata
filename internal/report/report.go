@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 4
+const Version = 5
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -327,6 +327,68 @@ var Docs = map[string]string{
 		"for a cycle also covers any cycle made only of its members, so shrinking a cycle is never a new " +
 		"finding, and a new or grown cycle is. change reports a cycle the change created or grew. Move the " +
 		"names the cheapest cut imports into a module both sides can import.",
+	"shown": "Per directory on snapshot: the directory's declared names that a production file of another " +
+		"directory uses. A name is a function, type or class, constant, or variable at file scope, or a method " +
+		"(Type.method). Use decides it and visibility does not: export, a capital letter, a leading underscore, " +
+		"and __all__ change nothing. A top-level name is attributed: resolved imports tie the use to the file " +
+		"that declares it, through re-exporting files, so a same-named symbol elsewhere is not counted, and an " +
+		"import that is bound and never used, or a re-export nobody consumes, is not a use. A method cannot be " +
+		"attributed, so it is matched by name alone; see shown_by_name for how many of shown are such guesses. " +
+		"Any other directory is outside, a parent or a subdirectory included, as for fan_in. Test files " +
+		"neither count as users nor have their names counted. A name the world uses and no file of the tree " +
+		"does (a library's public API) reads hidden. Imports the tool cannot resolve (see import_edges) are " +
+		"not uses.",
+	"shown_by_name": "Per directory on snapshot (by_name in the table): how many of shown are methods matched " +
+		"by name alone, and shown_mass_by_name how much of shown_mass. There is no type inference, so a method " +
+		"counts as shown when any file of another directory reads a member of that name off a value that is " +
+		"not an imported module, once anything outside imports the directory. A method named like an unrelated " +
+		"member (get, String, value) is counted too: on a hand-checked sample about six in ten were real uses, " +
+		"while every method left hidden was truly unused outside. Read it as how soft shown is: shown minus " +
+		"shown_by_name is certain, and the rest is an upper bound. These names are never listed anywhere.",
+	"hidden": "Per directory on snapshot: the declared names (see shown) that no production file of another " +
+		"directory uses, whether the directory uses them itself or nothing does. Pure forwarders are left out " +
+		"(see forwarders).",
+	"shown_mass": "Per directory on snapshot: the complexity mass (CC x sqrt(SLOC), see mass) of the " +
+		"functions behind the shown names. A function's mass, with its closures', goes to the declaration " +
+		"that holds it, and a method's to the method. A constant or a type has none.",
+	"hidden_mass": "Per directory on snapshot: the complexity mass behind the hidden names, plus the mass " +
+		"of functions no declaration holds, such as a callback passed at file scope. Ten shown one-liners over " +
+		"a large hidden engine read deep by mass and shallow by count, which is why depth uses mass.",
+	"forwarders": "Per directory on snapshot, in the JSON: functions and methods whose body is one statement, " +
+		"a call whose every argument is one of the function's own parameters (a docstring and comments aside). " +
+		"A forwarder counts in neither shown nor hidden, so pass-through wrappers cannot pad a directory into " +
+		"looking deep. When another directory uses a forwarder, the name it forwards to is shown in its place " +
+		"if the same directory declares it: a function by name, or a method of the same receiver.",
+	"depth": "Per directory on snapshot: hidden_mass / (shown_mass + hidden_mass), or by name count, " +
+		"hidden / (shown + hidden), when neither side has a function to weigh (depth_by_mass false, # in the " +
+		"table). After Ousterhout's deep modules: near 1 the directory hides much more than callers must " +
+		"learn, near 0 callers see nearly all of it. A ratio with no target and no gate. It is null (- in the " +
+		"table) when shown is 0: nothing outside uses the directory, so it is an entry point or a leaf, not a " +
+		"module with everything hidden. depth counts methods matched by name as shown, which makes it a lower " +
+		"bound, and depth_attributed is the upper one; the table prints both as a range when they differ. " +
+		"depth_provisional (*) marks fewer than 5 names. The table lists shallowest first and leaves the " +
+		"masses to the JSON. When a directory you expected to hide its workings reads shallow, look at " +
+		"widest_surface and ask which of those names callers need.",
+	"depth_attributed": "Per directory on snapshot: depth with every method matched by name counted as hidden, " +
+		"so only uses a resolved import attributes count as shown. No method can be attributed, so this is the " +
+		"upper bound and depth the lower: uses the tool cannot see aside, the true ratio lies between them. It is " +
+		"null when no use is " +
+		"attributed. A narrow range means the number is solid, and a wide one means the directory is mostly " +
+		"classes whose methods the tool cannot follow. On directories checked by hand, depth was the closer " +
+		"of the two wherever methods carry the mass.",
+	"widest_surface": "Per directory on snapshot: widest_file is the file with the most shown names and " +
+		"widest_shown is how many. One long list is harder to learn than the same count spread over several " +
+		"short ones, so this names where a wide surface sits.",
+	"surface_widened": "result.surface_widened on change: each directory, present before and after, whose " +
+		"count of attributed shown names rose (see shown), with shown_before and shown_after, up to five of " +
+		"the names other directories use now and did not before (newly_shown, with newly_shown_count for all " +
+		"of them), and depth_before and depth_after, which are depth_attributed on each side. Methods matched " +
+		"by name alone never open a row and are never listed, because the match may be another type's method: " +
+		"newly_shown_by_name only counts them, as an unverified upper bound. Both trees are measured whole, so " +
+		"the cause may be a new use in a file of another directory. A rename that swaps one shown name for " +
+		"another is not reported. Information only: it adds nothing to next, and --brief and --exit-code " +
+		"ignore it. When a name you meant to keep internal appears here, the change made another directory " +
+		"depend on it.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +
@@ -407,6 +469,32 @@ func Table(w io.Writer, header []string, rows [][]string) {
 	for _, r := range rows {
 		line(r)
 	}
+}
+
+// ElidePath shortens a slash-separated path to at most width runes by
+// replacing its middle segments with an ellipsis: the first segment and as
+// many of the last as fit are kept. A path with nothing left to drop is cut
+// from the left.
+func ElidePath(p string, width int) string {
+	if utf8.RuneCountInString(p) <= width {
+		return p
+	}
+	segments := strings.Split(p, "/")
+	for keep := len(segments) - 1 - 1; keep >= 1; keep-- { // all but the first, less at least one dropped
+		short := segments[0] + "/…/" + strings.Join(segments[len(segments)-keep:], "/")
+		if utf8.RuneCountInString(short) <= width {
+			return short
+		}
+	}
+	runes := []rune(segments[len(segments)-1])
+	if len(segments) > 1 && len(runes)+len("…/") <= width {
+		return "…/" + string(runes)
+	}
+	if width < 1 {
+		return ""
+	}
+
+	return "…" + string(runes[max(0, len(runes)-width+1):])
 }
 
 // DropZeroColumns removes every column after the first whose cells are all

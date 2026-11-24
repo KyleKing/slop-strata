@@ -10,21 +10,35 @@ import (
 // Spec is the module specifier: a dotted Python module with its leading dots,
 // a TypeScript module string, or a Go import path. Names are the names it
 // binds, "*" for a wildcard, and none for an import of the module itself.
+// Local is the name a bound module goes by in the importer, and Aliases maps
+// each renamed binding to the name it imports.
 type Import struct {
-	Spec  string
-	Kind  Kind
-	Names []string
-	Line  int
+	Aliases map[string]string
+	Spec    string
+	Kind    Kind
+	Local   string
+	Names   []string
+	Line    int
 }
 
 // File is what Build reads of one file. Exported and Referenced are the names
 // the file offers and uses, which price an import that binds a whole module.
 // GoModule is the module path a go.mod declares, and empty for any other file.
+// The rest feed Uses: Declared is every top-level name the file declares, true
+// for the ones its language makes visible to other files, Selected is the
+// names read through each imported module, Passed is the imported names the
+// file binds and never uses, ExportAs maps an exported alias to a local name,
+// and Default is the name a default export gives.
 type File struct {
 	Exported   map[string]int
 	Referenced map[string]int
+	Declared   map[string]bool
+	Selected   map[string][]string
+	Passed     map[string]bool
+	ExportAs   map[string]string
 	Path       string
 	GoModule   string
+	Default    string
 	Imports    []Import
 }
 
@@ -39,6 +53,7 @@ type resolver struct {
 	goDirs   map[string][]string
 	goMods   []goModule
 	resolved []Edge
+	binds    []binding
 }
 
 // Build resolves every file's imports to files of the same tree and answers
@@ -71,7 +86,10 @@ func Build(files []File, treePaths []string) *Graph {
 		r.resolveFile(r.files[n])
 	}
 
-	return New(nodes, r.resolved)
+	g := New(nodes, r.resolved)
+	g.uses = r.uses()
+
+	return g
 }
 
 // Languages Build resolves imports for.
@@ -123,6 +141,7 @@ func (r *resolver) resolveFile(f *File) {
 		case langTypeScript:
 			if to := r.resolveTS(f.Path, imp.Spec); to != "" {
 				r.add(f, to, imp, imp.Names)
+				r.bind(f, to, &imp, imp.Names)
 			}
 		case langGo:
 			r.resolveGo(f, imp)

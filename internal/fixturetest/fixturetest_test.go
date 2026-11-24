@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -62,6 +63,20 @@ func (*recorder) Helper() {}
 
 func (r *recorder) Errorf(format string, args ...any) {
 	r.failures = append(r.failures, fmt.Sprintf(format, args...))
+}
+
+// expect fails the test unless the failures recorded contain each wanted
+// text, in order, and nothing more.
+func (r *recorder) expect(t *testing.T, want []string) {
+	t.Helper()
+	if len(r.failures) != len(want) {
+		t.Fatalf("failures = %q, want %d matching %q", r.failures, len(want), want)
+	}
+	for i, text := range want {
+		if !strings.Contains(r.failures[i], text) {
+			t.Errorf("failure %d = %q, want it to contain %q", i, r.failures[i], text)
+		}
+	}
 }
 
 // markerIDs is a stand-in rule: one finding per file holding "BAD", named for the file.
@@ -125,14 +140,7 @@ func TestCheckReportsEachBrokenExpectation(t *testing.T) {
 			t.Parallel()
 			rec := &recorder{}
 			fixturetest.Check(rec, tc.c, markerIDs)
-			if len(rec.failures) != len(tc.want) {
-				t.Fatalf("failures = %q, want %d matching %q", rec.failures, len(tc.want), tc.want)
-			}
-			for i, want := range tc.want {
-				if !strings.Contains(rec.failures[i], want) {
-					t.Errorf("failure %d = %q, want it to contain %q", i, rec.failures[i], want)
-				}
-			}
+			rec.expect(t, tc.want)
 		})
 	}
 }
@@ -160,5 +168,75 @@ func TestRunChecksEveryCase(t *testing.T) {
 		}
 
 		return ids
+	})
+}
+
+// markerCount is a stand-in metric: how many files hold "BAD".
+func markerCount(tree fixturetest.Tree) string {
+	return strconv.Itoa(len(markerIDs(tree)))
+}
+
+func TestCheckMetricReportsEachBrokenExpectation(t *testing.T) {
+	t.Parallel()
+	base := fixturetest.Tree{"a": "BAD", "b": "fine"}
+	cases := []struct {
+		name string
+		c    fixturetest.MetricCase
+		want []string
+	}{
+		{
+			name: "a cosmetic edit that holds and a real change that moves pass",
+			c: fixturetest.MetricCase{
+				Base: base,
+				Same: []fixturetest.Variant{
+					{Name: "rename", Files: fixturetest.Tree{"z": "BAD"}, Remove: []string{"a"}},
+				},
+				Moved: []fixturetest.Variant{{Name: "second", Files: fixturetest.Tree{"b": "BAD"}}},
+			},
+		},
+		{
+			name: "a cosmetic edit that moves the metric fails",
+			c: fixturetest.MetricCase{
+				Base: base, Same: []fixturetest.Variant{{Name: "second", Files: fixturetest.Tree{"b": "BAD"}}},
+			},
+			want: []string{`"second" moved the metric: got 2, want 1`},
+		},
+		{
+			name: "a real change the metric ignores fails",
+			c: fixturetest.MetricCase{
+				Base: base, Moved: []fixturetest.Variant{{Name: "comment", Files: fixturetest.Tree{"b": "still fine"}}},
+			},
+			want: []string{`"comment" left the metric at 1`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec := &recorder{}
+			fixturetest.CheckMetric(rec, tc.c, markerCount)
+			rec.expect(t, tc.want)
+		})
+	}
+}
+
+func TestRunMetricChecksEveryCase(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	seen := 0
+	t.Cleanup(func() {
+		if seen != 2 {
+			t.Errorf("RunMetric read the metric %d times, want once per case", seen)
+		}
+	})
+	cases := []fixturetest.MetricCase{
+		{Name: "first", Base: fixturetest.Tree{"a": "BAD"}},
+		{Name: "second", Base: fixturetest.Tree{"b": "BAD"}},
+	}
+	fixturetest.RunMetric(t, cases, func(tree fixturetest.Tree) string {
+		mu.Lock()
+		defer mu.Unlock()
+		seen++
+
+		return markerCount(tree)
 	})
 }

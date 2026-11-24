@@ -482,12 +482,24 @@ func (a *Analyzer) score(p *lang.Parser, j *job) []byte {
 	}
 	rep.Findings = rules.Run(rctx)
 	rep.Print = rules.Collect(rctx)
+	rep.Print.Weigh(funcWeights(rep.Metrics.Funcs))
 	payload, err := json.Marshal(cached{Metrics: rep.Metrics, Findings: rep.Findings, Print: rep.Print})
 	if err != nil {
 		return nil
 	}
 
 	return payload
+}
+
+// funcWeights lists each function's lines and mass for the fingerprint to
+// credit to the declaration that holds it.
+func funcWeights(funcs []structure.FuncMetrics) []rules.Weight {
+	weights := make([]rules.Weight, 0, len(funcs))
+	for _, fn := range funcs {
+		weights = append(weights, rules.Weight{Start: fn.StartLine, End: fn.EndLine, Mass: structure.Mass(fn)})
+	}
+
+	return weights
 }
 
 // finish adds the findings that depend on the file name, which a stored

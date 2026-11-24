@@ -19,25 +19,20 @@ type Imports struct {
 	// Graph holds every resolved edge of every kind, test files included.
 	Graph   *depgraph.Graph
 	barrels map[string]bool
+	blobs   []BlobPrint
 }
 
 // ResolveImports builds the import graph of a tree from its fingerprints.
 // TreePaths is every path in the tree.
 func ResolveImports(blobs []BlobPrint, treePaths []string) *Imports {
-	im := &Imports{barrels: map[string]bool{}}
+	im := &Imports{barrels: map[string]bool{}, blobs: blobs}
 	files := make([]depgraph.File, 0, len(blobs))
 	for _, b := range blobs {
 		fp := b.Print
 		if len(fp.ImportRefs) == 0 && fp.GoModule == "" && lang.ByPath(b.Path) == nil {
 			continue
 		}
-		f := depgraph.File{Path: b.Path, GoModule: fp.GoModule, Exported: fp.Exported, Referenced: fp.Referenced}
-		for _, ref := range fp.ImportRefs {
-			f.Imports = append(f.Imports, depgraph.Import{
-				Spec: ref.Spec, Kind: edgeKind(ref.Kind), Names: ref.Names, Line: ref.Line,
-			})
-		}
-		files = append(files, f)
+		files = append(files, graphFile(b.Path, fp))
 		if fp.Barrel {
 			im.barrels[b.Path] = true
 		}
@@ -45,6 +40,36 @@ func ResolveImports(blobs []BlobPrint, treePaths []string) *Imports {
 	im.Graph = depgraph.Build(files, treePaths)
 
 	return im
+}
+
+// graphFile hands the graph what it reads of one fingerprint.
+func graphFile(file string, fp *Fingerprint) depgraph.File {
+	f := depgraph.File{
+		Path: file, GoModule: fp.GoModule, Exported: fp.Exported, Referenced: fp.Referenced,
+		Selected: fp.Selected, ExportAs: fp.ExportAs, Default: fp.Default,
+	}
+	for _, ref := range fp.ImportRefs {
+		f.Imports = append(f.Imports, depgraph.Import{
+			Spec: ref.Spec, Kind: edgeKind(ref.Kind), Names: ref.Names, Line: ref.Line,
+			Local: ref.Local, Aliases: ref.Aliases,
+		})
+	}
+	if len(fp.Units) > 0 {
+		f.Declared = make(map[string]bool, len(fp.Units))
+	}
+	for i := range fp.Units {
+		if u := &fp.Units[i]; u.Name != "" && !strings.Contains(u.Name, ".") {
+			f.Declared[u.Name] = u.Public
+		}
+	}
+	if len(fp.Passed) > 0 {
+		f.Passed = make(map[string]bool, len(fp.Passed))
+	}
+	for _, name := range fp.Passed {
+		f.Passed[name] = true
+	}
+
+	return f
 }
 
 // edgeKind maps a stored import kind to the graph's.

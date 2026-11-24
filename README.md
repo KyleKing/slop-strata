@@ -58,7 +58,7 @@ calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
 calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
 ```
 
-`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. When the tool can resolve imports between files of the tree, a line under the totals counts the import edges and the import cycles, and each directory row carries `fan_in` and `fan_out` (the sample below predates those two columns). `--json` lists every file under `files`:
+`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. When the tool can resolve imports between files of the tree, a line under the totals counts the import edges and the import cycles, and each directory row carries `fan_in` and `fan_out` (the sample below predates those two columns). A second table, `module depth`, lists the directories that other directories use names of, shallowest first: how many names are `shown` and `hidden`, how many of the shown are only matched by name, and `depth`. Long directory paths are shortened in the middle there, so the table stays inside 100 columns. `--json` lists every file under `files`:
 
 ```bash
 slop-strata snapshot
@@ -147,6 +147,9 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `oscillating_funcs` counts the functions whose body changed in at least three commits within 14 days, per directory, with test files counted apart. The JSON names the ten busiest. A formatting commit or a test-first loop on one function can raise it. `--explain oscillating_funcs`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
+- `shown` and `hidden` count, per directory on `snapshot`, the declared names that a file of another directory uses and the ones none does. Use decides it and never a visibility keyword, so adding `export` or renaming to a capital changes nothing. `depth` is the hidden share by mass: near 1 the directory hides most of what it holds, near 0 its callers see nearly all of it, and `-` means nothing outside uses it. `widest_surface` names the file with the most shown names. The JSON adds `shown_mass`, `hidden_mass`, and `forwarders`, the pass-through functions left out of both. `--explain shown`, `--explain hidden`, `--explain shown_mass`, `--explain hidden_mass`, `--explain forwarders`, `--explain depth`, `--explain widest_surface`
+- `shown_by_name` (`by_name` in the table) says how many of `shown` are methods matched by name alone, because the tool infers no types. Those are guesses, so `depth` prints as a range when there are any: `depth` counts them as shown and `depth_attributed` counts them as hidden, and the true value lies between. `--explain shown_by_name`, `--explain depth_attributed`
+- `surface_widened` lists, on `change`, the directories that other directories now use more names of, with those names and the depth before and after. Only uses a resolved import attributes count, so a method matched by name never opens a row and is never named. It is information only, and `--brief` never speaks of it. `--explain surface_widened`
 - `import_cycles` counts the groups of non-test files that import each other at module level, with the size of the largest. Imports only a type checker reads, imports inside a function, and imports under a main guard do not close a cycle. `--experimental` lists each group as an `x/import-cycle` finding with its cheapest cut. `--explain import_cycles`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
@@ -212,13 +215,13 @@ The labels are evidence about this repository. A rule's precision here says noth
 `change`, `snapshot`, `history`, and `rules` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "stale_baseline": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 4}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "stale_baseline": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 5}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 4
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 5
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 

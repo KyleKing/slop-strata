@@ -94,8 +94,8 @@ func (e importsEnvelope) cycles() []rules.Finding {
 // fanOf answers a directory's fan-in and fan-out from a snapshot's rows.
 func fanOf(t *testing.T, dirs []dirSnapshot, dir string) [2]int {
 	t.Helper()
-	for _, d := range dirs {
-		if d.Dir == dir {
+	for i := range dirs {
+		if d := &dirs[i]; d.Dir == dir {
 			return [2]int{d.FanIn, d.FanOut}
 		}
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/kyleking/aragonite/vcs"
 
+	"github.com/kyleking/slop-strata/internal/depth"
 	"github.com/kyleking/slop-strata/internal/engine"
 	"github.com/kyleking/slop-strata/internal/intent"
 	"github.com/kyleking/slop-strata/internal/lang"
@@ -60,9 +61,11 @@ type changeResult struct {
 	TopFunctions []topFunc     `json:"top_functions"`
 	Next         []nextItem    `json:"next"`
 	Findings     []findingRow  `json:"findings"`
-	Delta        deltaSummary  `json:"delta"`
-	highFuncs    funcCounts
-	suppressed   report.Suppressed
+	// Surface lists the directories whose surface the change widened. See Docs["surface_widened"].
+	Surface    []depth.Widening `json:"surface_widened"`
+	Delta      deltaSummary     `json:"delta"`
+	highFuncs  funcCounts
+	suppressed report.Suppressed
 }
 
 type deltaSummary struct {
@@ -369,7 +372,7 @@ func (s *session) scoreChange(ctx context.Context, base, end string, files []vcs
 	}
 
 	res := &changeResult{
-		Base: base, End: end, Dirs: map[string]dirDelta{},
+		Base: base, End: end, Dirs: map[string]dirDelta{}, Files: []fileDelta{},
 		beforeByPath: map[string]structure.FileMetrics{}, afterByPath: map[string]structure.FileMetrics{},
 	}
 	newSides, err := s.prefetchChange(ctx, files, oldBlobs, committed)
@@ -1081,36 +1084,16 @@ func snippetLine(root, path string, line int) string {
 const topProductionFunctions = 3
 
 // printChange renders the human form: reading, delta table, top functions,
-// directories, findings.
+// directories, widened surfaces, findings.
 func printChange(w io.Writer, res *changeResult, all bool) {
 	report.Fprintln(w, res.Reading)
 	report.Fprintln(w)
 	report.Table(w, []string{"delta", "value"}, deltaRows(res.Delta, all))
 	printTopFunctions(w, res.TopFunctions, all)
 	printDirDeltas(w, res.Dirs, all)
+	printSurface(w, res.Surface)
 
-	newOnly := res.Findings
-	if !all {
-		var kept []findingRow
-		for _, f := range res.Findings {
-			if f.New {
-				kept = append(kept, f)
-			}
-		}
-		newOnly = kept
-	}
-	if len(newOnly) > 0 {
-		report.Fprintln(w)
-		rows := make([][]string, 0, len(newOnly))
-		for _, f := range newOnly {
-			mark := ""
-			if !f.New {
-				mark = "(existing)"
-			}
-			rows = append(rows, []string{f.ID, f.Rule, fmt.Sprintf("%s:%d", f.Path, f.Line), mark})
-		}
-		report.Table(w, []string{"id", colRule, "at", ""}, rows)
-	}
+	printFindings(w, res.Findings, all)
 	for _, sk := range res.Skipped {
 		if all || sk.Reason != engine.ReasonUnsupported {
 			report.Fprintf(w, "skipped %s: %s\n", sk.Path, sk.Reason)
@@ -1119,6 +1102,27 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 	for _, er := range res.Errors {
 		report.Fprintf(w, "error %s: %s\n", er.Path, er.Reason)
 	}
+}
+
+// printFindings lists the findings the change added, and with all the ones
+// it found already there.
+func printFindings(w io.Writer, findings []findingRow, all bool) {
+	rows := make([][]string, 0, len(findings))
+	for _, f := range findings {
+		if !f.New && !all {
+			continue
+		}
+		mark := ""
+		if !f.New {
+			mark = "(existing)"
+		}
+		rows = append(rows, []string{f.ID, f.Rule, fmt.Sprintf("%s:%d", f.Path, f.Line), mark})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	report.Fprintln(w)
+	report.Table(w, []string{"id", colRule, "at", ""}, rows)
 }
 
 // deltaRows lists the delta table: production mass, test mass when tests moved
@@ -1212,6 +1216,10 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 		rev, touched := s.revPrints(ctx, basePrints, files, newSides, scored)
 		addCrossFindings(rules.RemovedNameProse(basePrints, rev, touched), rev, sup, res)
 		addCrossFindings(rules.NewImportCycles(basePrints, rev, s.cfg.Experimental), rev, sup, res)
+		res.Surface = rules.WidenedSurfaces(basePrints, rev, lineage.DirOf)
+	}
+	if res.Surface == nil {
+		res.Surface = []depth.Widening{}
 	}
 	sortFindings(res.Findings)
 }

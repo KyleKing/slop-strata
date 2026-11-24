@@ -49,6 +49,7 @@ type Graph struct {
 	out   map[string][]int
 	nodes []string
 	edges []Edge
+	uses  []Use
 }
 
 // New builds a graph. Edges between the same two files with the same kind
