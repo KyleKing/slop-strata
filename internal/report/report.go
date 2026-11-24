@@ -463,17 +463,29 @@ var Docs = map[string]string{
 		"20 is needed. A statement whose shape more than 4 other places in the tree hold counts for less, " +
 		"and for nothing at 32, so an error check or a log line cannot carry a finding. The signature of a " +
 		"function, class, or type lines up and never counts, and a run never ends on an if or a loop whose " +
-		"body is outside it. The finding sits on the first line of the new copy, its match names the file " +
-		"and function it repeats, and its note says where that is (this file, the same directory, or " +
-		"another), up to two more places, the size, and what differs. --brief prints the note as the " +
-		"reason of the next line. Not reported: a file in a test directory or under a directory named " +
+		"body is outside it. Two more passes read what the runs left. Stretches too short alone are added " +
+		"up when they sit between the same two functions, in any order and with other statements between " +
+		"them: a copy with a line added, dropped, reshaped, or moved. Their differences count once across " +
+		"all of them, the sum must reach 20, and the note says how many stretches there are. Then each " +
+		"expression of 20 tokens or more in a new statement (a call with its arguments, a condition, a " +
+		"literal, a chain of calls, a type) is looked up among the tree's expressions and scored the same " +
+		"way, so a repeat inside two statements of different shape is found; its note starts 'repeats an " +
+		"expression of' and advises a name. A change that adds one copy several times reports the first, " +
+		"and the note ends with how many times and where. The finding sits on the first line of the new " +
+		"copy, its match names the file and function it repeats, and its note says where that is (this " +
+		"file, the same directory, or another), up to two more places, the size, and what differs. " +
+		"--brief prints the note as the reason of the next line. Not reported: a file in a test " +
+		"directory or under a directory named " +
 		"example, demo, sample, bench, benchmark, e2e, or playground (or the plural), where a copy is the " +
 		"point; a statement the change also removed somewhere, as written or under other names, which " +
 		"makes a move, a re-indent, or a body pulled into a helper; a run right behind the code it " +
 		"repeats in the same function, which is two arms of one branch; two files of one name that are " +
-		"80% alike, which is a tree kept in step with a copy of itself; and generated files. It does not " +
-		"see a repeated expression inside a larger statement, a copy with a statement added, dropped, or " +
-		"reordered beyond the run that still lines up, or a copy that renames more than three things. " +
+		"80% alike, which is a tree kept in step with a copy of itself; and generated files. An " +
+		"expression is not reported in a signature, inside the function that already holds it, or when " +
+		"it holds statements, as a call does that is passed a function; stretches are not added up " +
+		"inside one function. It does not see an expression under 20 tokens or one taken apart over " +
+		"several statements, stretches that add up to under 20, or a copy that renames more than three " +
+		"things. " +
 		"Only change reports it, so label cannot find its id. When a hit is right, call or widen the code " +
 		"the note names. When the two sites should stay apart, say why in a slop-strata:ignore comment on " +
 		"the finding's line.",

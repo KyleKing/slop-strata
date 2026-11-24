@@ -26,14 +26,47 @@ import (
 // never counts it. A statement that only passes a function along, as a
 // callback or a value, is not one.
 //
+// Below the statement sits the expression: a call, a condition, a literal with
+// members, a type, or any other subtree of subMinTokens tokens or more gets a
+// record of its own, so a repeat inside two statements of different shape can
+// still line up. An expression's tokens are a stretch of its statement's, and
+// its record says which. A list of arguments or parameters gets none, since
+// the call around it does, and neither does a node that adds under
+// subWrapTokens tokens to an expression inside it, or one that holds
+// statements, such as a call that is passed a function.
+//
 // The bytes are packed, because a tree holds a few hundred thousand statements
 // and the pass reads only two hashes of most. In order: a count; every shape
-// hash, then every exact hash, four bytes each; the length of the records;
-// per statement its line as a delta, its token count shifted over the compound
-// and header bits, and its slots as indexes into the names; then the names,
-// counted, each with its length. A slot is an identifier or a literal, the
-// tokens a shape hash leaves out. Everything but the hashes is a varint.
+// hash, then every exact hash, four bytes each; the same three for the
+// expressions; the length of the statement records; per statement its line as
+// a delta, its token count shifted over the compound and header bits, and its
+// slots as indexes into the names; the length of the expression records; per
+// expression its statement as a delta, its first slot, its slot count, its
+// token count, and its line past the statement's; then the names, counted,
+// each with its length. A slot is an identifier or a literal, the tokens a
+// shape hash leaves out. Everything but the hashes is a varint.
 type Fragments []byte
+
+// subMinTokens is the fewest tokens an expression holds to get a record. An
+// expression scores at most its tokens, so one under the floor the duplicate
+// pass reports at could never be reported, and keeping it would only cost
+// cache.
+const subMinTokens = dupMinScore
+
+// subWrapTokens is how many tokens a node must add to an expression inside it
+// to get a record beside it: `await f(x)`, `(f(x))`, and `y = f(x)` do not.
+const subWrapTokens = 3
+
+// fragSub is one decoded expression.
+type fragSub struct {
+	stmt   int // index of the statement that holds it
+	slot   int // its first slot among the statement's
+	nslots int
+	ntok   int
+	line   int
+	shape  uint32
+	exact  uint32
+}
 
 // fragStmt is one decoded statement.
 type fragStmt struct {
@@ -98,6 +131,14 @@ var fragTypeDecls = map[string]bool{ //nolint:gochecknoglobals // fixed vocabula
 	"internal_module": true,
 }
 
+// fragLists are the node kinds that only hold a list for the node above them,
+// which is the one an expression record is for.
+var fragLists = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
+	"argument_list": true, "arguments": true, "parameter_list": true, "parameters": true,
+	"formal_parameters": true, "type_arguments": true, "type_parameters": true, "expression_list": true,
+	"pattern_list": true, "literal_value": true, "lambda_parameters": true, "type_parameter_list": true,
+}
+
 // fragSignatures are the statements that are a signature and nothing else.
 var fragSignatures = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
 	"function_signature": true, "method_signature": true, "abstract_method_signature": true,
@@ -135,11 +176,13 @@ const (
 	fkScope     // a function, a class, or a type declaration
 	fkSignature // a signature with no body
 	fkWrap      // holds what it declares as a direct child
+	fkList      // a list of arguments or parameters, which gets no expression record
 )
 
 // fragKind is one node kind as the walk reads it.
 type fragKind struct {
 	name  string
+	hash  uint32 // of the name, which is an anonymous node's text
 	flags uint16
 }
 
@@ -159,7 +202,7 @@ func kindsOf(l *lang.Language) []fragKind {
 	kinds := l.Kinds()
 	out := make([]fragKind, len(kinds))
 	for i, k := range kinds {
-		out[i] = fragKind{name: k.Name, flags: kindFlags(l, k, containers)}
+		out[i] = fragKind{name: k.Name, hash: fnvAdd(fnvOffset, k.Name), flags: kindFlags(l, k, containers)}
 	}
 	fragKinds.Store(l, out)
 
@@ -191,6 +234,7 @@ func kindFlags(l *lang.Language, k lang.Kind, containers map[string]bool) uint16
 	set(l.FunctionKinds[name] || l.ClassKinds[name] || fragTypeDecls[name], fkScope)
 	set(fragSignatures[name], fkSignature)
 	set(fragWrappers[name], fkWrap)
+	set(fragLists[name], fkList)
 
 	return flags
 }
@@ -200,9 +244,9 @@ type openStmt struct {
 	slots []uint32
 	index int
 	ntok  int
-	shape uint32
-	exact uint32
-	scope bool // the statement declares a function or a class
+	shape uint64 // running hash of the tokens with every slot replaced by its class
+	exact uint64 // running hash of the tokens as written
+	scope bool   // the statement declares a function or a class
 }
 
 // fragCollector builds a file's Fragments during the fingerprint walk.
@@ -213,7 +257,9 @@ type fragCollector struct {
 	uses  []int
 	texts []string
 	stmts []fragStmt
+	subs  []fragSub
 	open  []openStmt
+	pow   []uint64 // powers of hashBase, grown as stretches need them
 }
 
 func newFragCollector(ctx *Ctx) *fragCollector {
@@ -230,7 +276,7 @@ func (c *fragCollector) walk(n *ts.Node, in fragWalk, visit func(*ts.Node, strin
 	}
 	if kind.flags&fkNamed == 0 {
 		if !in.muted && len(c.open) > 0 {
-			c.open[len(c.open)-1].word(kind.name) // an anonymous node's kind is its text
+			c.open[len(c.open)-1].word(kind.hash) // an anonymous node's kind is its text
 		}
 
 		return
@@ -238,12 +284,66 @@ func (c *fragCollector) walk(n *ts.Node, in fragWalk, visit func(*ts.Node, strin
 	visit(n, kind.name)
 	children := n.ChildCount()
 	down, opened := c.enter(n, kind, in, children == 0)
+	var from subMark
+	if !opened && !down.muted && children > 0 && len(c.open) > 0 && kind.flags&(fkList|fkContainer) == 0 {
+		from = c.mark()
+	}
 	for i := range children {
 		c.walk(n.Child(i), down, visit)
+	}
+	if from.set {
+		c.sub(n, from)
 	}
 	if opened {
 		c.close()
 	}
+}
+
+// subMark is where a statement stood when the walk entered a node: what the
+// node's own tokens are counted from.
+type subMark struct {
+	shape, exact uint64
+	ntok, slots  int
+	stmts        int
+	set          bool
+}
+
+func (c *fragCollector) mark() subMark {
+	st := &c.open[len(c.open)-1]
+
+	return subMark{
+		shape: st.shape, exact: st.exact, ntok: st.ntok, slots: len(st.slots), stmts: len(c.stmts), set: true,
+	}
+}
+
+// sub records the expression a node was, when it is big enough, holds a name
+// or a literal, and adds enough to the last expression recorded inside it. A
+// node with statements under it gets none: a call that is handed a function
+// body is the wrapping of that body, and two bodies wrapped alike are not a
+// repeat.
+func (c *fragCollector) sub(n *ts.Node, from subMark) {
+	st := &c.open[len(c.open)-1]
+	ntok := st.ntok - from.ntok
+	if ntok < subMinTokens || len(st.slots) == from.slots || len(c.stmts) != from.stmts {
+		return
+	}
+	if last := len(c.subs) - 1; last >= 0 {
+		inner := &c.subs[last]
+		if inner.stmt == st.index && inner.slot >= from.slots && inner.ntok+subWrapTokens > ntok {
+			return
+		}
+	}
+	for len(c.pow) <= ntok {
+		if len(c.pow) == 0 {
+			c.pow = append(c.pow, 1)
+		}
+		c.pow = append(c.pow, c.pow[len(c.pow)-1]*hashBase)
+	}
+	c.subs = append(c.subs, fragSub{
+		stmt: st.index, slot: from.slots, nslots: len(st.slots) - from.slots, ntok: ntok, line: lineOf(n),
+		shape: foldHash(st.shape-from.shape*c.pow[ntok], ntok),
+		exact: foldHash(st.exact-from.exact*c.pow[ntok], ntok),
+	})
 }
 
 // enter takes a named node into account before its children: it may open a
@@ -266,7 +366,7 @@ func (c *fragCollector) enter(n *ts.Node, kind *fragKind, in fragWalk, leaf bool
 			c.stmts[outer.index].compound = true
 			c.stmts[outer.index].header = c.stmts[outer.index].header || outer.scope
 		}
-		c.open = append(c.open, openStmt{index: len(c.stmts), shape: fnvOffset, exact: fnvOffset})
+		c.open = append(c.open, openStmt{index: len(c.stmts)})
 		c.stmts = append(c.stmts, fragStmt{line: lineOf(n)})
 	}
 	if len(c.open) == 0 {
@@ -332,7 +432,7 @@ func (c *fragCollector) token(n *ts.Node, kind *fragKind, leaf bool) bool {
 	case kind.flags&fkIdent != 0:
 		st.slot(c, text, shapeIdent)
 	default:
-		st.word(string(text))
+		st.word(fnvAdd(fnvOffset, text))
 	}
 
 	return literal
@@ -352,19 +452,34 @@ func fnvAdd[T string | []byte](h uint32, s T) uint32 {
 	return (h ^ 0xff) * fnvPrime //nolint:mnd // a byte no token holds, between tokens
 }
 
-// word adds a token both hashes read as written.
-func (st *openStmt) word(text string) {
+// hashBase is the base of the running hashes: a statement's hash is a
+// polynomial in it over the hashes of its tokens, so the hash of any stretch
+// of tokens falls out of the hashes before and after the stretch.
+const hashBase = 0x100000001b3
+
+// hashFold spreads a running hash before it is cut to 32 bits.
+const hashFold = 0x9e3779b97f4a7c15
+
+// foldHash cuts the running hash of n tokens to the 32 bits a record keeps.
+func foldHash(h uint64, n int) uint32 {
+	h = (h + uint64(n)) * hashFold //nolint:gosec // a count
+
+	return uint32(h >> 32) //nolint:mnd // the high half
+}
+
+// word adds a token both hashes read as written, by the hash of its text.
+func (st *openStmt) word(text uint32) {
 	st.ntok++
-	st.shape = fnvAdd(st.shape, text)
-	st.exact = fnvAdd(st.exact, text)
+	st.shape = st.shape*hashBase + uint64(text)
+	st.exact = st.exact*hashBase + uint64(text)
 }
 
 // slot adds an identifier or literal: its text to the exact hash, its class
 // alone to the shape hash.
 func (st *openStmt) slot(c *fragCollector, text []byte, class byte) {
 	st.ntok++
-	st.shape = (st.shape ^ uint32(class)) * fnvPrime
-	st.exact = fnvAdd(st.exact, text)
+	st.shape = st.shape*hashBase + uint64(class)
+	st.exact = st.exact*hashBase + uint64(fnvAdd(fnvOffset, text))
 	st.slots = append(st.slots, c.intern(text))
 }
 
@@ -402,21 +517,32 @@ func (c *fragCollector) close() {
 	st := c.open[len(c.open)-1]
 	c.open = c.open[:len(c.open)-1]
 	rec := &c.stmts[st.index]
-	rec.ntok, rec.shape, rec.exact, rec.slots = st.ntok, st.shape, st.exact, st.slots
+	rec.ntok, rec.slots = st.ntok, st.slots
+	rec.shape, rec.exact = foldHash(st.shape, st.ntok), foldHash(st.exact, st.ntok)
 }
 
 // fragments packs what the walk gathered, or answers nil for a file with no
 // statement. Names are ordered by use, most used first, so the common ones
 // pack into one byte.
 func (c *fragCollector) fragments() Fragments {
+	// A statement closes after the expressions in it, so they are ordered here.
+	slices.SortStableFunc(c.subs, func(a, b fragSub) int { return cmp.Compare(a.stmt, b.stmt) })
+	for i := range c.subs {
+		c.subs[i].line -= c.stmts[c.subs[i].stmt].line
+	}
 	stmts := c.stmts[:0]
+	moved := make([]int, len(c.stmts))
 	for i := range c.stmts {
+		moved[i] = len(stmts)
 		if c.stmts[i].ntok > 0 {
 			stmts = append(stmts, c.stmts[i])
 		}
 	}
 	if len(stmts) == 0 {
 		return nil
+	}
+	for i := range c.subs {
+		c.subs[i].stmt = moved[c.subs[i].stmt]
 	}
 	order := make([]uint32, len(c.texts))
 	for i := range order {
@@ -435,17 +561,25 @@ func (c *fragCollector) fragments() Fragments {
 		}
 	}
 
-	return packFragments(stmts, names)
+	return packFragments(stmts, c.subs, names)
 }
 
-// packFragments lays statements and names out in the format Fragments documents.
-func packFragments(stmts []fragStmt, names []string) Fragments {
+// packFragments lays statements, expressions, and names out in the format
+// Fragments documents.
+func packFragments(stmts []fragStmt, subs []fragSub, names []string) Fragments {
 	out := binary.AppendUvarint(nil, uint64(len(stmts)))
 	for i := range stmts {
 		out = binary.LittleEndian.AppendUint32(out, stmts[i].shape)
 	}
 	for i := range stmts {
 		out = binary.LittleEndian.AppendUint32(out, stmts[i].exact)
+	}
+	out = binary.AppendUvarint(out, uint64(len(subs)))
+	for i := range subs {
+		out = binary.LittleEndian.AppendUint32(out, subs[i].shape)
+	}
+	for i := range subs {
+		out = binary.LittleEndian.AppendUint32(out, subs[i].exact)
 	}
 	var recs []byte
 	line := 0
@@ -460,12 +594,28 @@ func packFragments(stmts []fragStmt, names []string) Fragments {
 		line = s.line
 	}
 	out = append(binary.AppendUvarint(out, uint64(len(recs))), recs...)
+	out = packSubs(out, subs)
 	out = binary.AppendUvarint(out, uint64(len(names)))
 	for _, name := range names {
 		out = append(binary.AppendUvarint(out, uint64(len(name))), name...)
 	}
 
 	return out
+}
+
+// packSubs appends the expression records, with their length first.
+func packSubs(out []byte, subs []fragSub) []byte {
+	var recs []byte
+	stmt := 0
+	for i := range subs {
+		s := &subs[i]
+		for _, v := range []int{s.stmt - stmt, s.slot, s.nslots, s.ntok, s.line} {
+			recs = binary.AppendUvarint(recs, uint64(max(v, 0)))
+		}
+		stmt = s.stmt
+	}
+
+	return append(binary.AppendUvarint(out, uint64(len(recs))), recs...)
 }
 
 // Bits under a packed token count.
@@ -488,15 +638,32 @@ func packCount(s *fragStmt) uint64 {
 	return n
 }
 
-// hashes answers the packed shape hashes, the packed exact hashes, and what
-// follows them, without decoding it. A payload cut short answers none.
-func (f Fragments) hashes() ([]byte, []byte, []byte) {
-	n, used := binary.Uvarint(f)
-	if used <= 0 || n > uint64(len(f)) || len(f)-used < int(n)*hashWidth*2 { //nolint:gosec // bounded above
+// fragHashes is a payload's four hash tables, still packed, and what follows
+// them.
+type fragHashes struct {
+	shapes, exacts       []byte // per statement
+	subShapes, subExacts []byte // per expression
+	rest                 []byte
+}
+
+// hashes answers the packed hashes without decoding what follows them. A
+// payload cut short answers the tables it held whole.
+func (f Fragments) hashes() fragHashes {
+	var h fragHashes
+	h.shapes, h.exacts, h.rest = hashTables(f)
+	h.subShapes, h.subExacts, h.rest = hashTables(h.rest)
+
+	return h
+}
+
+// hashTables reads a count and that many shape hashes and exact hashes.
+func hashTables(b []byte) ([]byte, []byte, []byte) {
+	n, used := binary.Uvarint(b)
+	if used <= 0 || n > uint64(len(b)) || len(b)-used < int(n)*hashWidth*2 { //nolint:gosec // bounded above
 		return nil, nil, nil
 	}
 	size := int(n) * hashWidth //nolint:gosec // bounded by the payload's length
-	body := f[used:]
+	body := b[used:]
 
 	return body[:size], body[size : 2*size], body[2*size:]
 }
@@ -524,21 +691,43 @@ func (r *fragReader) next() int {
 	return int(v)
 }
 
-// decode unpacks every statement and the names their slots index. A payload
-// cut short answers the statements it held whole, and no statement points
-// past the names.
-func (f Fragments) decode() ([]fragStmt, []string) {
-	shapes, exacts, rest := f.hashes()
-	r := &fragReader{rest: rest}
+// fragDecoded is a payload unpacked.
+type fragDecoded struct {
+	stmts []fragStmt
+	subs  []fragSub
+	names []string
+}
+
+// decode unpacks every statement, every expression, and the names their slots
+// index. A payload cut short answers the records it held whole, no statement
+// points past the names, and no expression past its statement's slots.
+func (f Fragments) decode() fragDecoded {
+	h := f.hashes()
+	r := &fragReader{rest: h.rest}
 	size := r.next()
 	if r.bad || size > len(r.rest) {
-		return nil, nil
+		return fragDecoded{}
 	}
-	names := decodeNames(r.rest[size:])
-	r.rest = r.rest[:size]
-	out := make([]fragStmt, 0, len(shapes)/hashWidth)
+	stmtRecs, after := r.rest[:size], r.rest[size:]
+	r = &fragReader{rest: after}
+	size = r.next()
+	if r.bad || size > len(r.rest) {
+		return fragDecoded{}
+	}
+	subRecs := r.rest[:size]
+	d := fragDecoded{names: decodeNames(r.rest[size:])}
+	d.stmts = decodeStmts(h, stmtRecs, len(d.names))
+	d.subs = decodeSubs(h, subRecs, d.stmts)
+
+	return d
+}
+
+// decodeStmts unpacks the statement records.
+func decodeStmts(h fragHashes, recs []byte, names int) []fragStmt {
+	r := &fragReader{rest: recs}
+	out := make([]fragStmt, 0, len(h.shapes)/hashWidth)
 	line := 0
-	for i := range len(shapes) / hashWidth {
+	for i := range len(h.shapes) / hashWidth {
 		delta, count, nslots := r.next(), r.next(), r.next()
 		if r.bad || nslots > len(r.rest) {
 			break
@@ -546,19 +735,39 @@ func (f Fragments) decode() ([]fragStmt, []string) {
 		line += delta
 		st := fragStmt{
 			line: line, ntok: count >> packBits, header: count&packHeader != 0, compound: count&packCompound != 0,
-			shape: hashAt(shapes, i), exact: hashAt(exacts, i), slots: make([]uint32, 0, nslots),
+			shape: hashAt(h.shapes, i), exact: hashAt(h.exacts, i), slots: make([]uint32, 0, nslots),
 		}
 		for range nslots {
 			id := r.next()
-			if r.bad || id >= len(names) {
-				return out, names
+			if r.bad || id >= names {
+				return out
 			}
 			st.slots = append(st.slots, uint32(id)) //nolint:gosec // checked against the names
 		}
 		out = append(out, st)
 	}
 
-	return out, names
+	return out
+}
+
+// decodeSubs unpacks the expression records, in the order of their statements.
+func decodeSubs(h fragHashes, recs []byte, stmts []fragStmt) []fragSub {
+	r := &fragReader{rest: recs}
+	out := make([]fragSub, 0, len(h.subShapes)/hashWidth)
+	stmt := 0
+	for i := range len(h.subShapes) / hashWidth {
+		delta, slot, nslots, ntok, line := r.next(), r.next(), r.next(), r.next(), r.next()
+		stmt += delta
+		if r.bad || stmt >= len(stmts) || slot+nslots > len(stmts[stmt].slots) {
+			break
+		}
+		out = append(out, fragSub{
+			stmt: stmt, slot: slot, nslots: nslots, ntok: ntok, line: stmts[stmt].line + line,
+			shape: hashAt(h.subShapes, i), exact: hashAt(h.subExacts, i),
+		})
+	}
+
+	return out
 }
 
 // decodeNames unpacks the names section.

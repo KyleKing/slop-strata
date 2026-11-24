@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -294,14 +295,256 @@ func typescriptNewDuplicateCase() fixturetest.Case {
 	}
 }
 
+// priceExpr is one expression long enough to be worth a name. A language's
+// fixture writes it in two statements of different shape, so no statement of
+// the copy lines up with one of the first function.
+const priceExpr = "round(o.net * (1 + cfg.rates[o.region].vat) + cfg.fees[o.carrier].flat, cfg.precision)"
+
+// priceSplit is the expression taken apart over three statements.
+const priceSplit = "taxed = o.net * (1 + cfg.rates[o.region].vat)\nfee = cfg.fees[o.carrier].flat\n" +
+	"amount = round(taxed + fee, cfg.precision)\n"
+
+// exprFixture is the two functions of one language around priceExpr: total
+// holds it, and quote is what a change adds. EXPR marks where it goes.
+type exprFixture struct {
+	lang, ext     string
+	total, quote  string // the function the tree holds, and the copy's
+	comment       string // a line comment
+	call, split   string // the copy calling total, and with the expression taken apart
+	otherFunction string // a second name for the copy's function
+}
+
+// goQuoteOpen opens the Go function a change adds.
+const goQuoteOpen = "package bill\n\nfunc quote(o *Order, cfg *Config) string {\n"
+
+func (exprFixture) with(tmpl, expr string) string { return strings.ReplaceAll(tmpl, "EXPR", expr) }
+
+func exprFixtures() []exprFixture {
+	return []exprFixture{
+		{
+			lang: "go", ext: ".go", comment: "\t// rounded as the invoice rounds\n", otherFunction: "estimate",
+			total: "package bill\n\nfunc total(o *Order, cfg *Config) float64 {\n\treturn EXPR\n}\n",
+			quote: goQuoteOpen + "\tif amount := EXPR; amount > cfg.floor {\n" +
+				"\t\treturn format(amount)\n\t}\n\n\treturn \"\"\n}\n",
+			call: goQuoteOpen + "\tif amount := total(o, cfg); amount > cfg.floor {\n" +
+				"\t\treturn format(amount)\n\t}\n\n\treturn \"\"\n}\n",
+			split: goQuoteOpen +
+				"\ttaxed := o.net * (1 + cfg.rates[o.region].vat)\n\tfee := cfg.fees[o.carrier].flat\n" +
+				"\tif amount := round(taxed+fee, cfg.precision); amount > cfg.floor {\n" +
+				"\t\treturn format(amount)\n\t}\n\n\treturn \"\"\n}\n",
+		},
+		{
+			lang: "python", ext: ".py", comment: "    # rounded as the invoice rounds\n", otherFunction: "estimate",
+			total: "def total(o, cfg):\n    return EXPR\n",
+			quote: "def quote(o, cfg):\n    amount = EXPR\n    return f\"{amount:.2f}\"\n",
+			call: "from bill.total import total\n\n\ndef quote(o, cfg):\n    amount = total(o, cfg)\n" +
+				"    return f\"{amount:.2f}\"\n",
+			split: "def quote(o, cfg):\n    " + strings.ReplaceAll(priceSplit, "\n", "\n    ") +
+				"return f\"{amount:.2f}\"\n",
+		},
+		{
+			lang: "typescript", ext: ".ts", comment: "  // rounded as the invoice rounds\n", otherFunction: "estimate",
+			total: "export function total(o: Order, cfg: Config): number {\n  return EXPR\n}\n",
+			quote: "export function quote(o: Order, cfg: Config): string {\n  const amount = EXPR\n" +
+				"  return amount.toFixed(2)\n}\n",
+			call: "import { total } from \"./total\"\n\nexport function quote(o: Order, cfg: Config): string {\n" +
+				"  const amount = total(o, cfg)\n  return amount.toFixed(2)\n}\n",
+			split: "export function quote(o: Order, cfg: Config): string {\n" +
+				"  const taxed = o.net * (1 + cfg.rates[o.region].vat)\n  const fee = cfg.fees[o.carrier].flat\n" +
+				"  const amount = round(taxed + fee, cfg.precision)\n  return amount.toFixed(2)\n}\n",
+		},
+	}
+}
+
+// exprNewDuplicateCase is the fixture for an expression a change writes again
+// inside a statement of another shape.
+func exprNewDuplicateCase(f *exprFixture) fixturetest.Case {
+	total, quote := "bill/total"+f.ext, "bill/quote"+f.ext
+	copied := f.with(f.quote, priceExpr)
+	in := func(body string) fixturetest.Tree { return fixturetest.Tree{quote: body} }
+	firstLine := strings.Index(copied, "quote(")
+	firstLine += strings.Index(copied[firstLine:], "\n") + 1
+
+	return fixturetest.Case{
+		Name: f.lang + ": a change writes an expression again inside another statement",
+		Base: fixturetest.Tree{before + total: f.with(f.total, priceExpr), added + quote: copied},
+		Dodges: []fixturetest.Variant{
+			adds("add a comment above the copy", in(copied[:firstLine]+f.comment+copied[firstLine:])),
+			adds("rename the variable the copy is bound to", in(strings.ReplaceAll(copied, "amount", "price"))),
+			adds("change one name inside the copy",
+				in(f.with(f.quote, strings.Replace(priceExpr, "o.net", "o.gross", 1)))),
+		},
+		Persists: []fixturetest.Variant{
+			adds("give the function around the copy another name",
+				in(strings.Replace(copied, "quote(", f.otherFunction+"(", 1))),
+			movesTo(quote, "bill/estimate"+f.ext, copied),
+		},
+		Gaps: []fixturetest.Variant{
+			adds("take the expression apart over three statements", in(f.split)),
+			adds("swap the two sides of a sum", in(f.with(f.quote, strings.Replace(priceExpr,
+				"o.net * (1 + cfg.rates[o.region].vat) + cfg.fees[o.carrier].flat",
+				"cfg.fees[o.carrier].flat + o.net * (1 + cfg.rates[o.region].vat)", 1)))),
+			adds("rename four names inside the copy", in(f.with(f.quote, strings.NewReplacer(
+				"net", "gross", "region", "zone", "carrier", "courier", "precision", "digits").Replace(priceExpr)))),
+		},
+		Fixes: []fixturetest.Variant{
+			adds("call the function that holds the expression", in(f.call)),
+		},
+	}
+}
+
+// syncFixture is a function of five short statements in one language, none
+// long enough to be reported alone. A copy takes a table and the lines to
+// put after each of the first four statements.
+type syncFixture struct {
+	lang, ext, comment string
+	head, call         string
+	stmts              [5]string
+	extras             [4]string
+	open, end          string // the signature with NAME in it, and the closing line
+	renames            []string
+}
+
+func (f *syncFixture) fn(name, table string, extras []string, order ...int) string {
+	if len(order) == 0 {
+		order = []int{0, 1, 2, 3, 4}
+	}
+	var b strings.Builder
+	b.WriteString(strings.Replace(f.open, "NAME", name, 1))
+	for at, i := range order {
+		b.WriteString(strings.ReplaceAll(f.stmts[i], "TABLE", table))
+		if at < len(extras) && extras[at] != "" {
+			b.WriteString(extras[at])
+		}
+	}
+	b.WriteString(f.end)
+
+	return b.String()
+}
+
+func syncFixtures() []syncFixture {
+	return []syncFixture{
+		{
+			lang: "go", ext: ".go", comment: "\t// counted for the dashboard\n", head: "package feed\n\n",
+			open: "func NAME(db *DB, api *Client, since time.Time) error {\n", end: "}\n",
+			stmts: [5]string{
+				"\trows := api.Fetch(\"TABLE\", db.Cursor(since))\n",
+				"\tstale := db.Stale(\"TABLE\", since.Add(-window))\n",
+				"\tdb.Upsert(rows, conflictPolicy(api.Version))\n", "\tdb.Delete(stale, auditTrail(api.Actor))\n",
+				"\n\treturn db.Commit(len(rows), len(stale))\n",
+			},
+			extras: [4]string{
+				"\tmetrics.Count(\"fetched\", len(rows))\n", "\tmetrics.Count(\"stale\", len(stale))\n",
+				"\tdb.Flush()\n", "\tdb.Flush()\n",
+			},
+			call: "func NAME(db *DB, api *Client, since time.Time) error {\n" +
+				"\treturn syncTable(db, api, \"TABLE\", since)\n}\n",
+			renames: []string{
+				"Fetch", "Pull", "window", "horizon", "conflictPolicy", "mergePolicy", "auditTrail", "ledger",
+				"Commit", "Seal", "Upsert", "Put", "Delete", "Drop",
+			},
+		},
+		{
+			lang: "python", ext: ".py", comment: "    # counted for the dashboard\n",
+			open: "def NAME(db, api, since):\n",
+			stmts: [5]string{
+				"    rows = api.fetch(\"TABLE\", db.cursor(since))\n",
+				"    stale = db.stale(\"TABLE\", since - WINDOW)\n",
+				"    db.upsert(rows, conflict_policy(api.version))\n", "    db.delete(stale, audit_trail(api.actor))\n",
+				"    return db.commit(len(rows), len(stale))\n",
+			},
+			extras: [4]string{
+				"    metrics.count(\"fetched\", len(rows))\n", "    metrics.count(\"stale\", len(stale))\n",
+				"    db.flush()\n", "    db.flush()\n",
+			},
+			call: "def NAME(db, api, since):\n    return sync_table(db, api, \"TABLE\", since)\n",
+			renames: []string{
+				"fetch", "pull", "WINDOW", "HORIZON", "conflict_policy", "merge_policy", "audit_trail", "ledger",
+				"commit", "seal", "upsert", "put", "delete", "drop",
+			},
+		},
+		{
+			lang: "typescript", ext: ".ts", comment: "  // counted for the dashboard\n",
+			open: "export async function NAME(db: Db, api: Client, since: Date): Promise<number> {\n", end: "}\n",
+			stmts: [5]string{
+				"  const rows = await api.fetch(\"TABLE\", db.cursor(since))\n",
+				"  const stale = await db.stale(\"TABLE\", since.getTime() - WINDOW)\n",
+				"  await db.upsert(rows, conflictPolicy(api.version))\n",
+				"  await db.delete(stale, auditTrail(api.actor))\n",
+				"  return db.commit(rows.length, stale.length)\n",
+			},
+			extras: [4]string{
+				"  metrics.count(\"fetched\", rows.length)\n", "  metrics.count(\"stale\", stale.length)\n",
+				"  await db.flush()\n", "  await db.flush()\n",
+			},
+			call: "export const NAME = (db: Db, api: Client, since: Date) => syncTable(db, api, \"TABLE\", since)\n",
+			renames: []string{
+				"fetch", "pull", "WINDOW", "HORIZON", "conflictPolicy", "mergePolicy", "auditTrail", "ledger",
+				"commit", "seal", "upsert", "put", "delete", "drop",
+			},
+		},
+	}
+}
+
+// joinNewDuplicateCase is the fixture for a copy with a line added after each
+// statement it took, so no two of them line up in a row.
+func joinNewDuplicateCase(f *syncFixture) fixturetest.Case {
+	users, orders := "feed/users"+f.ext, "feed/orders"+f.ext
+	extras := f.extras[:]
+	copied := f.head + f.fn("syncOrders", "orders", extras)
+	in := func(body string) fixturetest.Tree { return fixturetest.Tree{orders: body} }
+	called := func(name, table string) string {
+		return strings.NewReplacer("NAME", name, "TABLE", table).Replace(f.call)
+	}
+	shared := strings.Replace(strings.Replace(f.fn("syncTable", "users", nil), "\"users\"", "table", 2),
+		"api, since", "api, table, since", 1)
+
+	return fixturetest.Case{
+		Name: f.lang + ": a change adds a copy with a line after each statement it took",
+		Base: fixturetest.Tree{before + users: f.head + f.fn("syncUsers", "users", nil), added + orders: copied},
+		Dodges: []fixturetest.Variant{
+			adds("add a comment to the copy", in(strings.Replace(copied, extras[0], f.comment+extras[0], 1))),
+			adds("rename a variable in the copy", in(strings.ReplaceAll(copied, "stale", "expired"))),
+			adds("put another line between two statements",
+				in(strings.Replace(copied, extras[2], extras[2]+extras[3], 1))),
+		},
+		Persists: []fixturetest.Variant{
+			adds("give the copy another name", in(strings.Replace(copied, "syncOrders", "refreshOrders", 1))),
+			movesTo(orders, "feed/sales"+f.ext, copied),
+			adds("swap two statements of the copy", in(f.head+f.fn("syncOrders", "orders", extras, 0, 1, 3, 2, 4))),
+			adds("leave one statement out",
+				in(strings.Replace(copied, strings.ReplaceAll(f.stmts[3], "TABLE", "orders"), "", 1))),
+		},
+		Gaps: []fixturetest.Variant{
+			adds("rename a name or two in every statement", in(strings.NewReplacer(f.renames...).Replace(copied))),
+		},
+		Fixes: []fixturetest.Variant{
+			adds("give the function a parameter and call it twice", fixturetest.Tree{
+				users:  f.head + shared + "\n" + called("syncUsers", "users"),
+				orders: f.head + called("syncOrders", "orders"),
+			}),
+		},
+	}
+}
+
 // TestNewDuplicateHoldsUnderAdversarialEdits is x/new-duplicate's share of the
 // adversarial fixtures. The rule reads a change, so each variant is a
-// two-commit history and the command scores its last commit.
+// two-commit history and the command scores its last commit. A language has
+// three cases, one for each way the rule finds a copy: statements that line
+// up in a row, an expression inside statements that do not, and stretches
+// with other lines between them.
 func TestNewDuplicateHoldsUnderAdversarialEdits(t *testing.T) {
 	t.Parallel()
-	fixturetest.Run(t, []fixturetest.Case{
-		goNewDuplicateCase(), pythonNewDuplicateCase(), typescriptNewDuplicateCase(),
-	}, changeRuleIDs(t, ruleNewDuplicate, "--experimental"))
+	exprs, syncs := exprFixtures(), syncFixtures()
+	cases := make([]fixturetest.Case, 0, 1+1+1+len(exprs)+len(syncs))
+	cases = append(cases, goNewDuplicateCase(), pythonNewDuplicateCase(), typescriptNewDuplicateCase())
+	for i := range exprs {
+		cases = append(cases, exprNewDuplicateCase(&exprs[i]))
+	}
+	for i := range syncs {
+		cases = append(cases, joinNewDuplicateCase(&syncs[i]))
+	}
+	fixturetest.Run(t, cases, changeRuleIDs(t, ruleNewDuplicate, "--experimental"))
 }
 
 // goErrChain is a Go function of three calls, each followed by the error
@@ -454,13 +697,80 @@ func otherQuietCases() []quietCase {
 	}
 }
 
+// tsRetry is a call that is handed a function: the call's own tokens are the
+// wrapping, and the body is the code.
+func tsRetry(name, body string) string {
+	return "export const " + name + " = (o: Order, cfg: Config) =>\n" +
+		"  retry(cfg.attempts, cfg.backoff, cfg.jitter, logger.with(\"op\", o.kind, \"id\", o.id), async () => {\n" +
+		"    " + body + "\n  })\n"
+}
+
+// tsOverloaded is a function with two overload signatures over a body.
+func tsOverloaded(name, body string) string {
+	sig := "export function " + name + "(doc: Doc, ctx: Context, schema: SomeType, accessor: string"
+
+	return sig + "): string;\n" + sig + ", keep: true): string | null;\n" + sig + ", keep?: boolean) {\n" + body + "}\n"
+}
+
+// guardQuietCases pins the guards of the two ways the rule finds a copy below
+// the statement and across gaps: each is a change that repeats something and
+// that a reader would not call a copy.
+func guardQuietCases() []quietCase {
+	goExpr, pyExpr, goSync := &exprFixtures()[0], &exprFixtures()[1], &syncFixtures()[0]
+	const short = "round(o.net*cfg.rate, cfg.precision)"
+	arm := func(extras []string) string {
+		body := goSync.fn("x", "users", extras)
+		body = body[strings.Index(body, "\n")+1 : strings.LastIndex(body, "\n\n\treturn")]
+
+		return strings.ReplaceAll(body, "\n\t", "\n\t\t")
+	}
+
+	return []quietCase{
+		{name: "go: an expression too short to be worth a name", tree: fixturetest.Tree{
+			before + "bill/total.go": goExpr.with(goExpr.total, short),
+			added + "bill/quote.go":  goExpr.with(goExpr.quote, short),
+		}},
+		{name: "go: an expression written twice in one function", tree: fixturetest.Tree{
+			before + "bill/doc.go": "package bill\n",
+			added + "bill/quote.go": strings.Replace(goExpr.with(goExpr.quote, priceExpr), "\n\treturn \"\"\n",
+				"\tlog.Print(\"none\")\n\tlog.Print(\"at all\")\n\n\treturn label("+priceExpr+")\n", 1),
+		}},
+		{name: "typescript: two calls wrap different function bodies", tree: fixturetest.Tree{
+			before + "src/load.ts": tsRetry("load", "return fetchOrder(o)"),
+			added + "src/save.ts":  tsRetry("save", "await storeOrder(o, cfg.table)"),
+		}},
+		{name: "typescript: two functions share only their overloads", tree: fixturetest.Tree{
+			before + "src/child.ts": tsOverloaded("compileChild",
+				"  return keep ? emit(doc, ctx.child(schema), accessor) : null\n"),
+			added + "src/check.ts": tsOverloaded("generateCheck",
+				"  doc.write(accessor)\n  return ctx.failed ? null : render(schema)\n"),
+		}},
+		{name: "python: a statement is rewritten around an expression it held", tree: fixturetest.Tree{
+			before + "bill/total.py": pyExpr.with(pyExpr.total, priceExpr),
+			before + "bill/quote.py": "def quote(o, cfg):\n    return str(" + priceExpr + ")\n",
+			added + "bill/quote.py":  pyExpr.with(pyExpr.quote, priceExpr),
+		}},
+		{name: "python: an expression only a test holds", tree: fixturetest.Tree{
+			before + "tests/test_total.py": pyExpr.with(pyExpr.total, priceExpr),
+			added + "bill/quote.py":        pyExpr.with(pyExpr.quote, priceExpr),
+		}},
+		{name: "go: two arms of one function share short statements", tree: fixturetest.Tree{
+			before + "feed/doc.go": "package feed\n",
+			added + "feed/both.go": "package feed\n\n" +
+				"func syncBoth(db *DB, api *Client, since time.Time, full bool) {\n" +
+				"\tif full {\n\t" + arm(nil) + "\n\t} else {\n\t" + arm(goSync.extras[:]) + "\n\t}\n}\n",
+		}},
+	}
+}
+
 // TestNewDuplicateStaysQuiet pins the changes that look like a new copy to a
 // diff and are not one: moved and re-indented code, a body pulled into a
 // helper, the idioms every file repeats, tests, examples, benchmarks,
-// generated files, and a tree kept in step with its mirror.
+// generated files, a tree kept in step with its mirror, and what the guards
+// on expressions and on joined stretches leave alone.
 func TestNewDuplicateStaysQuiet(t *testing.T) {
 	t.Parallel()
-	for _, tc := range append(goQuietCases(), otherQuietCases()...) {
+	for _, tc := range slices.Concat(goQuietCases(), otherQuietCases(), guardQuietCases()) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			for _, f := range changeFindings(t, historyRepo(t, tc.tree), "--experimental") {
