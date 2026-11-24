@@ -1,3 +1,9 @@
+## v0.16.1 (2026-11-24)
+
+### Fix
+
+- **rules**: record every top-level declaration, and hold each rule to the edits that dodge it
+
 ## v0.16.0 (2026-11-24)
 
 ### Feat
