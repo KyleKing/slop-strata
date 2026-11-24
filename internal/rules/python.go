@@ -31,7 +31,7 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 		}
 		stmt := body.NamedChild(0)
 		if stmt.Kind() == "pass_statement" ||
-			(stmt.Kind() == "expression_statement" && ctx.Text(stmt) == "...") {
+			(stmt.Kind() == kindExpressionStmt && ctx.Text(stmt) == "...") {
 			*findings = append(*findings, Finding{Rule: "py/silent-except", Line: lineOf(n)})
 		}
 	})

@@ -58,7 +58,7 @@ calcipy/invoke_helpers.py:47  find_repo_root  cc new→5  +18.0
 calcipy/invoke_helpers.py:65  get_doc_subdir  cc 2→5    +17.7
 ```
 
-`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. `--json` lists every file under `files`:
+`snapshot` scores the whole tree at a revision, with directories and the ten hottest files ranked by hotspot, then mass, and the five heaviest production functions named. A hotspot here is the commits that touched a directory or file in the 90 days up to that revision, times its mass (`--explain hotspot`). Test directories get their own table, and a map literal of 15 or more structured entries (a hand-written case table) adds `table_mass` and an `x/case-table` hit. When the tool can resolve imports between files of the tree, a line under the totals counts the import edges and the import cycles, and each directory row carries `fan_in` and `fan_out` (the sample below predates those two columns). `--json` lists every file under `files`:
 
 ```bash
 slop-strata snapshot
@@ -146,10 +146,13 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `readd` is the share of young deaths where a later commit added the same line back to the same file within 30 days, for lines of 30 or more bytes. Deaths in a revert, and re-additions by one, are counted apart as `readded_by_revert`. Deaths in the last 30 days of the window are left out of the share, because they have not had time to come back. `--explain readd`
 - `oscillating_funcs` counts the functions whose body changed in at least three commits within 14 days, per directory, with test files counted apart. The JSON names the ten busiest. A formatting commit or a test-first loop on one function can raise it. `--explain oscillating_funcs`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
+- `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
+- `import_cycles` counts the groups of non-test files that import each other at module level, with the size of the largest. Imports only a type checker reads, imports inside a function, and imports under a main guard do not close a cycle. `--experimental` lists each group as an `x/import-cycle` finding with its cheapest cut. `--explain import_cycles`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
 - `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline, ignored inline with a reason, or labeled false positive. `--explain suppressed`
+- `stale_baseline` counts, on `snapshot`, the baseline entries that no longer match a finding. `--explain stale_baseline`
 - `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
 - `pairing` compares author classes in the same week and directory. `--explain pairing`
 - `counts` says how many files the run could not score, and why. `--explain counts`
@@ -170,7 +173,7 @@ The gate exists because a noisy rule teaches people to skip its output, and that
 
 ## Setting findings aside
 
-Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
+Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. An `x/import-cycle` finding is the exception: its id comes from the rule and the sorted files of the cycle, so it holds however the imports are written and changes when a file joins or leaves. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
 
 To mute one finding inline, write `slop-strata:ignore`, the rule id, and a reason in a comment on the finding's line or the line above it:
 
@@ -183,7 +186,9 @@ Use the file's own comment syntax: `//` or `#` in code, `#` in TOML and YAML, an
 
 The reason is required. An ignore without one mutes nothing, and slop-strata reports it as `x/ignore-without-reason`. A `//nolint` with no reason mutes nothing either, and golangci-lint's `nolintlint` is the place that polices it.
 
-The baseline (`snapshot --write-baseline`, or `init`) accepts every current finding at once. It keys findings by id, so an older baseline file fails the run with a message to rewrite it. Ignored, labeled, and baselined findings are counted in `counts.suppressed` and in one line on stderr, so a muted finding never vanishes without a trace.
+The baseline (`snapshot --write-baseline`, or `init`) accepts every current finding at once. It keys findings by id, so a baseline file older than version 2 fails the run with a message to rewrite it. Version 3, which this build writes, also stores the member files of each import cycle, and a version 2 file still loads. An accepted cycle covers any cycle made only of its members, so a cycle that shrinks never reads as new, and one that gains a file does. Ignored, labeled, and baselined findings are counted in `counts.suppressed` and in one line on stderr, so a muted finding never vanishes without a trace.
+
+When baseline entries stop matching anything, because the finding was fixed or a cycle shrank, `snapshot` counts them in `counts.stale_baseline` and says so in one line on stderr. Run `slop-strata snapshot --write-baseline` again to drop them, so a fixed finding that comes back reads as new. The count never changes the exit status.
 
 ## Labeling findings
 
@@ -207,13 +212,13 @@ The labels are evidence about this repository. A rule's precision here says noth
 `change`, `snapshot`, `history`, and `rules` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 3}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "stale_baseline": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 4}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 3
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 4
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 

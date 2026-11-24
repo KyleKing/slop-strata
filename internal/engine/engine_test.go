@@ -71,8 +71,8 @@ func TestPrefetchMatchesSerialAnalysis(t *testing.T) {
 
 func countRule(fs []rules.Finding, rule string) int {
 	n := 0
-	for _, f := range fs {
-		if f.Rule == rule {
+	for i := range fs {
+		if fs[i].Rule == rule {
 			n++
 		}
 	}

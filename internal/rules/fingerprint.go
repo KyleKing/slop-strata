@@ -67,9 +67,12 @@ type Fingerprint struct {
 	Strings     map[string]int        `json:"strings,omitempty"`      // short string contents -> first line
 	ProseRefs   map[string]int        `json:"prose_refs,omitempty"`   // code-shaped names in comments -> line
 	ConfigKeys  map[string]int        `json:"config_keys,omitempty"`  // config key paths -> line
+	GoModule    string                `json:"go_module,omitempty"`    // module path, on a go.mod only
 	Clones      []CloneUnit           `json:"clones,omitempty"`
 	Directives  []Directive           `json:"directives,omitempty"`
 	Ifaces      []IfaceDecl           `json:"ifaces,omitempty"`
+	ImportRefs  []ImportRef           `json:"import_refs,omitempty"` // imports as written, for the import graph
+	Barrel      bool                  `json:"barrel,omitempty"`      // only imports and re-exports, declares nothing
 }
 
 // referenceKinds are the node kinds whose text counts as a use of a name.
@@ -84,6 +87,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		kind := n.Kind()
+		collectImportRef(ctx, n, kind, fp)
 		switch {
 		case ctx.Lang.LiteralKinds[kind]:
 			collectLiteral(ctx, n, fp)
@@ -92,9 +96,9 @@ func Collect(ctx *Ctx) *Fingerprint {
 			collectClone(ctx, n, fp)
 		case kind == "comment":
 			collectProse(ctx, n, fp)
-		case kind == "import_declaration" || kind == "import_statement" || kind == "import_from_statement":
+		case kind == "import_declaration" || kind == kindImportStmt || kind == kindImportFrom:
 			collectImports(ctx, n, fp)
-		case kind == "expression_statement" && ctx.Lang == lang.Python:
+		case kind == kindExpressionStmt && ctx.Lang == lang.Python:
 			collectDocstring(ctx, n, fp)
 		case referenceKinds[kind]:
 			if fp.Referenced == nil {
@@ -106,6 +110,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 	collectDecls(ctx, fp)
 	collectExports(ctx, fp)
 	collectIfaces(ctx, fp)
+	fp.Barrel = isBarrel(ctx, fp)
 	fp.Directives = ctx.commentDirectives()
 
 	return fp
@@ -140,12 +145,12 @@ func repeatsByDesign(ctx *Ctx, n *ts.Node) bool {
 		return false
 	}
 	switch p.Kind() {
-	case "import_spec", "import_statement", "import_from_statement", kindExportStatement:
+	case "import_spec", kindImportStmt, kindImportFrom, kindExportStatement:
 		return true
 	case "arguments":
 		call := p.Parent()
 
-		return call != nil && call.Kind() == kindCallExpression && ctx.calleeText(call) == "require"
+		return call != nil && call.Kind() == kindCallExpression && ctx.calleeText(call) == textRequire
 	case "pair":
 		key := p.ChildByFieldName("key")
 
@@ -253,7 +258,7 @@ func collectDecls(ctx *Ctx, fp *Fingerprint) {
 	declKinds := map[string]bool{
 		kindFunctionDecl: true, kindMethodDecl: true, "type_declaration": true,
 		"var_declaration": true, "const_declaration": true, "var_spec": true, "const_spec": true,
-		kindFunctionDef: true, "class_definition": true, "assignment": true,
+		kindFunctionDef: true, "class_definition": true, kindAssignment: true,
 		"lexical_declaration": true, "variable_declaration": true, "interface_declaration": true,
 		"type_alias_declaration": true, "enum_declaration": true, "variable_declarator": true,
 	}

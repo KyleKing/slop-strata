@@ -38,6 +38,9 @@ func CrossFile(
 	unusedOptions(blobs, out)
 	staleConfig(blobs, out, configPaths)
 	textIgnoresWithoutReason(blobs, out)
+	if crossEnabled(ruleXImportCycle, experimental) {
+		importCycles(blobs, out, treePaths)
+	}
 
 	return out
 }

@@ -11,10 +11,15 @@ import (
 	"strings"
 )
 
-// baselineVersion is the on-disk format: version 2 keys findings by ID.
-const baselineVersion = 2
+// baselineVersion is the on-disk format this build writes. Version 2 keys
+// findings by ID. Version 3 adds members to the entries of set-shaped findings
+// and is otherwise the same, so a version 2 file still loads.
+const baselineVersion = 3
 
-// ErrBaselineFormat marks a baseline file written by an older format.
+// oldestBaseline is the oldest format ReadBaseline accepts.
+const oldestBaseline = 2
+
+// ErrBaselineFormat marks a baseline file in a format this build cannot read.
 var ErrBaselineFormat = errors.New("baseline format is out of date")
 
 // BaselineFile is the on-disk shape of the baseline: a JSON list of accepted
@@ -25,23 +30,49 @@ type BaselineFile struct {
 }
 
 // BaselineEntry is one accepted finding. ID is the key and the rest says what
-// it was, for the person reading the file.
+// it was, for the person reading the file. Members, on a set-shaped finding
+// such as an import cycle, also widen the entry to every subset of them.
 type BaselineEntry struct {
-	ID    string `json:"id"`
-	Path  string `json:"path"`
-	Rule  string `json:"rule"`
-	Scope string `json:"scope,omitempty"`
-	Match string `json:"match,omitempty"`
+	ID      string   `json:"id"`
+	Path    string   `json:"path"`
+	Rule    string   `json:"rule"`
+	Scope   string   `json:"scope,omitempty"`
+	Match   string   `json:"match,omitempty"`
+	Members []string `json:"members,omitempty"`
 }
 
-// Baseline is the set of finding IDs a repository already accepted.
-type Baseline map[string]bool
+// Baseline is the findings a repository already accepted. Its zero value is empty.
+type Baseline struct {
+	ids     map[string]bool
+	entries []BaselineEntry
+}
+
+// Covers reports whether the baseline accepts a finding: by its ID, or, for a
+// set-shaped finding, because an accepted entry of the same rule holds every
+// one of its members. A cycle that shrank is therefore still accepted, and
+// one that grew or is new is not.
+func (b Baseline) Covers(f *Finding) bool {
+	if b.ids[f.ID] {
+		return true
+	}
+	if len(f.Members) == 0 {
+		return false
+	}
+	for _, e := range b.entries {
+		if e.Rule == f.Rule && len(e.Members) > 0 && subset(f.Members, e.Members) {
+			return true
+		}
+	}
+
+	return false
+}
 
 // baselinePerm is the mode for the baseline file: owner-only.
 const baselinePerm = 0o600
 
-// ReadBaseline loads a baseline file; a missing file is empty.
-// An older format is an error, so accepted findings never read as new.
+// ReadBaseline loads a baseline file; a missing file is empty. A format older
+// than version 2, or newer than this build writes, is an error, so accepted
+// findings never read as new.
 func ReadBaseline(path string) (Baseline, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // the path is the repo's own config'd baseline file
 	if err != nil {
@@ -49,20 +80,21 @@ func ReadBaseline(path string) (Baseline, error) {
 			return Baseline{}, nil
 		}
 
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return Baseline{}, fmt.Errorf("reading %s: %w", path, err)
 	}
 	var bf BaselineFile
 	if err := json.Unmarshal(data, &bf); err != nil {
-		return nil, fmt.Errorf("parsing baseline %s: %w", path, err)
+		return Baseline{}, fmt.Errorf("parsing baseline %s: %w", path, err)
 	}
-	if bf.Version != baselineVersion {
-		return nil, fmt.Errorf("%w: %s is version %d and this build reads version %d, "+
+	if bf.Version < oldestBaseline || bf.Version > baselineVersion {
+		return Baseline{}, fmt.Errorf("%w: %s is version %d and this build reads versions %d to %d, "+
 			"so run `slop-strata snapshot --write-baseline` to rewrite it",
-			ErrBaselineFormat, path, bf.Version, baselineVersion)
+			ErrBaselineFormat, path, bf.Version, oldestBaseline, baselineVersion)
 	}
-	b := Baseline{}
-	for _, e := range bf.Entries {
-		b[e.ID] = true
+	b := Baseline{ids: map[string]bool{}, entries: bf.Entries}
+	for i := range bf.Entries {
+		slices.Sort(bf.Entries[i].Members)
+		b.ids[bf.Entries[i].ID] = true
 	}
 
 	return b, nil
@@ -116,8 +148,11 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 func Entries(files map[string][]Finding) []BaselineEntry {
 	out := []BaselineEntry{}
 	for path, found := range files {
-		for _, f := range found {
-			out = append(out, BaselineEntry{ID: f.ID, Path: path, Rule: f.Rule, Scope: f.Scope, Match: f.Match})
+		for i := range found {
+			f := &found[i]
+			out = append(out, BaselineEntry{
+				ID: f.ID, Path: path, Rule: f.Rule, Scope: f.Scope, Match: f.Match, Members: f.Members,
+			})
 		}
 	}
 	slices.SortFunc(out, func(a, b BaselineEntry) int {

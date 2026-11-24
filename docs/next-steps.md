@@ -15,6 +15,7 @@ Checked against the code at 61b2aba. Items from the v0.6.0 audit that are now do
 - `x/narrating-comment` is still gated. Drop it, or keep it gated, once labels across repositories show its precision.
 - `x/dead-export` skips Go methods, which avoids interface false positives. It does not resolve interface satisfaction.
 - `snapshot` reports `x/stale-prose` for every unresolved name, behind `--experimental`. It should flag only names the history shows existed and are now gone. The exemptions for changelogs, ADRs, and migration guides already exist.
+- `x/import-cycle` is gated until its hits are labeled. On eight public repositories it reported the same components as an independent resolver, but TypeScript path aliases and workspace package names add no edge, a value import that is only used as a type still counts as a runtime edge, and Python imports of a submodule do not count as importing its parent packages.
 - `py/type-any` and `go/type-any` report every hit. They should report a count per file. `go/type-any` already skips generic constraints and variadic `...any` parameters a function spreads into a call, and leaves fields that hold JSON of unknown shape to labels.
 
 ## Tests and corpus

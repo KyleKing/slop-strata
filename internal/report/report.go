@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 3
+const Version = 4
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -24,6 +24,8 @@ type Counts struct {
 	Suppressed Suppressed `json:"suppressed"`
 	Errors     int        `json:"errors"`
 	Skipped    int        `json:"skipped"`
+	// StaleBaseline is the baseline entries no finding of a snapshot matched. See Docs["stale_baseline"].
+	StaleBaseline int `json:"stale_baseline"`
 }
 
 // Suppressed tallies the findings a run set aside: baseline, inline ignore, or false-positive label.
@@ -82,6 +84,10 @@ func WarnCounts(w io.Writer, c Counts) {
 	if s := c.Suppressed; s.Total() != 0 {
 		Fprintf(w, "slop-strata: %d findings set aside (%d in the baseline, %d ignored inline, %d labeled false "+
 			"positive)\n", s.Total(), s.Baseline, s.Ignored, s.LabeledFP)
+	}
+	if c.StaleBaseline != 0 {
+		Fprintf(w, "slop-strata: %d baseline entries match no finding now (fixed, edited, or a cycle that shrank); "+
+			"run `slop-strata snapshot --write-baseline` to tighten the baseline\n", c.StaleBaseline)
 	}
 }
 
@@ -257,8 +263,8 @@ var Docs = map[string]string{
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
-		"narrating-comment, dup-literal, dup-test-case, dead-export, and snapshot stale-prose rules and " +
-		"the type-any and test-reads-source families. Enable them per run with --experimental, or for a " +
+		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, and snapshot stale-prose rules " +
+		"and the type-any and test-reads-source families. Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
 		"repository, which slop-strata rules prints and the table below repeats from the labels file of the " +
@@ -267,7 +273,8 @@ var Docs = map[string]string{
 	"findings": "New rule hits attributable to this change, after the baseline, ignored, and labeled " +
 		"hits and the pre-existing hits are excluded. Each has an id, a short hash of the rule, path, " +
 		"enclosing function, matched text, and line text, so it survives line moves and new hits above it, and " +
-		"a scope naming the function. Editing the line changes the id. " +
+		"a scope naming the function. Editing the line changes the id. An x/import-cycle finding is keyed by " +
+		"its member files instead; see import_cycles. " +
 		"To suppress a hit inline, write slop-strata:ignore RULE-ID REASON in a comment on its line or the " +
 		"line above, in the file's comment syntax: // or # in code, # in TOML and YAML, and an HTML comment " +
 		"in Markdown outside code blocks. In Go, //nolint:errcheck // REASON also suppresses go/silent-error. " +
@@ -281,6 +288,45 @@ var Docs = map[string]string{
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
 		"grows faster than the hits get fixed means findings are being muted: read the ignore reasons and " +
 		"labels in review.",
+	"stale_baseline": "In counts.stale_baseline, on snapshot: baseline entries that no finding of the scored " +
+		"tree carries the id of. The finding was fixed, its line or matched text was edited, or it is an import " +
+		"cycle that shrank, which the entry still covers by its members. Entries of rules this run did not " +
+		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref) are not counted. " +
+		"Run slop-strata snapshot --write-baseline to drop them, so a fixed finding that comes back reads as " +
+		"new. It never changes the exit status. change and history do not score the whole tree against the " +
+		"baseline and always report 0.",
+	"import_edges": "In result.imports on snapshot: edges counts every import the tool resolved from one " +
+		"file of the tree to another, type_edges the ones only a type checker reads (TypeScript import type, " +
+		"Python under TYPE_CHECKING, any import of or from a .pyi or .d.ts file), and deferred_edges the ones " +
+		"that do not run when the file loads (inside a function body, a dynamic import(), or under Python's " +
+		"if __name__ == \"__main__\"). The rest run at module level. Python resolves absolute and relative " +
+		"imports under any source root and drops a module name that two roots answer to. TypeScript resolves " +
+		"relative specifiers only, so path aliases and workspace package names add no edge. Go resolves " +
+		"through the module path of each go.mod. Imports of installed packages are outside the graph. No " +
+		"target; the numbers say how much of the tree fan_in, fan_out, and import_cycles rest on.",
+	"fan_in": "Per directory on snapshot: the distinct other directories with a file that imports one of " +
+		"this directory's files, over resolved edges of every kind (see import_edges). A production row counts " +
+		"edges between production files, and a test row counts edges that start or end at a test file. High " +
+		"fan_in means many places break when this directory changes: keep its surface small and stable. " +
+		"Imports the tool cannot resolve are not counted, so a directory reached only through a path alias " +
+		"reads low.",
+	"fan_out": "Per directory on snapshot: the distinct other directories its files import, on the same " +
+		"basis as fan_in. High fan_out means the directory knows about much of the tree. A directory high on " +
+		"both is a hub: a change there is felt everywhere and it is hard to test alone, so look there first " +
+		"when you split responsibilities.",
+	"import_cycles": "result.imports.cycles on snapshot: groups of two or more non-test files where each " +
+		"imports every other, directly or through the others, over module-level runtime imports. " +
+		"largest_cycle is the file count of the biggest group. Imports a type checker alone reads, imports " +
+		"inside a function body, and imports under a main guard are the usual ways around a cycle and do not " +
+		"count, and neither does a cycle that needs a test file to close. Go forbids package cycles, so Go " +
+		"files never form one. The numbers are counted before the baseline. With --experimental each group " +
+		"is one x/import-cycle finding on the import line of its cheapest cut, the edge importing the fewest " +
+		"names, with the shortest cycle through that edge in the note. The finding's id comes from the rule " +
+		"and the sorted member files (members), leaving out files that only re-export when two others " +
+		"remain, so it holds while imports move and changes when a file joins or leaves. A baseline entry " +
+		"for a cycle also covers any cycle made only of its members, so shrinking a cycle is never a new " +
+		"finding, and a new or grown cycle is. change reports a cycle the change created or grew. Move the " +
+		"names the cheapest cut imports into a module both sides can import.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +
@@ -308,7 +354,7 @@ var Docs = map[string]string{
 		"minified or generated shape) and errors (a parse that left error nodes). Metrics exclude " +
 		"them, so a non-zero count means the numbers cover less of the tree. Unsupported file " +
 		"types are listed as skipped but not counted. suppressed counts the findings set aside; see " +
-		"suppressed.",
+		"suppressed. stale_baseline counts baseline entries that match nothing; see stale_baseline.",
 	"intent": "The change's stated purpose read off commit metadata: Conventional Commit type, " +
 		"branch name, then issue keywords, plus revert detection. Kinds are feat, fix, refactor, perf, " +
 		"test, docs, chore, and unknown. Only refactor, fix, and test make a claim the numbers can " +

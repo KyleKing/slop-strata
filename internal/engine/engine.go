@@ -537,15 +537,28 @@ func minified(content []byte, avgLine int) bool {
 	return len(content)/newlines > avgLine
 }
 
-// CrossFile runs the cross-file passes over analyzed reports and merges their
-// findings into each file's report. TreePaths is every path in the tree.
-func CrossFile(reports []*FileReport, treePaths []string, cfg *config.Config) {
+// ResolveImports builds the import graph of the analyzed reports. TreePaths is
+// every path in the tree.
+func ResolveImports(reports []*FileReport, treePaths []string) *rules.Imports {
+	return rules.ResolveImports(blobPrints(reports), treePaths)
+}
+
+// blobPrints lists the fingerprints of the reports that carry one.
+func blobPrints(reports []*FileReport) []rules.BlobPrint {
 	var blobs []rules.BlobPrint
 	for _, r := range reports {
 		if r.Print != nil {
 			blobs = append(blobs, rules.BlobPrint{Path: r.Path, Print: r.Print})
 		}
 	}
+
+	return blobs
+}
+
+// CrossFile runs the cross-file passes over analyzed reports and merges their
+// findings into each file's report. TreePaths is every path in the tree.
+func CrossFile(reports []*FileReport, treePaths []string, cfg *config.Config) {
+	blobs := blobPrints(reports)
 	for path, findings := range rules.CrossFile(blobs, treePaths, cfg.EntryPoints, cfg.ConfigPaths, cfg.Experimental) {
 		for _, r := range reports {
 			if r.Path == path {

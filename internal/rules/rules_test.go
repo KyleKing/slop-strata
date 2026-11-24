@@ -61,8 +61,8 @@ func crossFileOf(t *testing.T, files map[string]string, experimental bool) map[s
 // countRule counts the findings carrying one rule id.
 func countRule(fs []rules.Finding, rule string) int {
 	n := 0
-	for _, f := range fs {
-		if f.Rule == rule {
+	for i := range fs {
+		if fs[i].Rule == rule {
 			n++
 		}
 	}
@@ -1115,7 +1115,8 @@ func TestInlineIgnores(t *testing.T) {
 			if lang.ByPath(tc.path) != nil {
 				found = slices.Concat(found, findingsOf(t, tc.path, tc.files[tc.path], true))
 			}
-			live := rules.NewSuppressor(nil, nil).Apply(tc.path, printOf(t, tc.path, tc.files[tc.path]), found)
+			fp := printOf(t, tc.path, tc.files[tc.path])
+			live := rules.NewSuppressor(rules.Baseline{}, nil).Apply(tc.path, fp, found)
 			if got := countRule(live, tc.rule); got != tc.want {
 				t.Errorf("%s hits = %d, want %d: %+v", tc.rule, got, tc.want, live)
 			}

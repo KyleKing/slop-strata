@@ -85,6 +85,13 @@ func FindingID(rule, path, scope, match, anchor string, occurrence int) string {
 	return hex.EncodeToString(sum[:])[:idLen]
 }
 
+// SetID names a set-shaped finding by its rule and sorted members alone.
+func SetID(rule string, members []string) string {
+	sum := sha256.Sum256([]byte(rule + "\x00\x00" + strings.Join(members, "\x00")))
+
+	return hex.EncodeToString(sum[:])[:idLen]
+}
+
 // Identify answers a copy of one file's findings with their IDs set.
 func Identify(path string, fs []Finding) []Finding {
 	out := slices.Clone(fs)
@@ -96,6 +103,11 @@ func Identify(path string, fs []Finding) []Finding {
 	seen := map[string]int{}
 	for _, i := range order {
 		f := &out[i]
+		if len(f.Members) > 0 {
+			f.ID = SetID(f.Rule, f.Members)
+
+			continue
+		}
 		key := strings.Join([]string{f.Rule, f.Scope, f.Match, f.Anchor}, "\x00")
 		f.ID = FindingID(f.Rule, path, f.Scope, f.Match, f.Anchor, seen[key])
 		seen[key]++
