@@ -53,7 +53,7 @@ func printDepthTable(w io.Writer, dirs []dirSnapshot, all bool) {
 		return
 	}
 	slices.SortStableFunc(ranked, compareDepth)
-	header := []string{colDir, "shown", "by_name", "hidden", "depth", "widest_surface"}
+	header := []string{colDir, "shown", "by_name", "hidden", colDepth, "widest_surface"}
 	rows := make([][]string, 0, len(ranked))
 	for i := range ranked {
 		rows = append(rows, depthRow(&ranked[i]))
@@ -150,5 +150,5 @@ func printSurface(w io.Writer, widened []depth.Widening) {
 		})
 	}
 	report.Fprintln(w)
-	report.Table(w, []string{"surface_widened", "shown", "depth", "newly used from outside"}, rows)
+	report.Table(w, []string{"surface_widened", "shown", colDepth, "newly used from outside"}, rows)
 }

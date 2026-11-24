@@ -216,7 +216,20 @@ func (a *Analyzer) Lookup(ctx context.Context, blobs []Blob) map[Blob]*FileRepor
 	for i, b := range blobs {
 		reqs[i] = Request{Path: b.Path, SHA: b.SHA}
 	}
-	out, pending := a.answerAll(ctx, reqs, false)
+
+	return a.cached(ctx, reqs, false)
+}
+
+// LookupPrints is Lookup with each report's fingerprint decoded, for a
+// cross-file pass over a tree whose blobs are mostly cached. A request's
+// content is not read, and its Text marks a prose or config blob.
+func (a *Analyzer) LookupPrints(ctx context.Context, reqs []Request) map[Blob]*FileReport {
+	return a.cached(ctx, reqs, true)
+}
+
+// cached answers the requests their paths and the cache answer without content.
+func (a *Analyzer) cached(ctx context.Context, reqs []Request, withPrint bool) map[Blob]*FileReport {
+	out, pending := a.answerAll(ctx, reqs, withPrint)
 	for _, p := range pending {
 		delete(out, p.blob)
 	}

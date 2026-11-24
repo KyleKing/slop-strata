@@ -105,6 +105,41 @@ cohort   added  alive  s_30d              s_90d
 ...
 ```
 
+After those tables `history` reports how the import graph the tool infers changed over the window. Nothing in it is a finding, and there is nothing to configure:
+
+```text
+architecture  cycles  largest  in_cycles  depth_dirs  median_depth
+2025-05-26    2       44       46         14          0.65–0.74
+2025-10-20    2       46       48         15          0.69–0.76
+2025-12-01    2       49       51         14          0.64–0.75
+...
+2026-11-23    2       49       51         14          0.65–0.78
+69 weeks with the cycle counts of the week before not shown
+
+depth_moved                      depth        depth_attributed
+packages/vite/src/shared         0.39 → 0.68  0.58 → 0.76
+packages/vite/src/node/plugins   0.69 → 0.79  0.69 → 0.79
+packages/vite/src/module-runner  0.73 → 0.67  0.92 → 0.81
+
+cycle with                          id          files  first_seen     then  commit  by
+packages/vite/src/node/build.ts     4139dde0f0  49     before window  44
+packages/vite/src/node/packages.ts  9d4d69898e  2      before window  2
+```
+
+That is [vite](https://github.com/vitejs/vite) over 18 months, where both cycles are older than the window. On [zod](https://github.com/colinhacks/zod) and [TanStack Query](https://github.com/TanStack/query) the last two tables read:
+
+```text
+cycle with                        id          files  first_seen  then  commit      by
+packages/zod/src/v4/core/core.ts  73a716ade8  2      2026-08-24  2     773a48676e  person refactor
+
+hidden_coupling               and                           together  changes  support  conf  shared
+examples/…/TodoListCache.tsx  examples/…/TodoListUI.tsx     4         5/5      2.83     0.80  yes
+…/infiniteQueryOptions.ts     packages/…/queryOptions.ts    5         9/11     2.79     0.56  yes
+packages/…/src/devtools.tsx   packages/…/devtoolsPanel.tsx  4         7/6      1.52     0.67  yes
+```
+
+The first table has one row per week, read from the tree the week ended on: import cycles, the largest, the files in any cycle, and the median module depth of the directories with at least five names. The text prints the first week, the last, and each week the cycle counts changed, and `--json` has every week. `depth_moved` lists the directories whose depth moved most from the first week to the last. The cycle table says, for each cycle in the tree now, the week it first appeared, how many files it had then, and the commit it was first present after with that commit's author class and intent. `hidden_coupling` lists files that keep changing together although neither imports the other, even through other files. Long paths are shortened in the middle to keep the tables inside 100 columns, and the JSON has them whole.
+
 Add `--all` to `change` or `snapshot` to show every number, including the ones that did not move. On `change` it also lists test functions, every directory, and unsupported files. Add `--json` to `change`, `snapshot`, or `history` for machine-readable output.
 
 ## In a hook or an agent loop
@@ -151,6 +186,9 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `shown_by_name` (`by_name` in the table) says how many of `shown` are methods matched by name alone, because the tool infers no types. Those are guesses, so `depth` prints as a range when there are any: `depth` counts them as shown and `depth_attributed` counts them as hidden, and the true value lies between. `--explain shown_by_name`, `--explain depth_attributed`
 - `surface_widened` lists, on `change`, the directories that other directories now use more names of, with those names and the depth before and after. Only uses a resolved import attributes count, so a method matched by name never opens a row and is never named. It is information only, and `--brief` never speaks of it. `--explain surface_widened`
 - `import_cycles` counts the groups of non-test files that import each other at module level, with the size of the largest. Imports only a type checker reads, imports inside a function, and imports under a main guard do not close a cycle. `--experimental` lists each group as an `x/import-cycle` finding with its cheapest cut. `--explain import_cycles`
+- `architecture`, on `history`, is the import graph sampled at the end of each week: `cycles`, `largest_cycle`, `files_in_cycles`, `depth_dirs`, and `median_depth` with `median_depth_attributed`, the two ends of the same range `depth` has. `depth_moved` names the directories whose depth moved most across the window, counting a move only when both ends agree on it. `--explain architecture`, `--explain files_in_cycles`, `--explain depth_dirs`, `--explain median_depth`, `--explain depth_moved`
+- Each cycle `history` lists carries the id its `x/import-cycle` finding has, its `first_week` and `first_size`, and the commit that `introduced` it, found by bisecting that week's commits. A cycle is the same cycle while two of its files still import each other, through renames, new members, and lost ones. One older than the window is marked `before_window`. `--explain cycle_origin`
+- `hidden_coupling` lists up to ten pairs of source files that changed together in at least four commits with no chain of imports between them. Bulk commits over 30 files, bot commits, `docs` and `chore` commits, tests, and generated files do not count, and neither does a commit that also changed a file both import. `support` weighs each commit by how few other files it changed, and `confidence` is the share of the rarer file's changes that included the other. The floors are strict, so most repositories list nothing. `--explain hidden_coupling`, `--explain support`, `--explain confidence`
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
@@ -215,13 +253,13 @@ The labels are evidence about this repository. A rule's precision here says noth
 `change`, `snapshot`, `history`, and `rules` all take `--json`, and that output is the integration surface. Every object is an envelope:
 
 ```json
-{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "stale_baseline": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 5}
+{"result": {...}, "docs": {...}, "tool": "slop-strata", "command": "change", "repo": "...", "at": "...", "counts": {"errors": 0, "skipped": 0, "stale_baseline": 0, "suppressed": {"baseline": 0, "ignored": 0, "labeled_fp": 0}}, "warnings": [], "schema": 6}
 ```
 
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 5
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 6
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 
@@ -269,6 +307,22 @@ These are one run each on an Apple M4 Pro with 12 cores. A cold run starts with 
 | second-look | 590   | `history` (365 days) | 7.91 s | 0.49 s | 275 MB             |
 
 Parsing runs one worker per CPU core (GOMAXPROCS), with one parser per worker. A warm `snapshot` skips parsing for every blob it has already seen. A warm `history` also skips reading any blob the cache already answers, so what remains is `git log` and the line tracking. On a private repository with 1,529 first-parent commits in three weeks, `history` took 64 s cold and 4.5 s warm, and 2,979 commits over six weeks took 142 s cold and 9.7 s warm. On a terminal, a `history` run past two seconds prints a commits done/total line to stderr.
+
+`history` also resolves the import graph of the tree each week ended on, from cached fingerprints. The numbers below are one run each on a 4-core Linux VM, before and after that pass was added. A cold run barely moves, because the walk has already parsed nearly every blob a sampled tree holds. A warm run about doubles, because a warm walk parses nothing while each sampled week still costs a tree listing, a cache read of the blobs that changed, and a graph.
+
+| Repository     | Window   | Commits | Weeks | Cold before | Cold after | Warm before | Warm after |
+| -------------- | -------- | ------- | ----- | ----------- | ---------- | ----------- | ---------- |
+| flask          | 3 years  | 136     | 52    | 2.0 s       | 2.2 s      | 0.19 s      | 0.55 s     |
+| click          | 3 years  | 289     | 80    | 7.2 s       | 7.1 s      | 0.47 s      | 0.94 s     |
+| fzf            | 3 years  | 1,270   | 153   | 38.8 s      | 41.4 s     | 1.09 s      | 2.29 s     |
+| trpc           | 3 years  | 1,561   | 137   | 18.1 s      | 21.2 s     | 2.30 s      | 5.55 s     |
+| zod            | 3 years  | 1,381   | 107   | 50.3 s      | 51.2 s     | 2.02 s      | 3.81 s     |
+| TanStack Query | 3 years  | 3,692   | 154   | 75.2 s      | 78.2 s     | 4.13 s      | 9.19 s     |
+| trpc           | 180 days | 427     | 18    | 8.5 s       | 9.8 s      | 0.88 s      | 1.79 s     |
+| zod            | 180 days | 361     | 17    | 21.3 s      | 21.7 s     | 0.90 s      | 1.68 s     |
+| TanStack Query | 180 days | 1,370   | 27    | 46.6 s      | 46.5 s     | 2.75 s      | 4.42 s     |
+
+Peak memory on the three-year TanStack Query run went from 354 MB to 365 MB warm.
 
 ## Read more
 

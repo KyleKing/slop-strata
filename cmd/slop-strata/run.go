@@ -44,6 +44,7 @@ const (
 	colMass    = "mass"
 	colHotspot = "hotspot"
 	colErosion = "erosion"
+	colDepth   = "depth"
 )
 
 // session bundles what every subcommand needs.

@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 5
+const Version = 6
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -327,6 +327,68 @@ var Docs = map[string]string{
 		"for a cycle also covers any cycle made only of its members, so shrinking a cycle is never a new " +
 		"finding, and a new or grown cycle is. change reports a cycle the change created or grew. Move the " +
 		"names the cheapest cut imports into a module both sides can import.",
+	"architecture": "result.architecture on history: how the inferred import graph changed over the window. " +
+		"periods has one row per week with a commit, read from the tree after the week's last first-parent " +
+		"commit (rev). A commit authored before the commits it follows counts in their week, so the rows run " +
+		"in walk order. cycles and largest_cycle are counted as import_cycles counts them, and " +
+		"files_in_cycles, depth_dirs, and median_depth have their own entries. A week that changed no source " +
+		"file and no go.mod repeats the week before. Each tree is resolved from cached fingerprints, so the " +
+		"first run parses the files the window never touched and later runs parse nothing. The text table " +
+		"prints the first week, the last, and each week whose cycle counts changed. Nothing here is a " +
+		"finding: there is no rule id, no baseline, and no gate. See depth_moved, cycle_origin, and " +
+		"hidden_coupling for the three lists beside periods.",
+	"files_in_cycles": "Per week in architecture.periods: how many files sit in any import cycle, the sum " +
+		"of the sizes of the week's cycles. A count that rises while cycles stays flat means a cycle is " +
+		"growing.",
+	"depth_dirs": "Per week in architecture.periods: the directories that other directories use names of " +
+		"and that declare at least 5 names, which are the ones median_depth is taken over. A directory " +
+		"under 5 names has a provisional depth and is left out.",
+	"median_depth": "Per week in architecture.periods: the median depth of the week's depth_dirs, and " +
+		"median_depth_attributed the median of their depth_attributed. depth counts a method matched by " +
+		"name as shown and depth_attributed counts it as hidden, so the true median lies between the two, " +
+		"and the text prints them as a range when they differ. Null when the week has no such directory. " +
+		"A median over a handful of directories jumps when one directory crosses the 5-name line, so read " +
+		"it with depth_dirs.",
+	"depth_moved": "architecture.depth_moved: up to 5 directories whose module depth moved most between " +
+		"the first and the last week of the window. A directory is listed when it has a depth off at least " +
+		"5 names in both weeks and both depth and depth_attributed moved the same way by 0.05 or more. " +
+		"moved is the smaller of the two moves, so a method matched by name on one side alone cannot make a " +
+		"row. A directory that only one of the two weeks has is not listed. A fall means other directories " +
+		"came to use more of what the directory holds.",
+	"cycle_origin": "architecture.cycles: each import cycle of the last week, with id and members as its " +
+		"x/import-cycle finding has them and size counting every file. A cycle continues an earlier one " +
+		"when the two share at least two files, after following renames: two files that import each other " +
+		"in both weeks are one dependency that held, which includes the grown and the shrunk cycle a " +
+		"baseline entry covers. first_week and first_size are the week and size at which that line of " +
+		"cycles began, and a cycle that went away and came back begins again. introduced is the first-parent " +
+		"commit the cycle is first present after, found by bisecting that week's commits over cached " +
+		"fingerprints, with the commit's author class and intent. It is exact unless the cycle came and went " +
+		"inside the week, where it names one of the commits that brought it back, and a merge commit stands " +
+		"for its whole branch. before_window is set, with introduced null, when the cycle is already in the " +
+		"tree before the window's first commit, or when a shallow clone cannot read that tree. The author " +
+		"class is the configured class of the commit and never a person.",
+	"hidden_coupling": "architecture.hidden_coupling: up to 10 pairs of production source files that " +
+		"change together though no chain of imports leads from either to the other in the last week's " +
+		"graph, over imports of every kind. co_changes counts the commits that changed both files, less the " +
+		"ones left out below, changes_a and changes_b count the commits that changed each, and support and " +
+		"confidence have their own entries. A " +
+		"pair needs 4 co_changes, a support of 1.5, and a confidence of 0.5. Left out of the counting: " +
+		"commits that touch more than 30 files, bot commits, docs and chore commits (ci, build, style, and " +
+		"dependency bumps read as chore), test files, files the " +
+		"engine does not score (generated, minified, oversized, unsupported), and any commit that also " +
+		"changed a file both files import, since that import explains the change. Left out as pairs: two Go " +
+		"files of one directory, which are one package, and two TypeScript files under different " +
+		"package.json files, which may import each other by a package name the graph does not resolve. " +
+		"shared_importer says some file imports both. A file keeps its counts through a rename. On twelve " +
+		"public repositories 7 pairs cleared these floors and all 7 read as real when checked by hand, " +
+		"against 20 of 30 at looser floors, so expect few rows. A pair listed here is a rule the code does " +
+		"not state: name it in a shared module or a test, or accept it.",
+	"support": "Per pair in architecture.hidden_coupling: the sum, over the commits counted in co_changes, " +
+		"of one over the number of other source files the commit changed. A commit of just the two files " +
+		"adds 1 and a sweep over twenty-one files adds a twentieth, so many wide commits weigh less than a " +
+		"few narrow ones. Pairs are ranked by it.",
+	"confidence": "Per pair in architecture.hidden_coupling: co_changes over the smaller of changes_a and " +
+		"changes_b. At 1 the file that changes less never changed without the other.",
 	"shown": "Per directory on snapshot: the directory's declared names that a production file of another " +
 		"directory uses. A name is a function, type or class, constant, or variable at file scope, or a method " +
 		"(Type.method). Use decides it and visibility does not: export, a capital letter, a leading underscore, " +
