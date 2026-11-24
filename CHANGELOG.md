@@ -1,3 +1,9 @@
+## v0.19.0 (2026-11-24)
+
+### Feat
+
+- **snapshot**: list split candidates and duplicate groups
+
 ## v0.18.0 (2026-11-24)
 
 ### Feat
