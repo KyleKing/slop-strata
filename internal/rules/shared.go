@@ -124,7 +124,7 @@ func registryEntries(ctx *Ctx, n *ts.Node) (int, string) {
 	switch ctx.Lang {
 	case lang.Go:
 		switch n.Kind() {
-		case "var_spec", "const_spec", "short_var_declaration":
+		case "var_spec", "const_spec", kindShortVar:
 		default:
 			return 0, ""
 		}
@@ -245,12 +245,97 @@ func parentRelative(lit string) bool {
 	return strings.Contains(lit, "../") || lit == ".."
 }
 
-// firstArgText answers the text of a call's first argument, or "" for none.
-func firstArgText(ctx *Ctx, call *ts.Node) string {
+// firstArg answers a call's first argument, or nil for none.
+func firstArg(call *ts.Node) *ts.Node {
 	args := call.ChildByFieldName("arguments")
 	if args == nil || args.NamedChildCount() == 0 {
-		return ""
+		return nil
 	}
 
-	return ctx.Text(args.NamedChild(0))
+	return args.NamedChild(0)
+}
+
+// firstArgText answers the text of a call's first argument, or "" for none.
+func firstArgText(ctx *Ctx, call *ts.Node) string {
+	if arg := firstArg(call); arg != nil {
+		return ctx.Text(arg)
+	}
+
+	return ""
+}
+
+// boundText answers an expression's text, read one step back when it is a
+// bare name the file binds exactly once, to a string literal. Hoisting a
+// literal path into a variable or a constant then reads as the path. A name
+// bound twice, bound as a parameter, or bound to anything computed stays a
+// name: a path built from the test's own location is most often its data.
+func (c *Ctx) boundText(expr *ts.Node) string {
+	if expr == nil {
+		return ""
+	}
+	if expr.Kind() != kindIdentifier {
+		return c.Text(expr)
+	}
+	name := c.Text(expr)
+	var value *ts.Node
+	bound := 0
+	lang.EachNamed(c.Root, func(n *ts.Node) {
+		if v := bindingOf(c, n, name); v != nil {
+			value = v
+			bound++
+		}
+	})
+	if bound != 1 {
+		return name
+	}
+	if value.Kind() == kindExprList && value.NamedChildCount() == 1 {
+		value = value.NamedChild(0)
+	}
+	if !c.Lang.LiteralKinds[value.Kind()] || !strings.Contains(value.Kind(), kindString) {
+		return name
+	}
+
+	return c.Text(value)
+}
+
+// bindingFields names, per node kind that gives one name a value, the fields
+// holding the name and the value.
+var bindingFields = func() map[string][2]string { //nolint:gochecknoglobals // a fixed vocabulary
+	assigned, declared := [2]string{"left", "right"}, [2]string{fieldName, "value"}
+
+	return map[string][2]string{
+		kindShortVar: assigned, "assignment_statement": assigned, kindAssignment: assigned,
+		"assignment_expression": assigned,
+		"var_spec":              declared, "const_spec": declared, kindVarDeclarator: declared,
+	}
+}()
+
+// Node kinds several rules read.
+const (
+	kindShortVar       = "short_var_declaration"
+	kindExprList       = "expression_list"
+	kindArguments      = "arguments"
+	kindList           = "list"
+	kindPredefinedType = "predefined_type"
+)
+
+// bindingOf answers the value a node gives name, or nil when it binds
+// something else, several names at once, or nothing.
+func bindingOf(c *Ctx, n *ts.Node, name string) *ts.Node {
+	fields, ok := bindingFields[n.Kind()]
+	if !ok {
+		return nil
+	}
+	target, value := n.ChildByFieldName(fields[0]), n.ChildByFieldName(fields[1])
+	if target == nil || value == nil {
+		return nil
+	}
+	if target.Kind() == kindExprList && target.NamedChildCount() == 1 {
+		target = target.NamedChild(0)
+	}
+	if target.Kind() != kindIdentifier || c.Text(target) != name {
+		return nil
+	}
+
+	return value
 }

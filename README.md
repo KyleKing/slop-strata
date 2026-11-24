@@ -289,7 +289,7 @@ logins = ["release-bot"]
 - `experimental` turns on the gated rules for every run
 - `baseline` names the file of accepted findings, which defaults to `.slop-strata-baseline.json`
 - `labels` names the file of verdicts on findings, which defaults to `.slop-strata-labels.json`
-- `entry_points` lists files whose exports the dead-export rule skips, and `config_paths` lists the config files the stale-config rule reads
+- `entry_points` lists files whose exports the dead-export rule skips, and `config_paths` lists the config files the stale-config rule reads. The rule already skips what a package manifest or a Python `__all__` names and every export of a file re-exported whole (`export * from`, `from m import *`)
 - `default_branch`, `max_file_bytes`, and `minified_avg_line` change which branch a change diffs against and which files get skipped as oversized or minified. On `history`, a file over `max_file_bytes` still counts as touched, but its lines stay out of the week totals and churn. Lines the walk tracked before the file grew past the cap leave without counting as deaths, and survival censors them at that day. Lines the file holds when it comes back under the cap have no recorded birth, so they stay out of churn and survival until an edit adds new ones
 
 `slop-strata init` writes a starter `.slop-strata.toml` when none exists, with bot logins found in recent history. It then records the current findings as the baseline, so a rule added later reports only new hits. `snapshot --write-baseline` records the baseline without touching the config.

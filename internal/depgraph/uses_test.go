@@ -240,3 +240,45 @@ func TestUsesAreEmptyOnAGraphBuiltByHand(t *testing.T) {
 		t.Errorf("Uses() = %v, want none", got)
 	}
 }
+
+func TestStarredFilesAreTheOnesBoundWholeAndUnnamed(t *testing.T) {
+	t.Parallel()
+	star := []string{"*"}
+	cases := []struct {
+		name     string
+		importer depgraph.File
+		want     bool
+	}{
+		{name: "a python star import", want: true, importer: depgraph.File{
+			Path: "pkg/__init__.py", Imports: []depgraph.Import{{Spec: ".impl", Names: star}},
+		}},
+		{name: "a typescript re-export of everything", want: true, importer: depgraph.File{
+			Path: "pkg/index.ts", Imports: []depgraph.Import{{Spec: "./impl", Names: star}},
+		}},
+		{name: "a namespace import keeps the names behind its own", importer: depgraph.File{
+			Path: "pkg/index.ts", Imports: []depgraph.Import{{Spec: "./impl", Names: star, Local: "impl"}},
+		}},
+		{name: "a named import", importer: depgraph.File{
+			Path: "pkg/index.ts", Imports: []depgraph.Import{{Spec: "./impl", Names: []string{"helper"}}},
+		}},
+		{name: "a module import", importer: depgraph.File{
+			Path: "pkg/__init__.py", Imports: []depgraph.Import{{Spec: "pkg.impl", Local: "pkg"}},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			target := "pkg/impl.py"
+			if strings.HasSuffix(tc.importer.Path, ".ts") {
+				target = "pkg/impl.ts"
+			}
+			g := depgraph.Build([]depgraph.File{tc.importer, {Path: target, Declared: declares("helper")}}, nil)
+			if got := g.Starred(target); got != tc.want {
+				t.Errorf("Starred(%s) = %v, want %v", target, got, tc.want)
+			}
+			if g.Starred(tc.importer.Path) {
+				t.Errorf("the importer %s reads as starred", tc.importer.Path)
+			}
+		})
+	}
+}

@@ -3,6 +3,7 @@ package rules
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
@@ -13,43 +14,83 @@ func isTS(ctx *Ctx) bool {
 	return ctx.Lang == lang.TypeScript || ctx.Lang == lang.TSX
 }
 
-// tsSilentCatch flags an empty catch block.
+// tsSilentCatch flags an empty catch block, and a promise's .catch given a
+// function with an empty body, which swallows the rejection the same way. A
+// block that holds a comment says why and is left alone, as ESLint's no-empty
+// leaves it.
 func tsSilentCatch(ctx *Ctx, findings *[]Finding) {
 	if !isTS(ctx) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() == "catch_clause" && blockStatements(n) == 0 {
+		switch {
+		case n.Kind() == "catch_clause" && emptyBlock(n.ChildByFieldName(fieldBody)),
+			n.Kind() == kindCallExpression && emptyCatchCallback(ctx, n):
 			*findings = append(*findings, Finding{Rule: "ts/silent-catch", Line: lineOf(n)})
 		}
 	})
 }
 
+// emptyBlock reports whether a statement block holds nothing, not even a
+// comment.
+func emptyBlock(block *ts.Node) bool {
+	return block != nil && block.Kind() == "statement_block" && block.NamedChildCount() == 0
+}
+
+// emptyCatchCallback reports whether a call is `.catch(fn)` with a function
+// whose body is an empty block.
+func emptyCatchCallback(ctx *Ctx, call *ts.Node) bool {
+	fn := call.ChildByFieldName("function")
+	if fn == nil || fn.Kind() != kindMember || ctx.fieldText(fn, "property") != "catch" {
+		return false
+	}
+	arg := firstArg(call)
+
+	return arg != nil && ctx.Lang.FunctionKinds[arg.Kind()] && emptyBlock(arg.ChildByFieldName(fieldBody))
+}
+
 // tsAsUnknownAs flags casts through `unknown` and double casts: both erase
-// the type the expression really has.
+// the type the expression really has. The angle-bracket spelling, <T>value,
+// is the same cast.
 func tsAsUnknownAs(ctx *Ctx, findings *[]Finding) {
 	if !isTS(ctx) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "as_expression" {
+		inner, typeArg := castParts(n)
+		if inner == nil || typeArg == nil {
 			return
 		}
-		inner := n.NamedChild(0)
-		var typeArg *ts.Node
-		for i := range n.NamedChildCount() {
-			c := n.NamedChild(i)
-			if c != inner {
-				typeArg = c
-			}
-		}
-		switch {
-		case typeArg != nil && ctx.Text(typeArg) == textUnknown:
-			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})
-		case inner != nil && inner.Kind() == "as_expression":
+		target := strings.Trim(ctx.Text(typeArg), "<>")
+		if target == textUnknown || inner.Kind() == kindAsExpr || inner.Kind() == kindTypeAssertion {
 			*findings = append(*findings, Finding{Rule: ruleTSAsUnknownAs, Line: lineOf(n), Match: ctx.Text(n)})
 		}
 	})
+}
+
+// The two spellings of a TypeScript cast, each a value and a type.
+const (
+	kindAsExpr        = "as_expression"
+	kindTypeAssertion = "type_assertion"
+	castOperands      = 2
+)
+
+// castParts answers the value and the target type of a cast in either
+// spelling, with the value read through any parentheses, or nils for any
+// other node.
+func castParts(n *ts.Node) (*ts.Node, *ts.Node) {
+	if (n.Kind() != kindAsExpr && n.Kind() != kindTypeAssertion) || n.NamedChildCount() != castOperands {
+		return nil, nil
+	}
+	value, target := n.NamedChild(0), n.NamedChild(1)
+	if n.Kind() == kindTypeAssertion {
+		value, target = target, value
+	}
+	for value.Kind() == "parenthesized_expression" && value.NamedChildCount() == 1 {
+		value = value.NamedChild(0)
+	}
+
+	return value, target
 }
 
 // tsRecordUnknown flags `Record<..., unknown>` and `Record<..., any>`: a map
@@ -67,8 +108,8 @@ func tsRecordUnknown(ctx *Ctx, findings *[]Finding) {
 			return
 		}
 		lang.EachNamed(n, func(c *ts.Node) {
-			if c.Kind() == "predefined_type" && (ctx.Text(c) == "unknown" || ctx.Text(c) == textAny) {
-				*findings = append(*findings, Finding{Rule: "ts/record-unknown", Line: lineOf(n), Match: ctx.Text(n)})
+			if c.Kind() == kindPredefinedType && (ctx.Text(c) == "unknown" || ctx.Text(c) == textAny) {
+				*findings = append(*findings, Finding{Rule: ruleTSRecordUnknown, Line: lineOf(n), Match: ctx.Text(n)})
 			}
 		})
 	})
@@ -80,7 +121,7 @@ func tsTypeAny(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() == "predefined_type" && ctx.Text(n) == textAny {
+		if n.Kind() == kindPredefinedType && ctx.Text(n) == textAny {
 			*findings = append(*findings, Finding{Rule: "ts/type-any", Line: lineOf(n), Match: textAny})
 		}
 	})
@@ -93,7 +134,7 @@ func tsModuleMock(ctx *Ctx, findings *[]Finding) {
 		return
 	}
 	callees := map[string]bool{
-		"vi.mock": true, "jest.mock": true, "jest.unmock": true,
+		"vi.mock": true, "vi.doMock": true, "jest.mock": true, "jest.unmock": true,
 		"jest.doMock": true, "mock.module": true,
 	}
 	ctx.eachCall(func(n *ts.Node, callee string) {
@@ -111,7 +152,7 @@ func tsTestReadsSource(ctx *Ctx, findings *[]Finding) {
 	ctx.eachCall(func(n *ts.Node, callee string) {
 		for _, suffix := range []string{"readFileSync", "readdirSync", "readJSONSync", ".readFile"} {
 			if strings.HasSuffix(callee, suffix) {
-				if readsRepoFile(firstArgText(ctx, n)) {
+				if readsRepoFile(ctx.boundText(firstArg(n))) {
 					*findings = append(*findings, Finding{Rule: "ts/test-reads-source", Line: lineOf(n), Match: callee})
 				}
 
@@ -157,7 +198,9 @@ func expectChain(ctx *Ctx, n *ts.Node) (*ts.Node, string, *ts.Node) {
 	return args.NamedChild(0), ctx.Text(prop), arg
 }
 
-// tsMockOnlyAssert flags an it/test body where every expect is on a mock.
+// tsMockOnlyAssert flags an it/test body where every expect is on a mock: a
+// spy matcher, or any matcher over the spy's own call record (`spy.mock.calls`).
+// An expect of a literal asserts nothing and is not counted.
 func tsMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 	if !isTS(ctx) {
 		return
@@ -171,12 +214,12 @@ func tsMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 			if !ctx.Lang.CallKinds[c.Kind()] {
 				return
 			}
-			_, matcher, _ := expectChain(ctx, c)
-			if matcher == "" {
+			subject, matcher, _ := expectChain(ctx, c)
+			if matcher == "" || ctx.Lang.LiteralKinds[subject.Kind()] {
 				return
 			}
 			expects++
-			if !mockMatchers[matcher] {
+			if !mockMatchers[matcher] && !readsSpyRecord(ctx, subject) {
 				mockOnly = false
 			}
 		})
@@ -189,11 +232,31 @@ func tsMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// isTestCallback reports whether a function is the body passed to an it or test
-// call, so an enclosing describe block is not judged as one test.
+// readsSpyRecord reports whether an expect's subject reads a spy's call
+// record: a member chain that passes through `.mock`.
+func readsSpyRecord(ctx *Ctx, subject *ts.Node) bool {
+	found := false
+	lang.EachNamed(subject, func(n *ts.Node) {
+		if n.Kind() == kindMember && ctx.fieldText(n, "property") == "mock" {
+			found = true
+		}
+	})
+
+	return found
+}
+
+// testModifiers are the members of it and test that still declare one test.
+var testModifiers = map[string]bool{ //nolint:gochecknoglobals // a constant vocabulary
+	"only": true, "skip": true, "each": true, "concurrent": true, "sequential": true,
+	"fails": true, "runIf": true, "skipIf": true,
+}
+
+// isTestCallback reports whether a function is the body passed to an it or
+// test call, modified or not (it.only, test.each), so an enclosing describe
+// block is not judged as one test.
 func isTestCallback(ctx *Ctx, fn *ts.Node) bool {
 	args := fn.Parent()
-	if args == nil || args.Kind() != "arguments" {
+	if args == nil || args.Kind() != kindArguments {
 		return false
 	}
 	call := args.Parent()
@@ -202,14 +265,23 @@ func isTestCallback(ctx *Ctx, fn *ts.Node) bool {
 	}
 	callee := ctx.calleeText(call)
 
-	return callee == "it" || callee == "test"
+	base, rest, modified := strings.Cut(callee, ".")
+	if base != "it" && base != "test" {
+		return false
+	}
+	end := strings.IndexFunc(rest, func(r rune) bool { return r != '_' && !unicode.IsLetter(r) })
+	if end < 0 {
+		end = len(rest)
+	}
+
+	return !modified || testModifiers[rest[:end]]
 }
 
 // constName matches the CONSTANT_CASE shape an echoed constant has.
 var constName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`) //nolint:gochecknoglobals // a compiled pattern is a constant
 
 // tsConstantEcho flags expect(CONSTANT).toBe(literal): the assertion restates
-// a value nobody computed.
+// a value nobody computed. The two sides may be swapped.
 func tsConstantEcho(ctx *Ctx, findings *[]Finding) {
 	if !isTS(ctx) {
 		return
@@ -222,8 +294,12 @@ func tsConstantEcho(ctx *Ctx, findings *[]Finding) {
 		if subject == nil || (matcher != "toBe" && matcher != "toEqual" && matcher != "toStrictEqual") {
 			return
 		}
-		if subject.Kind() == kindIdentifier && constName.MatchString(ctx.Text(subject)) &&
-			arg != nil && ctx.Lang.LiteralKinds[arg.Kind()] {
+		if arg == nil {
+			return
+		}
+		literal := func(n *ts.Node) bool { return ctx.Lang.LiteralKinds[n.Kind()] }
+		constant := func(n *ts.Node) bool { return n.Kind() == kindIdentifier && constName.MatchString(ctx.Text(n)) }
+		if constant(subject) && literal(arg) || literal(subject) && constant(arg) {
 			*findings = append(*findings, Finding{Rule: "ts/constant-echo", Line: lineOf(n), Match: ctx.Text(n)})
 		}
 	})

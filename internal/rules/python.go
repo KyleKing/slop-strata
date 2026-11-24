@@ -10,7 +10,8 @@ import (
 )
 
 // pySilentExcept flags an except clause whose body is only `pass` or `...`:
-// the failure is swallowed with no record it happened.
+// the failure is swallowed with no record it happened. A comment that only
+// silences a linter (`pass  # noqa`) gives no reason and changes nothing.
 func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Python {
 		return
@@ -26,10 +27,13 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 		// The clause's body is its last child; pass or an ellipsis alone means
 		// the handler does nothing.
 		body := n.NamedChild(children - 1)
-		if body.Kind() != "block" || body.NamedChildCount() != 1 {
+		if body.Kind() != "block" {
 			return
 		}
-		stmt := body.NamedChild(0)
+		stmt := onlyStatement(ctx, body)
+		if stmt == nil {
+			return
+		}
 		if stmt.Kind() == "pass_statement" ||
 			(stmt.Kind() == kindExpressionStmt && ctx.Text(stmt) == "...") {
 			*findings = append(*findings, Finding{Rule: "py/silent-except", Line: lineOf(n)})
@@ -38,23 +42,20 @@ func pySilentExcept(ctx *Ctx, findings *[]Finding) {
 }
 
 // pyOrDefault flags `param or []` and `param or {}`: a parameter defaulting to
-// None that the fallback quietly replaces with an empty container. Other
-// fallbacks, such as `.get(k) or ""`, are idiom.
+// None that the fallback quietly replaces with an empty container. The same
+// fallback written `param if param else []`, or with list() or dict() for the
+// literal, is the same thing. Other fallbacks, such as `.get(k) or ""`, are
+// idiom.
 func pyOrDefault(ctx *Ctx, findings *[]Finding) {
 	if ctx.Lang != lang.Python {
 		return
 	}
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "boolean_operator" {
+		left, right := truthyFallback(ctx, n)
+		if left == nil || right == nil {
 			return
 		}
-		left := n.ChildByFieldName("left")
-		right := n.ChildByFieldName("right")
-		op := n.ChildByFieldName("operator")
-		if left == nil || right == nil || op == nil || ctx.Text(op) != "or" {
-			return
-		}
-		if left.Kind() != kindIdentifier || !emptyContainer(right) || !isParamOfEnclosing(ctx, n, ctx.Text(left)) {
+		if left.Kind() != kindIdentifier || !emptyContainer(ctx, right) || !isParamOfEnclosing(ctx, n, ctx.Text(left)) {
 			return
 		}
 		*findings = append(*findings, Finding{
@@ -63,9 +64,76 @@ func pyOrDefault(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
-// emptyContainer reports whether a node is an empty list or dict literal.
-func emptyContainer(n *ts.Node) bool {
-	return (n.Kind() == "list" || n.Kind() == "dictionary") && n.NamedChildCount() == 0
+// truthyFallback answers the value and the fallback of `a or b` and of
+// `a if a else b`, or nils for any other node.
+func truthyFallback(ctx *Ctx, n *ts.Node) (*ts.Node, *ts.Node) {
+	switch n.Kind() {
+	case "boolean_operator":
+		if op := n.ChildByFieldName("operator"); op != nil && ctx.Text(op) == "or" {
+			return n.ChildByFieldName("left"), n.ChildByFieldName("right")
+		}
+	case "conditional_expression":
+		parts := lang.NamedChildren(n)
+		if len(parts) == conditionalParts && ctx.Text(parts[0]) == ctx.Text(parts[1]) {
+			return parts[0], parts[len(parts)-1]
+		}
+	}
+
+	return nil, nil
+}
+
+// conditionalParts is how many operands `a if test else b` has: the value,
+// the test, and the fallback, in that order.
+const conditionalParts = 3
+
+// emptyContainer reports whether a node is an empty list or dict, written as
+// a literal or as a call to list or dict with no argument.
+func emptyContainer(ctx *Ctx, n *ts.Node) bool {
+	switch n.Kind() {
+	case kindList, "dictionary":
+		return n.NamedChildCount() == 0
+	case "call":
+		args := n.ChildByFieldName("arguments")
+		callee := ctx.calleeText(n)
+
+		return (callee == "list" || callee == "dict") && args != nil && args.NamedChildCount() == 0
+	}
+
+	return false
+}
+
+// lintMarkers open a comment that silences a linter and says nothing else.
+var lintMarkers = []string{"noqa", "nosec", "type: ignore", "pylint:", "pragma:"} //nolint:gochecknoglobals // fixed
+
+// lintComment reports whether a comment only silences a linter.
+func lintComment(ctx *Ctx, n *ts.Node) bool {
+	if n.Kind() != kindComment {
+		return false
+	}
+	body := strings.TrimSpace(strings.TrimLeft(ctx.Text(n), "#"))
+	for _, marker := range lintMarkers {
+		if strings.HasPrefix(body, marker) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// onlyStatement answers a block's one statement, lint comments aside, or nil.
+func onlyStatement(ctx *Ctx, block *ts.Node) *ts.Node {
+	var only *ts.Node
+	for _, c := range lang.NamedChildren(block) {
+		if lintComment(ctx, c) {
+			continue
+		}
+		if only != nil {
+			return nil
+		}
+		only = c
+	}
+
+	return only
 }
 
 // isParamOfEnclosing reports whether name is a parameter of the function that
@@ -142,10 +210,10 @@ func pyMockPatch(ctx *Ctx, findings *[]Finding) {
 }
 
 // isPatchCallee reports whether a callee replaces a target for the test's
-// duration: unittest.mock's patch and its object form, pytest-mock's mocker,
-// and pytest's monkeypatch.
+// duration: unittest.mock's patch and its object form, however much of the
+// module path is written out, pytest-mock's mocker, and pytest's monkeypatch.
 func isPatchCallee(callee string) bool {
-	switch callee {
+	switch strings.TrimPrefix(callee, "unittest.") {
 	case "patch", "mock.patch", "patch.object", "mock.patch.object", "monkeypatch.setattr":
 		return true
 	default:
@@ -173,13 +241,13 @@ func pyReadsSource(ctx *Ctx, call *ts.Node, callee string) bool {
 	case callee == "inspect.getsource" || callee == "inspect.getsourcelines":
 		return true
 	case callee == "ast.parse":
-		return computedSource(firstArgText(ctx, call))
+		return computedSource(ctx.boundText(firstArg(call)))
 	case writesFile(ctx, call):
 		return false
 	case callee == "open":
-		return readsRepoFile(firstArgText(ctx, call))
+		return readsRepoFile(ctx.boundText(firstArg(call)))
 	case isPathRead(callee):
-		return readsRepoFile(receiverText(ctx, call))
+		return readsRepoFile(ctx.boundText(receiver(call)))
 	default:
 		return false
 	}
@@ -216,18 +284,14 @@ func isPathRead(callee string) bool {
 	return false
 }
 
-// receiverText answers the text of a method call's object, the path it reads.
-func receiverText(ctx *Ctx, call *ts.Node) string {
+// receiver answers a method call's object, the path it reads, or nil.
+func receiver(call *ts.Node) *ts.Node {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
-		return ""
-	}
-	obj := fn.ChildByFieldName("object")
-	if obj == nil {
-		return ""
+		return nil
 	}
 
-	return ctx.Text(obj)
+	return fn.ChildByFieldName("object")
 }
 
 // pyMockAsserts are the unittest.mock assertion names a spy-only test calls.
@@ -254,16 +318,42 @@ func pyMockOnlyAssert(ctx *Ctx, findings *[]Finding) {
 	})
 }
 
+// mockRecords are the attributes a mock keeps its calls in, which an assert
+// reads to say what an assert_called method says. The attributes called and
+// call_count are left out: hand-written flags and counters carry those names.
+var mockRecords = map[string]bool{ //nolint:gochecknoglobals // a constant vocabulary
+	"call_args": true, "call_args_list": true, "await_args": true, "mock_calls": true,
+}
+
+// readsMockRecord reports whether an assert reads a mock's call record.
+func readsMockRecord(ctx *Ctx, assert *ts.Node) bool {
+	found := false
+	lang.EachNamed(assert, func(n *ts.Node) {
+		if n.Kind() == kindAttribute && mockRecords[ctx.fieldText(n, kindAttribute)] {
+			found = true
+		}
+	})
+
+	return found
+}
+
 // mockAssertCounts counts a test body's assertions and reports whether every
-// one is a mock call assertion.
+// one is a mock call assertion. An assert of the constant True asserts
+// nothing and is not counted, and an assert that reads a mock's call record
+// counts as a mock assertion.
 func mockAssertCounts(ctx *Ctx, fn *ts.Node) (int, bool) {
 	asserts := 0
 	mockOnly := true
 	lang.EachNamed(fn, func(n *ts.Node) {
 		switch {
 		case n.Kind() == "assert_statement":
+			if n.NamedChildCount() > 0 && n.NamedChild(0).Kind() == "true" {
+				return
+			}
 			asserts++
-			mockOnly = false
+			if !readsMockRecord(ctx, n) {
+				mockOnly = false
+			}
 		case ctx.Lang.CallKinds[n.Kind()]:
 			callee := ctx.calleeText(n)
 			last := callee[strings.LastIndex(callee, ".")+1:]

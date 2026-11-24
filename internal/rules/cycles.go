@@ -212,13 +212,6 @@ func cutText(cut *depgraph.Edge, prefix string) string {
 	return fmt.Sprintf("%s imports %d %s (%s) from %s", from, len(names), noun, listed, to)
 }
 
-// importCycles adds the cycle findings of a tree.
-func importCycles(blobs []BlobPrint, out map[string][]Finding, treePaths []string) {
-	for p, fs := range ResolveImports(blobs, treePaths).CycleFindings() {
-		out[p] = append(out[p], fs...)
-	}
-}
-
 // NewImportCycles answers the cycles rev has that base does not cover: a
 // cycle is new when no cycle of base holds every one of its members, so a new
 // cycle and a grown one are reported and an unchanged or shrunk one is not.

@@ -88,6 +88,7 @@ func Build(files []File, treePaths []string) *Graph {
 
 	g := New(nodes, r.resolved)
 	g.uses = r.uses()
+	g.starred = r.starred()
 
 	return g
 }

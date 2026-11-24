@@ -60,6 +60,7 @@ type Fingerprint struct {
 	Implements  map[string][]int      `json:"implements,omitempty"`   // interface name -> lines (ts)
 	Declared    map[string]int        `json:"declared,omitempty"`     // top-level names -> line
 	Exported    map[string]int        `json:"exported,omitempty"`     // public-API names -> line
+	Kinds       map[string]string     `json:"kinds,omitempty"`        // exported name -> declaration kind, where kept
 	Options     map[string]int        `json:"options,omitempty"`      // WithX funcs returning an Option -> line
 	Referenced  map[string]int        `json:"referenced,omitempty"`   // identifier -> occurrences
 	Imports     map[string]int        `json:"imports,omitempty"`      // imported module names -> line
@@ -100,8 +101,11 @@ func Collect(ctx *Ctx) *Fingerprint {
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		kind := n.Kind()
 		collectImportRef(ctx, n, kind, fp)
+		collectIface(ctx, n, kind, fp)
 		uses.note(ctx, n, kind)
 		switch {
+		case kind == kindExportSpecifier:
+			collectExport(ctx, n, fp)
 		case ctx.Lang.LiteralKinds[kind]:
 			collectLiteral(ctx, n, fp)
 			collectShortString(ctx, n, fp)
@@ -120,9 +124,6 @@ func Collect(ctx *Ctx) *Fingerprint {
 			fp.Referenced[ctx.Text(n)]++
 		}
 	})
-	collectDecls(ctx, fp)
-	collectExports(ctx, fp)
-	collectIfaces(ctx, fp)
 	collectUnits(ctx, fp)
 	uses.finish(ctx, fp)
 	fp.Barrel = isBarrel(ctx, fp)
@@ -162,7 +163,7 @@ func repeatsByDesign(ctx *Ctx, n *ts.Node) bool {
 	switch p.Kind() {
 	case "import_spec", kindImportStmt, kindImportFrom, kindExportStatement:
 		return true
-	case "arguments":
+	case kindArguments:
 		call := p.Parent()
 
 		return call != nil && call.Kind() == kindCallExpression && ctx.calleeText(call) == textRequire
@@ -184,8 +185,8 @@ func repeatsByDesign(ctx *Ctx, n *ts.Node) bool {
 }
 
 // collectClone hashes a function's normalized subtree: identifiers and
-// literals replaced by placeholders, so the same body under different names
-// hashes alike.
+// literals replaced by placeholders and comments left out, so the same body
+// under different names, with or without a comment, hashes alike.
 func collectClone(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	span := int(n.EndPosition().Row) - int(n.StartPosition().Row) + 1
 	if span < minCloneLines && blockStatements(n) < minCloneStatements {
@@ -196,6 +197,7 @@ func collectClone(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	walk = func(c *ts.Node) {
 		kind := c.Kind()
 		switch {
+		case ctx.Lang.CommentKinds[kind]:
 		case ctx.Lang.LiteralKinds[kind]:
 			b.WriteString("<lit>")
 		case kind == kindIdentifier || kind == kindTypeIdentifier || kind == "field_identifier" ||
@@ -267,116 +269,60 @@ func callbackLabel(ctx *Ctx, n *ts.Node, callee string) (string, bool) {
 	return strings.Trim(ctx.Text(label), "\"'`"), strings.Contains(label.Kind(), "string")
 }
 
-// collectDecls records top-level declared names: package-level functions,
-// types, variables, and Go's functional-option helpers.
-func collectDecls(ctx *Ctx, fp *Fingerprint) {
-	declKinds := map[string]bool{
-		kindFunctionDecl: true, kindMethodDecl: true, "type_declaration": true,
-		"var_declaration": true, "const_declaration": true, "var_spec": true, "const_spec": true,
-		kindFunctionDef: true, "class_definition": true, kindAssignment: true,
-		"lexical_declaration": true, "variable_declaration": true, "interface_declaration": true,
-		"type_alias_declaration": true, "enum_declaration": true, "variable_declarator": true,
-	}
-	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if !declKinds[n.Kind()] || n.Kind() == kindMethodDecl || !isTopLevel(n) {
-			return
-		}
-		text := declName(ctx, n)
-		if text == "" {
-			return
-		}
-		if fp.Declared == nil {
-			fp.Declared = map[string]int{}
-		}
-		fp.Declared[text] = lineOf(n)
-		recordExport(ctx, fp, n, text)
-		if ctx.Lang == lang.Go && isOptionFunc(ctx, n) {
-			if fp.Options == nil {
-				fp.Options = map[string]int{}
-			}
-			fp.Options[text] = lineOf(n)
-		}
-	})
-}
+// Declaration kinds Kinds keeps for an exported name. The export rules read
+// them to leave alone the kinds a name match judges badly: a function, a
+// Python class, and a TypeScript type have none.
+const (
+	declType      = "type"      // a Go type
+	declValue     = "value"     // a Go constant or variable
+	declClass     = "class"     // a TypeScript class
+	declAssigned  = "assigned"  // a Python module-level assignment
+	declDecorated = "decorated" // a Python function or class under a decorator
+)
 
-// declName resolves a declaration's name text, empty when it has none.
-func declName(ctx *Ctx, n *ts.Node) string {
-	name := n.ChildByFieldName("name")
-	if name == nil {
-		name = n.NamedChild(0)
+// declare records one name a statement at file scope declares, and whether
+// the language makes it part of the file's public API: Go by case, Python by
+// a leading underscore, TypeScript by the export keyword. The line is the
+// declaration's own, below any decorator. Kind is one of the kinds above, or
+// empty.
+func (fp *Fingerprint) declare(n *ts.Node, name string, exported bool, kind string) {
+	if name == "" || name == "_" {
+		return
 	}
-	if name == nil {
-		return ""
+	if fp.Declared == nil {
+		fp.Declared = map[string]int{}
 	}
-	text := ctx.Text(name)
-	if !identifierShape(text) {
-		return ""
-	}
-
-	return text
-}
-
-// recordExport marks a declared name exported per its language's rule.
-func recordExport(ctx *Ctx, fp *Fingerprint, n *ts.Node, text string) {
-	if !exportedByLang(ctx, n, text) {
+	fp.Declared[name] = lineOf(n)
+	if !exported {
 		return
 	}
 	if fp.Exported == nil {
 		fp.Exported = map[string]int{}
 	}
-	fp.Exported[text] = lineOf(n)
+	fp.Exported[name] = lineOf(n)
+	if kind == "" {
+		return
+	}
+	if fp.Kinds == nil {
+		fp.Kinds = map[string]string{}
+	}
+	fp.Kinds[name] = kind
 }
 
-// isTopLevel reports whether a declaration sits at file scope: its parent is
-// the root or a declaration_list/module/export wrapper.
-func isTopLevel(n *ts.Node) bool {
-	p := n.Parent()
-	if p == nil {
-		return true
+// collectExport records the name one specifier of an `export { a, b as c }`
+// clause offers: the alias is the public name when present.
+func collectExport(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
+	name := n.ChildByFieldName("alias")
+	if name == nil {
+		name = n.ChildByFieldName(fieldName)
 	}
-	switch p.Kind() {
-	case "source_file", "program", "module", "declaration_list", "statement_block",
-		kindExportStatement, "ambient_declaration":
-		return isTopLevel(p)
-	default:
-		return false
+	if name == nil {
+		return
 	}
-}
-
-// exportedByLang reports whether a top-level declaration is part of the
-// file's public API: Go exports by case, Python by leading underscore, and
-// TypeScript by the export keyword.
-func exportedByLang(ctx *Ctx, n *ts.Node, name string) bool {
-	switch ctx.Lang {
-	case lang.Go:
-		return name != "" && name[0] >= 'A' && name[0] <= 'Z'
-	case lang.Python:
-		return !strings.HasPrefix(name, "_")
-	default:
-		p := n.Parent()
-		return p != nil && p.Kind() == kindExportStatement
+	if fp.Exported == nil {
+		fp.Exported = map[string]int{}
 	}
-}
-
-// collectExports records the names an `export { a, b as c }` clause offers:
-// the alias is the public name when present.
-func collectExports(ctx *Ctx, fp *Fingerprint) {
-	lang.EachNamed(ctx.Root, func(n *ts.Node) {
-		if n.Kind() != "export_specifier" {
-			return
-		}
-		name := n.ChildByFieldName("alias")
-		if name == nil {
-			name = n.ChildByFieldName("name")
-		}
-		if name == nil {
-			return
-		}
-		if fp.Exported == nil {
-			fp.Exported = map[string]int{}
-		}
-		fp.Exported[ctx.Text(name)] = lineOf(n)
-	})
+	fp.Exported[ctx.Text(name)] = lineOf(n)
 }
 
 // identifierShape reports whether text is a plain identifier.
@@ -390,44 +336,19 @@ func identifierShape(text string) bool {
 	return text != ""
 }
 
-// isOptionFunc reports whether a function declaration looks like a functional
-// option: WithXxx returning a type whose name contains "Option".
-func isOptionFunc(ctx *Ctx, n *ts.Node) bool {
-	if n.Kind() != "function_declaration" {
-		return false
-	}
-	name := n.ChildByFieldName("name")
-	if name == nil || !strings.HasPrefix(ctx.Text(name), "With") {
-		return false
-	}
-	result := n.ChildByFieldName("result")
-
-	return result != nil && strings.Contains(ctx.Text(result), "Option")
-}
-
-// collectIfaces records interface declarations and their required methods
-// (Go method specs, TS members), plus Go method implementations per receiver
-// and TS implements clauses.
-func collectIfaces(ctx *Ctx, fp *Fingerprint) {
-	switch ctx.Lang {
-	case lang.Go:
-		lang.EachNamed(ctx.Root, func(n *ts.Node) {
-			switch n.Kind() {
-			case "type_declaration":
-				collectGoIface(ctx, n, fp)
-			case "method_declaration":
-				collectGoMethod(ctx, n, fp)
-			}
-		})
-	case lang.TypeScript, lang.TSX:
-		lang.EachNamed(ctx.Root, func(n *ts.Node) {
-			switch n.Kind() {
-			case "interface_declaration":
-				collectTSIface(ctx, n, fp)
-			case "class_declaration", "abstract_class_declaration":
-				collectTSImplements(ctx, n, fp)
-			}
-		})
+// collectIface reads one node of the walk for the single-implementation
+// rule: an interface declaration and the methods it requires (Go method
+// specs, TS members), a Go method's receiver, and a TS implements clause.
+func collectIface(ctx *Ctx, n *ts.Node, kind string, fp *Fingerprint) {
+	switch kind {
+	case kindTypeDecl:
+		collectGoIface(ctx, n, fp)
+	case kindMethodDecl:
+		collectGoMethod(ctx, n, fp)
+	case kindInterfaceDecl:
+		collectTSIface(ctx, n, fp)
+	case "implements_clause":
+		collectTSImplements(ctx, n, fp)
 	}
 }
 
@@ -496,20 +417,15 @@ func collectTSIface(ctx *Ctx, decl *ts.Node, fp *Fingerprint) {
 	fp.Ifaces = append(fp.Ifaces, IfaceDecl{Name: ctx.Text(name), Line: lineOf(decl), Methods: methods})
 }
 
-// collectTSImplements records `implements I` clauses.
-func collectTSImplements(ctx *Ctx, decl *ts.Node, fp *Fingerprint) {
-	lang.EachNamed(decl, func(n *ts.Node) {
-		if n.Kind() != "implements_clause" {
-			return
-		}
-		for i := range n.NamedChildCount() {
-			c := n.NamedChild(i)
-			if c.Kind() == kindTypeIdentifier || c.Kind() == kindIdentifier || c.Kind() == kindGenericType {
-				if fp.Implements == nil {
-					fp.Implements = map[string][]int{}
-				}
-				fp.Implements[ctx.Text(c)] = append(fp.Implements[ctx.Text(c)], lineOf(n))
+// collectTSImplements records the interfaces one `implements` clause names.
+func collectTSImplements(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
+	for i := range n.NamedChildCount() {
+		c := n.NamedChild(i)
+		if c.Kind() == kindTypeIdentifier || c.Kind() == kindIdentifier || c.Kind() == kindGenericType {
+			if fp.Implements == nil {
+				fp.Implements = map[string][]int{}
 			}
+			fp.Implements[ctx.Text(c)] = append(fp.Implements[ctx.Text(c)], lineOf(n))
 		}
-	})
+	}
 }

@@ -20,6 +20,26 @@ type Use struct {
 // graph Build made has any. The caller must not modify the list.
 func (g *Graph) Uses() []Use { return g.uses }
 
+// Starred reports whether another file binds everything the file offers
+// under no namespace of its own: a Python `from m import *`, or a TypeScript
+// `export * from` with or without a name. Each name the file exports is then
+// in use by whoever reads the binding file, which may be outside the tree.
+// Only a graph Build made has any.
+func (g *Graph) Starred(file string) bool { return g.starred[file] }
+
+// starred lists the files some other file binds whole and unnamed.
+func (r *resolver) starred() map[string]bool {
+	out := map[string]bool{}
+	for i := range r.binds {
+		b := &r.binds[i]
+		if b.local == "" && b.from.Path != b.to && slices.Contains(b.names, wildcard) {
+			out[b.to] = true
+		}
+	}
+
+	return out
+}
+
 // binding is one resolved import: the importer, the file it reached, and the
 // names it asked for, none when it bound the module itself.
 type binding struct {

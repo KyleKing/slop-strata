@@ -127,6 +127,28 @@ func TestCheckReportsEachBrokenExpectation(t *testing.T) {
 			want: []string{`dodge "rename" changed`, `dodge "hide" changed`},
 		},
 		{
+			name: "a move that keeps the finding under another id persists, and a hidden one does not",
+			c: fixturetest.Case{
+				Base: base,
+				Persists: []fixturetest.Variant{
+					{Name: "rename", Files: fixturetest.Tree{"z": "BAD"}, Remove: []string{"a"}},
+					{Name: "hide", Files: fixturetest.Tree{"a": "fine"}},
+				},
+			},
+			want: []string{`"hide" left no finding`},
+		},
+		{
+			name: "a gap holds while the rule loses to it, and fails once the rule catches it",
+			c: fixturetest.Case{
+				Base: base,
+				Gaps: []fixturetest.Variant{
+					{Name: "still lost", Files: fixturetest.Tree{"a": "fine"}},
+					{Name: "now caught", Files: fixturetest.Tree{"z": "BAD"}, Remove: []string{"a"}},
+				},
+			},
+			want: []string{`gap "now caught" no longer defeats the rule`},
+		},
+		{
 			name: "a fix that leaves the finding fails",
 			c: fixturetest.Case{
 				Base:  base,

@@ -18,6 +18,11 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    agree with the ranking.
 3. For each finding: real or false positive? Give the line that decides it.
    A finding a person marks goes back to the labels file the rule loop reads.
+   If you go on to change the code, repair what the finding names. Renaming
+   it, moving it, wrapping it in a helper, or adding a comment leaves the
+   problem where it was, and most such edits leave the finding too. A
+   finding that is right and should stay takes `slop-strata:ignore <rule-id>
+   <reason>` on its line, with the reason a reviewer would accept.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

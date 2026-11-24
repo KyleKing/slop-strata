@@ -70,8 +70,9 @@ func (fp *Fingerprint) Weigh(weights []Weight) {
 }
 
 // collectUnits lists the file's top-level declarations and the methods of its
-// classes. It reads only the statements at file scope and the members of each
-// class, never a function body.
+// classes, and records each top-level name in Declared and Exported. It reads
+// only the statements at file scope and the members of each class, never a
+// function body.
 func collectUnits(ctx *Ctx, fp *Fingerprint) {
 	for _, n := range lang.NamedChildren(ctx.Root) {
 		switch ctx.Lang {
@@ -108,6 +109,10 @@ func goUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	case kindFunctionDecl, kindMethodDecl:
 		name := lang.FunctionName(ctx.Lang, n, ctx.Src)
 		fp.addUnit(n, name, goPublic(name), forwardTarget(ctx, n))
+		if n.Kind() == kindFunctionDecl {
+			fp.declare(n, name, goPublic(name), "")
+			fp.option(ctx, n, name)
+		}
 	case kindTypeDecl, "const_declaration", "var_declaration":
 		for _, spec := range lang.NamedChildren(n) {
 			if strings.HasSuffix(spec.Kind(), "_list") {
@@ -124,13 +129,32 @@ func goUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 
 // goSpecUnits records every name one type, const, or var spec declares.
 func goSpecUnits(ctx *Ctx, spec *ts.Node, fp *Fingerprint) {
+	kind := declValue
+	if spec.Kind() == "type_spec" || spec.Kind() == "type_alias" {
+		kind = declType
+	}
 	for i := range spec.ChildCount() {
-		if spec.FieldNameForChild(uint32(i)) != fieldName {
+		// The comma between two names sits under the same field as the names.
+		if spec.FieldNameForChild(uint32(i)) != fieldName || !spec.Child(i).IsNamed() {
 			continue
 		}
 		name := ctx.Text(spec.Child(i))
 		fp.addUnit(spec, name, goPublic(name), "")
+		fp.declare(spec, name, goPublic(name), kind)
 	}
+}
+
+// option records a Go functional-option helper: WithXxx returning a type
+// whose name contains "Option".
+func (fp *Fingerprint) option(ctx *Ctx, n *ts.Node, name string) {
+	result := n.ChildByFieldName("result")
+	if !strings.HasPrefix(name, "With") || result == nil || !strings.Contains(ctx.Text(result), "Option") {
+		return
+	}
+	if fp.Options == nil {
+		fp.Options = map[string]int{}
+	}
+	fp.Options[name] = lineOf(n)
 }
 
 // fieldName is the grammar field most declarations keep their name under.
@@ -156,24 +180,59 @@ const kindClassDef = "class_definition"
 // methods, or an assignment to one plain name.
 func pyUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	def := pyDefinition(n)
+	kind := ""
+	if def != n {
+		kind = declDecorated
+	}
 	switch def.Kind() {
 	case kindFunctionDef:
 		name := ctx.fieldText(def, fieldName)
 		fp.addUnit(n, name, !strings.HasPrefix(name, "_"), forwardTarget(ctx, def))
+		fp.declare(def, name, !strings.HasPrefix(name, "_"), kind)
 	case kindClassDef:
 		name := ctx.fieldText(def, fieldName)
 		fp.addUnit(n, name, !strings.HasPrefix(name, "_"), "")
+		fp.declare(def, name, !strings.HasPrefix(name, "_"), kind)
 		pyMethods(ctx, def, name, fp)
 	case kindExpressionStmt:
-		if def.NamedChildCount() != 1 || def.NamedChild(0).Kind() != kindAssignment {
+		if def.NamedChildCount() != 1 {
 			return
 		}
-		left := def.NamedChild(0).ChildByFieldName("left")
+		stmt := def.NamedChild(0)
+		left := stmt.ChildByFieldName("left")
 		if left == nil || left.Kind() != kindIdentifier {
 			return
 		}
-		if name := ctx.Text(left); !isDunder(name) {
+		name := ctx.Text(left)
+		if name == pyAll {
+			pyAllNames(ctx, stmt.ChildByFieldName("right"), fp)
+		}
+		if stmt.Kind() != kindAssignment {
+			return
+		}
+		fp.declare(n, name, !strings.HasPrefix(name, "_"), declAssigned)
+		if !isDunder(name) {
 			fp.addUnit(n, name, !strings.HasPrefix(name, "_"), "")
+		}
+	}
+}
+
+// pyAll is the module attribute that lists a Python module's public names.
+const pyAll = "__all__"
+
+// pyAllNames records the names a module lists in __all__, assigned or added
+// to, as entry targets: the module publishes them whether or not any file of
+// the tree reads them.
+func pyAllNames(ctx *Ctx, list *ts.Node, fp *Fingerprint) {
+	if list == nil || (list.Kind() != kindList && list.Kind() != "tuple") {
+		return
+	}
+	for _, item := range lang.NamedChildren(list) {
+		if item.Kind() != kindString {
+			continue
+		}
+		if name := unquote(ctx.Text(item)); identifierShape(name) {
+			fp.EntryRefs = append(fp.EntryRefs, ":"+name)
 		}
 	}
 }
@@ -238,12 +297,14 @@ func tsUnits(ctx *Ctx, n *ts.Node, exported bool, fp *Fingerprint) {
 	case "class_declaration", "abstract_class_declaration":
 		name := ctx.fieldText(n, fieldName)
 		fp.addUnit(n, name, exported, "")
+		fp.declare(n, name, exported, declClass)
 		tsMethods(ctx, n, name, fp)
 	case "lexical_declaration", "variable_declaration":
 		for _, d := range lang.NamedChildren(n) {
 			name := d.ChildByFieldName(fieldName)
 			if d.Kind() == kindVarDeclarator && name != nil && name.Kind() == kindIdentifier {
 				fp.addUnit(d, ctx.Text(name), exported, forwardTarget(ctx, d.ChildByFieldName("value")))
+				fp.declare(d, ctx.Text(name), exported, "")
 			}
 		}
 	default:
@@ -257,8 +318,14 @@ func tsNamedUnit(ctx *Ctx, n *ts.Node, exported bool, fp *Fingerprint) {
 	switch n.Kind() {
 	case kindFunctionDecl, "generator_function_declaration":
 		fp.addUnit(n, ctx.fieldText(n, fieldName), exported, forwardTarget(ctx, n))
+		fp.declare(n, ctx.fieldText(n, fieldName), exported, "")
 	case kindInterfaceDecl, "type_alias_declaration", "enum_declaration":
 		fp.addUnit(n, ctx.fieldText(n, fieldName), exported, "")
+		fp.declare(n, ctx.fieldText(n, fieldName), exported, "")
+	case "function_signature":
+		// An overload or an ambient function: a name with no body, which
+		// would count twice as a unit beside its implementation.
+		fp.declare(n, ctx.fieldText(n, fieldName), exported, "")
 	}
 }
 
@@ -403,7 +470,7 @@ const kindReturn = "return_statement"
 func callIn(ctx *Ctx, expr *ts.Node) *ts.Node {
 	for !ctx.Lang.CallKinds[expr.Kind()] {
 		switch expr.Kind() {
-		case kindReturn, kindExpressionStmt, "expression_list", "await", "await_expression":
+		case kindReturn, kindExpressionStmt, kindExprList, "await", "await_expression":
 		default:
 			return nil
 		}

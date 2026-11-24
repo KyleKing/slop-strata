@@ -154,7 +154,7 @@ func TestRuleHits(t *testing.T) {
 	for _, tc := range slices.Concat(
 		goHitCases(), goReadsCases(), pyOrDefaultCases(), pyReadsCases(), pyMockPatchCases(),
 		tsHitCases(), tsMockOnlyCases(), tsTimingCases(), registryCases(), commentHitCases(),
-		pyTimingHackCases(),
+		pyTimingHackCases(), narrowHitCases(), narrowScriptCases(),
 	) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
