@@ -62,16 +62,22 @@ type Fingerprint struct {
 	Exported    map[string]int        `json:"exported,omitempty"`     // public-API names -> line
 	Options     map[string]int        `json:"options,omitempty"`      // WithX funcs returning an Option -> line
 	Referenced  map[string]int        `json:"referenced,omitempty"`   // identifier -> occurrences
-	EntryRefs   []string              `json:"entry_refs,omitempty"`   // entry targets a package manifest names
 	Imports     map[string]int        `json:"imports,omitempty"`      // imported module names -> line
 	Strings     map[string]int        `json:"strings,omitempty"`      // short string contents -> first line
 	ProseRefs   map[string]int        `json:"prose_refs,omitempty"`   // code-shaped names in comments -> line
 	ConfigKeys  map[string]int        `json:"config_keys,omitempty"`  // config key paths -> line
+	Selected    map[string][]string   `json:"selected,omitempty"`     // imported module name -> names read through it
+	ExportAs    map[string]string     `json:"export_as,omitempty"`    // exported alias -> local name (ts)
 	GoModule    string                `json:"go_module,omitempty"`    // module path, on a go.mod only
+	Default     string                `json:"default,omitempty"`      // the name a default export gives (ts)
+	EntryRefs   []string              `json:"entry_refs,omitempty"`   // entry targets a package manifest names
 	Clones      []CloneUnit           `json:"clones,omitempty"`
 	Directives  []Directive           `json:"directives,omitempty"`
 	Ifaces      []IfaceDecl           `json:"ifaces,omitempty"`
 	ImportRefs  []ImportRef           `json:"import_refs,omitempty"` // imports as written, for the import graph
+	Units       []Unit                `json:"units,omitempty"`       // declarations and methods, for module depth
+	Passed      []string              `json:"passed,omitempty"`      // imported names bound and never used
+	Members     []string              `json:"members,omitempty"`     // names read off a value, not a module
 	Barrel      bool                  `json:"barrel,omitempty"`      // only imports and re-exports, declares nothing
 }
 
@@ -81,13 +87,20 @@ var referenceKinds = map[string]bool{ //nolint:gochecknoglobals // fixed vocabul
 	"shorthand_property_identifier": true, "shorthand_property_identifier_pattern": true,
 }
 
+// importStmtKinds are the node kinds of an import statement in the three grammars.
+var importStmtKinds = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
+	"import_declaration": true, kindImportStmt: true, kindImportFrom: true,
+}
+
 // Collect builds a blob's fingerprint from its parsed tree.
 func Collect(ctx *Ctx) *Fingerprint {
 	fp := &Fingerprint{}
+	uses := &nameUse{selected: map[string][]string{}, inImports: map[string]int{}}
 
 	lang.EachNamed(ctx.Root, func(n *ts.Node) {
 		kind := n.Kind()
 		collectImportRef(ctx, n, kind, fp)
+		uses.note(ctx, n, kind)
 		switch {
 		case ctx.Lang.LiteralKinds[kind]:
 			collectLiteral(ctx, n, fp)
@@ -96,7 +109,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 			collectClone(ctx, n, fp)
 		case kind == "comment":
 			collectProse(ctx, n, fp)
-		case kind == "import_declaration" || kind == kindImportStmt || kind == kindImportFrom:
+		case importStmtKinds[kind]:
 			collectImports(ctx, n, fp)
 		case kind == kindExpressionStmt && ctx.Lang == lang.Python:
 			collectDocstring(ctx, n, fp)
@@ -110,6 +123,8 @@ func Collect(ctx *Ctx) *Fingerprint {
 	collectDecls(ctx, fp)
 	collectExports(ctx, fp)
 	collectIfaces(ctx, fp)
+	collectUnits(ctx, fp)
+	uses.finish(ctx, fp)
 	fp.Barrel = isBarrel(ctx, fp)
 	fp.Directives = ctx.commentDirectives()
 

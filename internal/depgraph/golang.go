@@ -33,6 +33,9 @@ func (r *resolver) resolveGo(f *File, imp Import) {
 	targets := r.goDirs[dir]
 	matched := false
 	for _, to := range targets {
+		r.bind(f, to, &imp, nil)
+	}
+	for _, to := range targets {
 		if used := usedNames(f, r.files[to]); len(used) > 0 {
 			r.add(f, to, imp, used)
 			matched = true

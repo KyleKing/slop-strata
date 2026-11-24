@@ -14,6 +14,7 @@ import (
 	"github.com/kyleking/aragonite/vcs"
 
 	"github.com/kyleking/slop-strata/internal/depgraph"
+	"github.com/kyleking/slop-strata/internal/depth"
 	"github.com/kyleking/slop-strata/internal/engine"
 	"github.com/kyleking/slop-strata/internal/lang"
 	"github.com/kyleking/slop-strata/internal/lineage"
@@ -45,9 +46,12 @@ type importSummary struct {
 	LargestCycle  int `json:"largest_cycle"`
 }
 
-// dirSnapshot is one directory's rollup.
+// dirSnapshot is one directory's rollup. The module depth fields are zero,
+// with a null depth, on a test directory's row.
 type dirSnapshot struct {
-	Dir         string  `json:"dir"`
+	Dir string `json:"dir"`
+	depth.Module
+
 	Files       int     `json:"files"`
 	Erosion     float64 `json:"erosion"`
 	Mass        float64 `json:"mass"`
@@ -210,12 +214,18 @@ func (res *snapshotResult) addImports(im *rules.Imports) {
 	}
 	touchesTest := func(e depgraph.Edge) bool { return lang.IsTestPath(e.From) || lang.IsTestPath(e.To) }
 	production := im.Graph.Filter(func(e depgraph.Edge) bool { return !touchesTest(e) }).Fans(lineage.DirOf)
-	for i, d := range res.Dirs {
-		res.Dirs[i].FanIn, res.Dirs[i].FanOut = production[d.Dir].In, production[d.Dir].Out
+	modules := im.Depth(lineage.DirOf)
+	for i := range res.Dirs {
+		d := &res.Dirs[i]
+		d.FanIn, d.FanOut = production[d.Dir].In, production[d.Dir].Out
+		if m := modules[d.Dir]; m != nil {
+			d.Module = *m
+		}
 	}
 	tests := im.Graph.Filter(touchesTest).Fans(lineage.DirOf)
-	for i, d := range res.TestDirs {
-		res.TestDirs[i].FanIn, res.TestDirs[i].FanOut = tests[d.Dir].In, tests[d.Dir].Out
+	for i := range res.TestDirs {
+		d := &res.TestDirs[i]
+		d.FanIn, d.FanOut = tests[d.Dir].In, tests[d.Dir].Out
 	}
 }
 
@@ -456,6 +466,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	}
 	printDirTable(w, res.Dirs)
 	provisionalNote(w, res.Dirs, func(d dirSnapshot) bool { return d.Provisional }, structure.ProvisionalFuncs)
+	printDepthTable(w, res.Dirs, all)
 	printFileTable(w, res.Files, all)
 	printSnapFuncs(w, res.TopFuncs)
 	if len(res.TestDirs) > 0 {
@@ -482,7 +493,8 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 
 func printDirTable(w io.Writer, dirs []dirSnapshot) {
 	rows := make([][]string, 0, len(dirs))
-	for _, d := range dirs {
+	for i := range dirs {
+		d := &dirs[i]
 		rows = append(rows, []string{
 			d.Dir, strconv.Itoa(d.Files), provisionalMarked(fmt.Sprintf("%.2f", d.Erosion), d.Provisional),
 			fmt.Sprintf("%.0f", d.Mass), fmt.Sprintf("%.0f", d.TableMass),

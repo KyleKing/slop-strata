@@ -6,6 +6,11 @@
 // change nothing, and a rule that passes its fixes stops reporting once the
 // problem is gone.
 //
+// A metric has the same two sorts under other names (MetricCase): a variant
+// in Same must leave the number exactly as it was, and one in Moved must
+// change it, so a number that ignores a real change fails as surely as one a
+// cosmetic edit can move.
+//
 // Trees are written inline in the archive format of Tree, so a case reads top
 // to bottom in the test that owns it and no fixture file sits where a
 // formatter or a linter would rewrite it.
@@ -121,6 +126,49 @@ func Run(t *testing.T, cases []Case, eval Eval) {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			Check(t, c, eval)
+		})
+	}
+}
+
+// Metric reads the number under test off a tree, rendered as text so that a
+// number, a tuple, or a table compares the same way.
+type Metric func(tree Tree) string
+
+// MetricCase is one fixture and the variants a metric is read under.
+type MetricCase struct {
+	// Base is the tree the metric is first read from.
+	Base Tree
+	Name string
+	// Same must each leave the metric exactly as the base has it.
+	Same []Variant
+	// Moved must each change it.
+	Moved []Variant
+}
+
+// CheckMetric evaluates one case: every variant in Same reads as the base
+// does, and every variant in Moved reads differently.
+func CheckMetric(r Reporter, c MetricCase, metric Metric) {
+	r.Helper()
+	want := metric(c.Base)
+	for _, v := range c.Same {
+		if got := metric(v.Apply(c.Base)); got != want {
+			r.Errorf("%s: %q moved the metric: got %s, want %s", c.Name, v.Name, got, want)
+		}
+	}
+	for _, v := range c.Moved {
+		if got := metric(v.Apply(c.Base)); got == want {
+			r.Errorf("%s: %q left the metric at %s", c.Name, v.Name, want)
+		}
+	}
+}
+
+// RunMetric checks every case as a parallel subtest named for it.
+func RunMetric(t *testing.T, cases []MetricCase, metric Metric) {
+	t.Helper()
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			CheckMetric(t, c, metric)
 		})
 	}
 }

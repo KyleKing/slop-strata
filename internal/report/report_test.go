@@ -46,3 +46,28 @@ func TestDropZeroColumnsKeepsTheFirstAndAnyColumnWithSignal(t *testing.T) {
 		t.Fatalf("rows = %v", rows)
 	}
 }
+
+func TestElidePathKeepsTheEndsOfALongPath(t *testing.T) {
+	t.Parallel()
+	const long = "packages/vite/src/node/server/middlewares"
+	cases := []struct {
+		path  string
+		want  string
+		width int
+	}{
+		{path: "internal/rules", width: 14, want: "internal/rules"},
+		{path: long, width: 41, want: long},
+		{path: long, width: 40, want: "packages/…/src/node/server/middlewares"},
+		{path: long, width: 30, want: "packages/…/server/middlewares"},
+		{path: long, width: 22, want: "packages/…/middlewares"},
+		{path: long, width: 15, want: "…/middlewares"},
+		{path: long, width: 8, want: "…lewares"},
+		{path: "averyveryverylongname", width: 6, want: "…gname"},
+		{path: long, width: 0, want: ""},
+	}
+	for _, tc := range cases {
+		if got := report.ElidePath(tc.path, tc.width); got != tc.want {
+			t.Errorf("ElidePath(%q, %d) = %q, want %q", tc.path, tc.width, got, tc.want)
+		}
+	}
+}

@@ -23,12 +23,29 @@ const importWildcard = "*"
 // cross-file pass can match it to a file of the tree. Spec is the module
 // specifier: a dotted Python module with its leading dots, a TypeScript module
 // string, or a Go import path. Names are the names bound from it, "*" for a
-// wildcard, and none when the import binds the module itself.
+// wildcard, and none when the import binds the module itself. Local is the
+// name a bound module goes by in the file: the alias, the first segment of a
+// dotted Python import, the namespace of `import * as ns`, or the last
+// element of a Go path. Aliases maps each renamed binding to the name it
+// imports, so `a as b` reads {b: a} and a default import {local: default}.
 type ImportRef struct {
-	Spec  string   `json:"spec"`
-	Kind  string   `json:"kind,omitempty"`
-	Names []string `json:"names,omitempty"`
-	Line  int      `json:"line"`
+	Aliases map[string]string `json:"aliases,omitempty"`
+	Spec    string            `json:"spec"`
+	Kind    string            `json:"kind,omitempty"`
+	Local   string            `json:"local,omitempty"`
+	Names   []string          `json:"names,omitempty"`
+	Line    int               `json:"line"`
+}
+
+// alias records that the file calls an imported name by another one.
+func (r *ImportRef) alias(local, name string) {
+	if local == name || local == "" {
+		return
+	}
+	if r.Aliases == nil {
+		r.Aliases = map[string]string{}
+	}
+	r.Aliases[local] = name
 }
 
 // collectImportRef records the import a node holds, if it holds one, with
@@ -46,7 +63,8 @@ func collectImportRef(ctx *Ctx, n *ts.Node, kind string, fp *Fingerprint) {
 			return
 		}
 		if p := n.ChildByFieldName("path"); p != nil {
-			fp.ImportRefs = append(fp.ImportRefs, ImportRef{Spec: unquote(ctx.Text(p)), Line: lineOf(n)})
+			spec := unquote(ctx.Text(p))
+			fp.ImportRefs = append(fp.ImportRefs, ImportRef{Spec: spec, Local: goLocal(ctx, n, spec), Line: lineOf(n)})
 		}
 	default:
 		tsImportRefs(ctx, n, kind, fp)
@@ -95,6 +113,21 @@ func passesNamesAlong(ctx *Ctx, n *ts.Node) bool {
 	}
 }
 
+// goLocal names the package an import binds: its alias, or the last element
+// of the path, skipping a major-version element such as v2.
+func goLocal(ctx *Ctx, spec *ts.Node, importPath string) string {
+	if name := spec.ChildByFieldName("name"); name != nil {
+		return ctx.Text(name)
+	}
+	parts := strings.Split(importPath, "/")
+	last := parts[len(parts)-1]
+	if len(parts) > 1 && len(last) > 1 && last[0] == 'v' && strings.Trim(last[1:], "0123456789") == "" {
+		last = parts[len(parts)-2]
+	}
+
+	return last
+}
+
 func unquote(text string) string {
 	return strings.Trim(text, "\"'`")
 }
@@ -105,10 +138,18 @@ func pyImportRefs(ctx *Ctx, n *ts.Node, kind string, fp *Fingerprint) {
 	case kindImportStmt:
 		when := pyImportKind(ctx, n)
 		for _, c := range lang.NamedChildren(n) {
+			local := ""
 			if name := c.ChildByFieldName("name"); c.Kind() == kindAliasedImport && name != nil {
+				if alias := c.ChildByFieldName("alias"); alias != nil {
+					local = ctx.Text(alias)
+				}
 				c = name
 			}
-			fp.ImportRefs = append(fp.ImportRefs, ImportRef{Spec: ctx.Text(c), Kind: when, Line: lineOf(n)})
+			spec := ctx.Text(c)
+			if local == "" {
+				local, _, _ = strings.Cut(spec, ".")
+			}
+			fp.ImportRefs = append(fp.ImportRefs, ImportRef{Spec: spec, Kind: when, Local: local, Line: lineOf(n)})
 		}
 	case kindImportFrom:
 		if module := n.ChildByFieldName("module_name"); module != nil {
@@ -135,6 +176,9 @@ func pyFromImport(ctx *Ctx, n, module *ts.Node) ImportRef {
 		case kindAliasedImport:
 			if name := c.ChildByFieldName("name"); name != nil {
 				ref.Names = append(ref.Names, ctx.Text(name))
+				if alias := c.ChildByFieldName("alias"); alias != nil {
+					ref.alias(ctx.Text(alias), ctx.Text(name))
+				}
 			}
 		case "dotted_name":
 			ref.Names = append(ref.Names, ctx.Text(c))
@@ -208,13 +252,13 @@ func tsImportRefs(ctx *Ctx, n *ts.Node, kind string, fp *Fingerprint) {
 		}
 		spec, line := unquote(ctx.Text(source)), lineOf(n)
 		values, types := tsBoundNames(ctx, n)
-		if len(types) > 0 {
-			fp.ImportRefs = append(fp.ImportRefs, ImportRef{Spec: spec, Kind: importType, Names: types, Line: line})
+		if len(types.Names) > 0 {
+			types.Spec, types.Kind, types.Line = spec, importType, line
+			fp.ImportRefs = append(fp.ImportRefs, types)
 		}
-		if len(values) > 0 || len(types) == 0 {
-			fp.ImportRefs = append(fp.ImportRefs, ImportRef{
-				Spec: spec, Kind: tsDeferred(ctx, n), Names: values, Line: line,
-			})
+		if len(values.Names) > 0 || len(types.Names) == 0 {
+			values.Spec, values.Kind, values.Line = spec, tsDeferred(ctx, n), line
+			fp.ImportRefs = append(fp.ImportRefs, values)
 		}
 	case kindCallExpression:
 		if ref, ok := tsCallImport(ctx, n); ok {
@@ -292,36 +336,59 @@ func typeOnlyStatement(ctx *Ctx, stmt *ts.Node) bool {
 // textType is the TypeScript keyword that marks an import type-only.
 const textType = "type"
 
-// tsBoundNames splits what an import or re-export binds into value names and
-// type-only names. A default import binds "default", and a namespace import
-// or `export *` binds the wildcard.
-func tsBoundNames(ctx *Ctx, stmt *ts.Node) ([]string, []string) {
-	var values, types []string
+// tsBoundNames splits what an import or re-export binds into a value import
+// and a type-only one, each with its names, aliases, and namespace. A default
+// import binds "default", and a namespace import or `export *` binds the
+// wildcard.
+func tsBoundNames(ctx *Ctx, stmt *ts.Node) (ImportRef, ImportRef) {
+	var values, types ImportRef
 	allTypes := typeOnlyStatement(ctx, stmt)
-	add := func(name string, typeOnly bool) {
+	side := func(typeOnly bool) *ImportRef {
 		if allTypes || typeOnly {
-			types = append(types, name)
-		} else {
-			values = append(values, name)
+			return &types
 		}
+
+		return &values
 	}
 	if stmt.Kind() == kindExportStatement && hasToken(stmt, importWildcard) {
-		add(importWildcard, false)
+		ref := side(false)
+		ref.Names = append(ref.Names, importWildcard)
 	}
 	lang.EachNamed(stmt, func(c *ts.Node) {
 		switch c.Kind() {
-		case "import_specifier", "export_specifier":
+		case "import_specifier", kindExportSpecifier:
 			if name := c.ChildByFieldName("name"); name != nil {
-				add(ctx.Text(name), hasToken(c, textType))
+				side(hasToken(c, textType)).bindName(ctx, c, name)
 			}
 		case "namespace_import", "namespace_export":
-			add(importWildcard, false)
+			ref := side(false)
+			ref.Names = append(ref.Names, importWildcard)
+			if c.Kind() == "namespace_import" && c.NamedChildCount() > 0 {
+				ref.Local = ctx.Text(c.NamedChild(0))
+			}
 		case kindIdentifier:
 			if p := c.Parent(); p != nil && p.Kind() == "import_clause" {
-				add("default", false)
+				ref := side(false)
+				ref.Names = append(ref.Names, textDefault)
+				ref.alias(ctx.Text(c), textDefault)
 			}
 		}
 	})
 
 	return values, types
 }
+
+// bindName adds one import or export specifier: its name, and its alias when
+// it has one.
+func (r *ImportRef) bindName(ctx *Ctx, spec, name *ts.Node) {
+	r.Names = append(r.Names, ctx.Text(name))
+	if alias := spec.ChildByFieldName("alias"); alias != nil {
+		r.alias(ctx.Text(alias), ctx.Text(name))
+	}
+}
+
+// textDefault is the name a module's default export is imported by.
+const textDefault = "default"
+
+// kindExportSpecifier is one name of a TypeScript export clause.
+const kindExportSpecifier = "export_specifier"

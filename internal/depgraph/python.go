@@ -52,6 +52,7 @@ func (r *resolver) resolvePython(f *File, imp Import) {
 	if len(imp.Names) == 0 {
 		if to := r.pyLookup(f.Path, imp.Spec); to != "" {
 			r.add(f, to, imp, nil)
+			r.bind(f, to, &imp, nil)
 		}
 
 		return
@@ -66,12 +67,16 @@ func (r *resolver) resolvePython(f *File, imp Import) {
 		switch {
 		case sub != "":
 			r.add(f, sub, imp, nil)
+			module := imp
+			module.Local = localName(imp.Aliases, name)
+			r.bind(f, sub, &module, nil)
 		case module != "":
 			fromModule = append(fromModule, name)
 		}
 	}
 	if len(fromModule) > 0 {
 		r.add(f, module, imp, fromModule)
+		r.bind(f, module, &imp, fromModule)
 	}
 }
 
