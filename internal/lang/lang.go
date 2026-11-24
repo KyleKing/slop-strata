@@ -6,6 +6,7 @@ package lang
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
@@ -58,6 +59,30 @@ type Language struct {
 	DecisionOps map[string]bool
 	ID          string
 	Extensions  []string
+	kinds       []Kind
+	kindsOnce   sync.Once
+}
+
+// Kind is one node kind of a grammar: its name, and whether nodes of it are
+// named or anonymous tokens.
+type Kind struct {
+	Name  string
+	Named bool
+}
+
+// Kinds lists the grammar's node kinds, indexed by the id a node reports, so
+// a walk can read a node's kind without building its name each time.
+func (l *Language) Kinds() []Kind {
+	l.kindsOnce.Do(func() {
+		grammar := l.newLanguage()
+		l.kinds = make([]Kind, grammar.NodeKindCount())
+		for i := range l.kinds {
+			id := uint16(i)
+			l.kinds[i] = Kind{Name: grammar.NodeKindForId(id), Named: grammar.NodeKindIsNamed(id)}
+		}
+	})
+
+	return l.kinds
 }
 
 // Go is the spec for *.go.

@@ -7,34 +7,40 @@ import (
 	"github.com/kyleking/slop-strata/internal/fixturetest"
 )
 
-// lastRefIDs runs change over the last commit of a written history and
-// answers the ids of its x/last-ref findings.
-func lastRefIDs(t *testing.T) fixturetest.Eval {
+// changeRuleIDs runs change over the last commit of a written history, with
+// any extra flags, and answers the ids of the findings one rule reports.
+func changeRuleIDs(t *testing.T, rule string, flags ...string) fixturetest.Eval {
 	t.Helper()
 
 	return func(tree fixturetest.Tree) []string {
-		repo := historyRepo(t, tree)
-		out, err := runCLI(t, repo, "change", "--base", "HEAD~1", "--rev", "HEAD", "--json")
-		if err != nil {
-			t.Fatalf("change: %v", err)
-		}
-		var env struct {
-			Result struct {
-				Findings []findingRow `json:"findings"`
-			} `json:"result"`
-		}
-		if err := json.Unmarshal([]byte(out), &env); err != nil {
-			t.Fatalf("parsing JSON: %v\n%s", err, out)
-		}
 		var ids []string
-		for _, f := range env.Result.Findings {
-			if f.Rule == "x/last-ref" {
+		for _, f := range changeFindings(t, historyRepo(t, tree), flags...) {
+			if f.Rule == rule {
 				ids = append(ids, f.ID)
 			}
 		}
 
 		return ids
 	}
+}
+
+// changeFindings scores the last commit of a repository and answers its findings.
+func changeFindings(t *testing.T, repo string, flags ...string) []findingRow {
+	t.Helper()
+	out, err := runCLI(t, repo, append([]string{"change", "--base", "HEAD~1", "--rev", "HEAD", "--json"}, flags...)...)
+	if err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	var env struct {
+		Result struct {
+			Findings []findingRow `json:"findings"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("parsing JSON: %v\n%s", err, out)
+	}
+
+	return env.Result.Findings
 }
 
 // The two commits of a last-ref fixture: the tree as it stood, and the change.
@@ -163,5 +169,5 @@ func typescriptLastRefCase() fixturetest.Case {
 func TestLastRefHoldsUnderAdversarialEdits(t *testing.T) {
 	t.Parallel()
 	fixturetest.Run(t, []fixturetest.Case{goLastRefCase(), pythonLastRefCase(), typescriptLastRefCase()},
-		lastRefIDs(t))
+		changeRuleIDs(t, "x/last-ref"))
 }

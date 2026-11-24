@@ -23,6 +23,9 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    problem where it was, and most such edits leave the finding too. A
    finding that is right and should stay takes `slop-strata:ignore <rule-id>
    <reason>` on its line, with the reason a reviewer would accept.
+   An `x/new-duplicate` finding's `note` names the code the new lines repeat.
+   Read both sites before you agree, and when it is right, call or widen
+   that code: a copy under new names is the finding again.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

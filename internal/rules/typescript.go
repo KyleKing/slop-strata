@@ -34,7 +34,7 @@ func tsSilentCatch(ctx *Ctx, findings *[]Finding) {
 // emptyBlock reports whether a statement block holds nothing, not even a
 // comment.
 func emptyBlock(block *ts.Node) bool {
-	return block != nil && block.Kind() == "statement_block" && block.NamedChildCount() == 0
+	return block != nil && block.Kind() == kindStatementBlock && block.NamedChildCount() == 0
 }
 
 // emptyCatchCallback reports whether a call is `.catch(fn)` with a function

@@ -34,6 +34,8 @@ Checked against the code at 61b2aba. Items from the v0.6.0 audit that are now do
 - The same two rules count a reference by name in any file the tool parses. A name imported only from a `.vue`, `.svelte`, `.mdx`, `.js`, or `.mjs` file reads as unused (3 of 7 false positives in a sample of 40), and so does one a framework reaches through a namespace import.
 - Chained and tuple assignments at module level in Python (`a = b = 1`, `a, b = 1, 2`) declare names the fingerprint does not record.
 - `x/last-ref` asks whether any declaration of the name is left, not whether the one the change stopped using is. Over the last 200 commits of six repositories it reported 11 findings, 7 of them a helper the change left behind and 4 a name some unrelated file also declares (a Next.js page component, a test fixture). Before the declaring file's own uses counted and an exported declaration was discounted once, the same commits gave 28, and none of the 12 sampled was unused. Attributing the name through the import graph would settle the 4.
+- `x/new-duplicate` is gated. On 3,750 commits of 15 public repositories it gave 5.7 findings per 100 commits, and of 64 read at random 19 were real, 37 plausible, and 8 false: 30% by the strict reading and 88% with the plausible ones. One person labeled them, and only 3 were Python. The false ones were files that are parallel by design and that no path rule names (one locale per file, two flavours of one API, a config per package, an integration app), a guard repeated on purpose after taking a lock, and a line two sites share by chance. Labels from more than one reader, and more Python, come before any move out of the gate.
+- `x/new-duplicate` finds few of the repeats that later get merged: 20 of 152 mined consolidation commits at its floor, and 4 of 68 when replaying the commit that wrote the later copy. See "Duplication, after the first stage".
 - `py/type-any` and `go/type-any` report every hit. They should report a count per file. `go/type-any` already skips generic constraints and variadic `...any` parameters a function spreads into a call, and leaves fields that hold JSON of unknown shape to labels.
 
 ## Dodges the rules lose to
@@ -63,6 +65,7 @@ Needs a judgment the rule does not make:
 - `x/comment-density`: move the comments above the function or into the docstring, fold them into one block comment, or pad the body with blank lines. Counting comment lines over non-blank lines closed the last two and added 98 hits, of which a sample of 20 was mostly explanation, commented-out code, `@ts-expect-error`, and `@see` blocks, so the count is as it was
 - `x/clone-function`, `x/dup-test-case`: one extra statement, a docstring, a dropped return type, `it.only`, or a move to another file (which `x/clone-function` then reports)
 - `x/dup-literal`: name the literal in one file, which takes the count under four
+- `x/new-duplicate`: rename more than three things in every stretch of the copy. A copy with its loop rewritten as a comprehension or a chain of calls, or with two statements swapped, is still reported for the stretches that line up, and those are `Persists` variants
 
 Matches a name and nothing more:
 
@@ -71,6 +74,19 @@ Matches a name and nothing more:
 - `x/stale-config`, `x/stale-prose`: the key or the name kept alive in an unrelated identifier or string, a negation in front of the name, or a fenced block
 
 `py/silent-except` and `ts/silent-catch` treat a comment differently, as they did before these fixtures. In Python a comment on its own line above `pass` sits outside the handler's block in the grammar and the handler is reported, while `pass  # reason` is not. A comment that only silences a linter (`pass  # noqa`) is now read as no reason. In TypeScript any comment in the block clears the finding.
+
+## Duplication, after the first stage
+
+`x/new-duplicate` lines up whole statements of equal shape, in order, with no gap. What the 153 mined consolidation commits show it missing, largest first:
+
+- An expression repeated inside longer statements (a condition, a struct literal, a call chain, a JSX subtree). In 45 of the 134 mined commits outside tests no statement of one site has the shape of a statement of another. This needs records below the statement, at least for calls and literals over a size.
+- A copy with one statement changed in shape, added, or dropped, which splits a run into stretches too short to report. Letting a run bridge one statement that differs, at a price, would join them. A copy with statements reordered needs a set of statements compared, not a sequence.
+- Fragments of one or two short statements. In another 49 of the 134 the statements that line up come to under 20 tokens, and no floor separates those from chance on tokens alone. History might: two sites edited in the same commits, or a third copy appearing.
+- Sibling methods and repeated type declarations line up only when their members do. Comparing the member lists of two classes or two types as sets would reach the parallel class that a base class should hold.
+- A change that adds a third and fourth copy reports each against the first. One finding per group, with how many sites it now has, would say more.
+- Tests, examples, and benchmarks are left out whole. A test helper copied between two test files is a real case, and it is 12% of the mined commits.
+- A snapshot metric was planned and not built: groups of repeated code ranked by the tokens a merge would remove (tokens times sites less one), with where the sites are. The pass can produce it, but nobody has read a sample of its groups, so it would ship unmeasured. Ranking by what a merge saves, and saying which site is the one to keep, is the split a reader needs to choose where to spend the effort.
+- The fingerprint walk is 22% to 29% slower than before the statements were added, because it now visits every token, and the blob cache is 30% to 69% larger (the README has both tables). Hashing a statement's text between its names, in place of a visit per token, would take most of the walk back. Two bytes of the exact hash would do for what it is read for, and the names repeat what `Referenced` already holds.
 
 ## Pruning aids measured and not built
 

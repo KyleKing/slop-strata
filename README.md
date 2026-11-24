@@ -157,7 +157,7 @@ slop-strata change --brief --exit-code || [ $? -ne 1 ]
 
 That line blocks the commit on status 1 and lets an error through. Drop the `|| ...` part to block on errors too.
 
-A coding agent reads the same lines. A hook that runs after the agent edits a file can pipe them back:
+A coding agent reads the same lines. With `--experimental`, a `next:` line for `x/new-duplicate` names the existing code a new block repeats (see [Code a change copies](#code-a-change-copies)). A hook that runs after the agent edits a file can pipe them back:
 
 ```bash
 slop-strata change --brief --exit-code >&2 || exit 2
@@ -192,6 +192,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `survival` is the share of a monthly cohort's added lines still alive at 30 and 90 days. `--explain survival`
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
+- `new_duplicate` explains the `x/new-duplicate` finding: code a change added that repeats code the tree already holds. `--explain new_duplicate`
 - `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline, ignored inline with a reason, or labeled false positive. `--explain suppressed`
 - `stale_baseline` counts, on `snapshot`, the baseline entries that no longer match a finding. `--explain stale_baseline`
 - `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
@@ -211,6 +212,26 @@ slop-strata raises questions about a change and leaves the answers to you. A cha
 A rule runs by default only when a sampled read of its hits on the corpus met 80% precision. Rules below that bar stay gated. Turn them on for one run with `--experimental`, or for a repository with `experimental = true` in `.slop-strata.toml`.
 
 The gate exists because a noisy rule teaches people to skip its output, and that includes the hits that are right. `--explain experimental` lists the rules still gated, with the precision your labels give each one.
+
+### Code a change copies
+
+`x/new-duplicate` is one of the gated rules, and only `change` reports it. It names code the change added that repeats code the tree already holds, or that the change added twice, and says where the code to extend is:
+
+```bash
+slop-strata change --experimental
+```
+
+```text
+id          rule             at
+faac203451  x/new-duplicate  store/orders.go:5
+faac203451 repeats loadUsers at store/users.go:5, in the same directory: 12 statements, 127 tokens, 1 difference ("SELECT id, name FROM users LIMI…→"SELECT id, name FROM orders LIM…). Extend or parameterise that code instead of adding a copy
+```
+
+`--brief` prints the same sentence as the reason of its `next:` line, so a hook hands an agent the place to look before the copy is committed. `--json` carries it in the finding's `note`, with the file and function it repeats in `match`.
+
+The rule reads each file as a sequence of statements and looks for a run of added statements that lines up with a run somewhere else, the same tokens in the same order once names and literals are set aside. A whole function is not needed: two statements can be enough when they are long and rare. Each name or literal the two sites differ in costs the run 8 tokens, since a shared function would take it as a parameter, and more than three ends it. Statements whose shape the tree holds in many places, such as an error check, count for little or nothing.
+
+It stays quiet about tests, examples, and benchmarks, about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name that are 80% alike), and about generated files. It does not see a repeated expression inside a longer statement, or a copy with a statement added, dropped, or reordered beyond the part that still lines up. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
 
 ## Setting findings aside
 
@@ -323,6 +344,16 @@ Parsing runs one worker per CPU core (GOMAXPROCS), with one parser per worker. A
 | TanStack Query | 180 days | 1,370   | 27    | 46.6 s      | 46.5 s     | 2.75 s      | 4.42 s     |
 
 Peak memory on the three-year TanStack Query run went from 354 MB to 365 MB warm.
+
+A fingerprint also keeps each file's statements, which `x/new-duplicate` reads. The table is `change --experimental` on one commit of each repository, before and after they were added, on a 4-core Linux VM: a cold run, the best of three warm runs, and the size of the blob cache after the cold run. The fingerprint walk itself got 22% to 29% slower (`BenchmarkCollect`), which a cold run mostly hides behind parsing, and the cache grew by 30% to 69%.
+
+| Repository     | Files | Cold before | Cold after | Warm before | Warm after | Cache before | Cache after |
+| -------------- | ----- | ----------- | ---------- | ----------- | ---------- | ------------ | ----------- |
+| fzf            | 91    | 1.17 s      | 0.98 s     | 0.11 s      | 0.12 s     | 0.9 MB       | 1.5 MB      |
+| gorm           | 162   | 1.30 s      | 1.30 s     | 0.13 s      | 0.17 s     | 1.5 MB       | 2.4 MB      |
+| vite           | 631   | 1.99 s      | 1.95 s     | 0.40 s      | 0.42 s     | 4.3 MB       | 6.0 MB      |
+| TanStack Query | 2,107 | 4.83 s      | 4.86 s     | 0.97 s      | 0.95 s     | 10.5 MB      | 13.6 MB     |
+| pydantic       | 3,163 | 4.97 s      | 5.46 s     | 1.02 s      | 1.12 s     | 12.8 MB      | 16.9 MB     |
 
 ## Read more
 

@@ -10,6 +10,7 @@ import (
 	"github.com/kyleking/aragonite/vcs"
 
 	"github.com/kyleking/slop-strata/internal/report"
+	"github.com/kyleking/slop-strata/internal/rules"
 	"github.com/kyleking/slop-strata/internal/structure"
 )
 
@@ -44,8 +45,7 @@ func nextItems(res *changeResult) []nextItem {
 	for _, f := range res.Findings {
 		if f.New {
 			items = append(items, nextItem{
-				Kind: nextNewFinding, File: f.Path, Line: f.Line, Rule: f.Rule,
-				Reason: "new rule hit, not in the baseline",
+				Kind: nextNewFinding, File: f.Path, Line: f.Line, Rule: f.Rule, Reason: findingReason(f),
 			})
 		}
 	}
@@ -56,6 +56,16 @@ func nextItems(res *changeResult) []nextItem {
 	}
 
 	return items[:min(len(items), nextLimit)]
+}
+
+// findingReason says why a new finding is worth a look. A new duplicate
+// carries its own reason: where the code it repeats already is.
+func findingReason(f findingRow) string {
+	if f.Rule == rules.RuleNewDuplicate && f.Note != "" {
+		return f.Note
+	}
+
+	return "new rule hit, not in the baseline"
 }
 
 func grownFunctionItem(f topFunc) nextItem {

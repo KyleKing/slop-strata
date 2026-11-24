@@ -1105,7 +1105,8 @@ func printChange(w io.Writer, res *changeResult, all bool) {
 }
 
 // printFindings lists the findings the change added, and with all the ones
-// it found already there.
+// it found already there. A new duplicate's note follows the table, since the
+// row alone does not say where the code it repeats is.
 func printFindings(w io.Writer, findings []findingRow, all bool) {
 	rows := make([][]string, 0, len(findings))
 	for _, f := range findings {
@@ -1123,6 +1124,11 @@ func printFindings(w io.Writer, findings []findingRow, all bool) {
 	}
 	report.Fprintln(w)
 	report.Table(w, []string{"id", colRule, "at", ""}, rows)
+	for _, f := range findings {
+		if f.New && f.Rule == rules.RuleNewDuplicate {
+			report.Fprintf(w, "%s %s\n", f.ID, f.Note)
+		}
+	}
 }
 
 // deltaRows lists the delta table: production mass, test mass when tests moved
@@ -1216,12 +1222,32 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 		rev, touched := s.revPrints(ctx, basePrints, files, newSides, scored)
 		addCrossFindings(rules.RemovedNameProse(basePrints, rev, touched), rev, sup, res)
 		addCrossFindings(rules.NewImportCycles(basePrints, rev, s.cfg.Experimental), rev, sup, res)
+		addCrossFindings(rules.NewDuplicates(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		res.Surface = rules.WidenedSurfaces(basePrints, rev, lineage.DirOf)
 	}
 	if res.Surface == nil {
 		res.Surface = []depth.Widening{}
 	}
 	sortFindings(res.Findings)
+}
+
+// dupChanges hands the duplicate pass each changed file's two sides and the
+// lines the change added.
+func dupChanges(files []vcs.CommitFile, scored []scoredFile) []rules.DupChange {
+	out := make([]rules.DupChange, len(files))
+	for i := range files {
+		added := addedLines(files[i].Hunks)
+		out[i] = rules.DupChange{
+			Path: files[i].Path, Before: scored[i].beforePrint, After: scored[i].afterPrint,
+			Added: func(line int) bool {
+				_, ok := added[line]
+
+				return ok
+			},
+		}
+	}
+
+	return out
 }
 
 // lastRefs flags a symbol whose last live reference this change removed: its

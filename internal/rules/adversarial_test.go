@@ -88,9 +88,10 @@ func TestRulesHoldUnderAdversarialEdits(t *testing.T) {
 	}
 }
 
-// changeOnlyRules are tested where a change can be built: x/last-ref reads
-// two trees, so its fixtures run the command in cmd/slop-strata.
-var changeOnlyRules = []string{"x/last-ref"} //nolint:gochecknoglobals // a fixed list
+// changeOnlyRules are tested where a change can be built: x/last-ref and
+// x/new-duplicate read two trees, so their fixtures run the command in
+// cmd/slop-strata.
+var changeOnlyRules = []string{"x/last-ref", rules.RuleNewDuplicate} //nolint:gochecknoglobals // a fixed list
 
 // TestEveryRuleHasAnAdversarialCase fails when a rule ships with no fixture,
 // or with one that tries fewer than two dodges and one fix.

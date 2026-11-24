@@ -101,7 +101,7 @@
         "path": {"type": "string"},
         "rule": {"type": "string"},
         "match": {"type": "string"},
-        "note": {"type": "string", "description": "What a cross-file finding adds to its match, such as an import cycle's cheapest cut."},
+        "note": {"type": "string", "description": "What a cross-file finding adds to its match, such as an import cycle's cheapest cut, or where the code an x/new-duplicate finding repeats is and how the two sites differ."},
         "line": {"type": "integer", "minimum": 0},
         "new": {"type": "boolean", "description": "True when the finding sits on a line the change added, or is a cross-file finding the change caused, such as a new or grown import cycle."}
       }
