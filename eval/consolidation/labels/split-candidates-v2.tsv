@@ -1,0 +1,60 @@
+fzf	go	1	yes	the scroll-offset arm of constrain, every statement of it	src/terminal.go:8803-8839	fresh
+fzf	go	2	yes	reconciles the selection after the revision changes	src/terminal.go:2088-2135	fresh
+fzf	go	3	arguable	a nine-line colour-range chain in the default arm of a long switch	src/ansi.go:534-542	fresh
+fzf	go	4	arguable	the default arm of the key switch: five inputs, one of them a closure, one output, and error returns	src/options.go:1271-1315	fresh
+fzf	go	5	yes	sets the minimum height, already under a comment	src/options.go:3864-3894	fresh
+cobra	go	1	arguable	the ValidArgs branch, which ends in a return of four values and reads five variables	completions.go:536-558	fresh
+cobra	go	2	yes	the grouped-commands branch of the usage printer	command.go:2001-2016	carried
+cobra	go	3	yes	the persistent post-run loop, every exit returns an error	command.go:1028-1042	fresh
+cobra	go	4	no	two of three parallel loops over the flag groups	flag_groups.go:242-271	fresh
+cobra	go	5	no	the cell update of a twelve-line edit-distance loop, five inputs; clearer as it is	cobra.go:207-218	fresh
+chi	go	1	yes	the whole param-pattern arm, ends in its own return	tree.go:752-793	fresh
+chi	go	2	yes	the handlers loop of walk	tree.go:903-921	carried
+chi	go	3	yes	builds the handler map	tree.go:663-676	carried
+chi	go	4	yes	validates one content type	middleware/compress.go:79-89	carried
+chi	go	5	yes	the checks on a mounted sub-router	mux.go:307-321	fresh
+bubbletea	go	1	yes	the whole restore-from-the-last-view arm of close	cursed_renderer.go:199-257	fresh
+bubbletea	go	2	arguable	one small arm of the internal-message switch	tea.go:841-852	fresh
+bubbletea	go	3	arguable	the last four of a chain of parallel equality checks	cursed_renderer.go:997-1016	fresh
+bubbletea	go	4	no	two of several parallel colour blocks	cursed_renderer.go:123-140	fresh
+bubbletea	go	5	arguable	the killed branch: one arm wraps the error and the other renders	tea.go:1271-1288	fresh
+flask	py	1	arguable	the whole loop body, five inputs; the option merge alone was the cleaner cut	src/flask/sansio/blueprints.py:350-377	fresh
+flask	py	2	yes	coerces the return value into a response, one output	src/flask/app.py:1357-1405	fresh
+flask	py	3	yes	resolves the named attribute to an app	src/flask/cli.py:167-189	fresh
+flask	py	4	yes	locates the app from the import path or the default files	src/flask/cli.py:344-356	fresh
+flask	py	5	yes	collects the dotenv values	src/flask/cli.py:745-755	fresh
+httpx	py	1	yes	maps one NO_PROXY host to a mount key	httpx/_utils.py:65-74	carried
+httpx	py	2	yes	formats one certificate item	httpx/_main.py:200-206	carried
+httpx	py	3	yes	validates the keyword components, under a section comment	httpx/_urlparse.py:266-286	fresh
+httpx	py	4	yes	validates the keyword arguments	httpx/_urls.py:79-105	carried
+httpx	py	5	no	five lines of assignments that read five parameters; clearer as it is	httpx/_config.py:122-130	fresh
+pydantic	py	1	yes	the numeric-constraint arm of a long elif chain	pydantic/_internal/_known_annotated_metadata.py:260-289	carried
+pydantic	py	2	yes	resolves a field's aliases	pydantic/main.py:326-347	carried
+pydantic	py	3	yes	the whole warning arm: builds the valid namespaces and warns	pydantic/_internal/_fields.py:132-148	fresh
+pydantic	py	4	yes	merges json_schema_extra	pydantic/fields.py:703-729	fresh
+pydantic	py	5	yes	reads the config from a call or a dict literal	pydantic/mypy.py:588-597	fresh
+rich	py	1	no	two of four parallel attribute groups, cut to balance the halves	rich/style.py:300-319	carried
+rich	py	2	yes	the handler-tag branch of the markup renderer	rich/markup.py:178-219	carried
+rich	py	3	yes	the control-code dispatch	rich/_windows_renderer.py:23-56	carried
+rich	py	4	arguable	the body of the SGR loop: three of its five inputs are local aliases	rich/ansi.py:171-209	fresh
+rich	py	5	yes	the Windows write branch	rich/console.py:2077-2114	fresh
+vite	ts	1	yes	handles one export statement, the whole body of step 2	packages/vite/src/node/ssr/ssrTransform.ts:241-326	carried
+vite	ts	2	yes	the no-preload branch, every statement of it, ending in a return	packages/vite/src/node/plugins/importAnalysisBuild.ts:568-629	fresh
+vite	ts	3	yes	the position-to-location branch of the error formatter	packages/vite/src/node/server/pluginContainer.ts:970-1027	carried
+vite	ts	4	yes	the rest of the merge loop's body: every continue becomes a return	packages/vite/src/node/utils.ts:1720-1767	fresh
+vite	ts	5	arguable	five inputs, one of them a closure	packages/vite/src/node/plugins/manifest.ts:130-158	fresh
+trpc	ts	1	yes	the pairwise collision loop	www/src/components/sponsors/jelly.ts:186-213	carried
+trpc	ts	2	yes	copies deprecated headers	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts:219-230	carried
+trpc	ts	3	yes	the whole procedure arm: collects one procedure's descriptions	packages/openapi/src/schemaExtraction.ts:296-320	fresh
+trpc	ts	4	arguable	the inner loop body: five inputs and a flag set on one path	packages/upgrade/src/lib/ast/scanners.ts:111-126	fresh
+trpc	ts	5	yes	copies deprecated headers, in the fetch adapter	packages/server/src/adapters/fetch/fetchRequestHandler.ts:73-81	fresh
+zod	ts	1	yes	the string-format chain with the line that reads the format	packages/zod/src/v4/classic/from-json-schema.ts:510-564	fresh
+zod	ts	2	yes	walks one issue path into the error tree	packages/zod/src/v3/ZodError.ts:235-267	carried
+zod	ts	3	arguable	the flatten step: one of its two inputs is a closure defined above it	packages/zod/src/v4/core/to-json-schema.ts:660-689	fresh
+zod	ts	4	yes	the too_small case of a locale, every path returns	packages/zod/src/v4/locales/he.ts:172-207	carried
+zod	ts	5	yes	walks one issue path into the error tree, in v4	packages/zod/src/v4/core/errors.ts:362-400	fresh
+query	ts	1	yes	the Nx workspace branch	packages/angular-query/schematics/migrate-from-experimental/workspace.ts:230-250	carried
+query	ts	2	yes	counts and rewrites the dependency entries	packages/angular-query/schematics/migrate-from-experimental/index.ts:120-162	carried
+query	ts	3	yes	inserts each table into its section	scripts/generate-docs.ts:787-802	fresh
+query	ts	4	arguable	the identifier-callee branch: five inputs, two of them closures	packages/eslint-plugin-query/src/rules/prefer-query-options/prefer-query-options.rule.ts:107-154	fresh
+query	ts	5	arguable	a ten-line loop body in a function that scores 22	packages/eslint-plugin-query/src/rules/no-unstable-deps/no-unstable-deps.rule.ts:88-98	fresh

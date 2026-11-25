@@ -27,7 +27,7 @@ import (
 type snapshotResult struct {
 	Findings   map[string][]rules.Finding `json:"findings"`
 	Duplicates *duplicateList             `json:"duplicate_groups,omitempty"`
-	Splits     *splitList                 `json:"split_candidates"`
+	Splits     *splitList                 `json:"split_candidates,omitempty"`
 	Rev        string                     `json:"rev"`
 	Dirs       []dirSnapshot              `json:"dirs"`
 	TestDirs   []dirSnapshot              `json:"test_dirs,omitempty"`
@@ -321,7 +321,9 @@ func (s *session) snapshotRollup(
 	res.TestDirs = rankDirs(byTestDir, live, touches.dirs, true)
 	res.Files = rankFiles(metrics, live, touches.files)
 	res.TopFuncs = rankSnapFuncs(metrics)
-	res.Splits = splitCandidates(metrics)
+	if s.cfg.Experimental {
+		res.Splits = splitCandidates(metrics)
+	}
 
 	return res
 }

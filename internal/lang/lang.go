@@ -26,6 +26,14 @@ const (
 	kindForInStatement   = "for_in_statement"
 	kindDoStatement      = "do_statement"
 	kindCatchClause      = "catch_clause"
+	kindFuncDecl         = "function_declaration"
+	kindExprSwitch       = "expression_switch_statement"
+	kindSelect           = "select_statement"
+	kindParamDecl        = "parameter_declaration"
+	kindVariadicDecl     = "variadic_parameter_declaration"
+	kindVarSpec          = "var_spec"
+	kindForInClause      = "for_in_clause"
+	kindVarDeclarator    = "variable_declarator"
 )
 
 // AllChildren is the BindKinds field of a node whose every named child holds
@@ -37,6 +45,7 @@ const (
 	fieldName    = "name"
 	fieldLeft    = "left"
 	fieldPattern = "pattern"
+	fieldAlias   = "alias"
 )
 
 // Language describes one grammar's node vocabulary for the metric walkers.
@@ -85,10 +94,44 @@ type Language struct {
 	BindKinds map[string]string
 	// UpdateKinds are the BindKinds that read the name they write (i++).
 	UpdateKinds map[string]bool
-	ID          string
-	Extensions  []string
-	kinds       []Kind
-	kindsOnce   sync.Once
+	// DeclKinds are the BindKinds whose names are new variables of the scope
+	// they sit in. A BindKinds node outside this set declares too when one of
+	// its tokens is a DeclTokens spelling, and assigns otherwise.
+	DeclKinds map[string]bool
+	// BareDeclKinds are the DeclKinds that give their names no value when the
+	// node has no value field: `var x T`, `let x`.
+	BareDeclKinds map[string]bool
+	// EachKinds are the loops, or the clause of a loop, that bind the loop's
+	// variables anew on every pass: a loop over the items of something.
+	EachKinds map[string]bool
+	// DeclTokens are the tokens that make a BindKinds node a declaration:
+	// Go's ":=" in a range clause, "const" in a for-of loop.
+	DeclTokens map[string]bool
+	// ScopeKinds are the node types, functions aside, that a declared name
+	// ends with: a block, a loop with its header, a comprehension.
+	ScopeKinds map[string]bool
+	// HoistKinds maps a statement that declares a name for the whole scope it
+	// sits in, before and after it, to the field that holds the name: a
+	// nested function or class declaration.
+	HoistKinds map[string]string
+	// OuterKinds are the statements that hand a function's names to a scope
+	// outside it: true for the module's (global), false for an enclosing
+	// function's (nonlocal).
+	OuterKinds map[string]bool
+	// SelfNames are the parameter names that stand for the object a method
+	// belongs to, where the grammar has no keyword for it.
+	SelfNames map[string]bool
+	// ReceiverField is the field of a function node that holds its receiver,
+	// and ResultField the one that holds its results, where they have names.
+	ReceiverField string
+	ResultField   string
+	ID            string
+	Extensions    []string
+	kinds         []Kind
+	kindsOnce     sync.Once
+	// ImplicitLocals is true where a function's assignments declare: every
+	// name a function binds anywhere in its body is its own from the start.
+	ImplicitLocals bool
 }
 
 // Kind is one node kind of a grammar: its name, and whether nodes of it are
@@ -118,9 +161,9 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	ID:         "go",
 	Extensions: []string{".go"},
 	FunctionKinds: map[string]bool{
-		"function_declaration": true,
-		"method_declaration":   true,
-		"func_literal":         true,
+		kindFuncDecl:         true,
+		"method_declaration": true,
+		"func_literal":       true,
 	},
 	MethodKinds:    map[string]bool{"method_declaration": true},
 	CommentKinds:   map[string]bool{kindComment: true},
@@ -144,26 +187,40 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	OpContainerKinds: map[string]bool{"binary_expression": true},
 	DecisionOps:      map[string]bool{"&&": true, "||": true},
 	NestKinds: map[string]bool{
-		kindIfStatement:               true,
-		kindForStatement:              true,
-		"expression_switch_statement": true,
-		kindTypeSwitch:                true,
-		"select_statement":            true,
+		kindIfStatement:  true,
+		kindForStatement: true,
+		kindExprSwitch:   true,
+		kindTypeSwitch:   true,
+		kindSelect:       true,
 	},
 	FlatKinds:  map[string]bool{"else": true},
 	BlockKinds: map[string]bool{"statement_list": true},
 	LoopKinds:  map[string]bool{kindForStatement: true},
 	SwitchKinds: map[string]bool{
-		"expression_switch_statement": true, kindTypeSwitch: true, "select_statement": true,
+		kindExprSwitch: true, kindTypeSwitch: true, kindSelect: true,
 	},
 	BindKinds: map[string]string{
-		"parameter_declaration": fieldName, "variadic_parameter_declaration": fieldName,
-		"var_spec": fieldName, "const_spec": fieldName, "short_var_declaration": fieldLeft,
+		kindParamDecl: fieldName, kindVariadicDecl: fieldName,
+		kindVarSpec: fieldName, "const_spec": fieldName, "short_var_declaration": fieldLeft,
 		"range_clause": fieldLeft, "assignment_statement": fieldLeft, "receive_statement": fieldLeft,
-		kindTypeSwitch: "alias", "inc_statement": AllChildren, "dec_statement": AllChildren,
+		kindTypeSwitch: fieldAlias, "inc_statement": AllChildren, "dec_statement": AllChildren,
 	},
 	UpdateKinds: map[string]bool{"inc_statement": true, "dec_statement": true},
-	newLanguage: func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
+	DeclKinds: map[string]bool{
+		kindParamDecl: true, kindVariadicDecl: true,
+		kindVarSpec: true, "const_spec": true, "short_var_declaration": true, kindTypeSwitch: true,
+	},
+	BareDeclKinds: map[string]bool{kindVarSpec: true},
+	EachKinds:     map[string]bool{"range_clause": true},
+	DeclTokens:    map[string]bool{":=": true},
+	ScopeKinds: map[string]bool{
+		"block": true, kindIfStatement: true, kindForStatement: true,
+		kindExprSwitch: true, kindTypeSwitch: true, kindSelect: true,
+		"expression_case": true, "type_case": true, "default_case": true, "communication_case": true,
+	},
+	ReceiverField: "receiver",
+	ResultField:   "result",
+	newLanguage:   func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
 }
 
 // Python is the spec for *.py.
@@ -199,7 +256,7 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"except_clause":          true,
 		"conditional_expression": true,
 		"case_clause":            true,
-		"for_in_clause":          true,
+		kindForInClause:          true,
 		"if_clause":              true,
 	},
 	OpContainerKinds: map[string]bool{"boolean_operator": true},
@@ -221,9 +278,23 @@ var Python = &Language{ //nolint:gochecknoglobals // language vocabularies are c
 		"parameters": AllChildren, "lambda_parameters": AllChildren,
 		"default_parameter": fieldName, "typed_default_parameter": fieldName, "named_expression": fieldName,
 		"assignment": fieldLeft, "augmented_assignment": fieldLeft, kindForStatement: fieldLeft,
-		"for_in_clause": fieldLeft, "as_pattern": "alias",
+		kindForInClause: fieldLeft, "as_pattern": fieldAlias,
+		"import_statement": fieldName, "import_from_statement": fieldName, "aliased_import": fieldAlias,
 	},
-	newLanguage: func() *ts.Language { return ts.NewLanguage(tspy.Language()) },
+	DeclKinds: map[string]bool{
+		"parameters": true, "lambda_parameters": true, "default_parameter": true,
+		"typed_default_parameter": true, kindForInClause: true,
+	},
+	ScopeKinds: map[string]bool{
+		"list_comprehension": true, "set_comprehension": true, "dictionary_comprehension": true,
+		"generator_expression": true,
+	},
+	EachKinds:      map[string]bool{kindForStatement: true},
+	HoistKinds:     map[string]string{"function_definition": fieldName, "class_definition": fieldName},
+	OuterKinds:     map[string]bool{"global_statement": true, "nonlocal_statement": false},
+	SelfNames:      map[string]bool{"self": true, "cls": true},
+	ImplicitLocals: true,
+	newLanguage:    func() *ts.Language { return ts.NewLanguage(tspy.Language()) },
 }
 
 // TypeScript is the spec for *.ts; tsx files share the spec under the TSX
@@ -232,7 +303,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	ID:         "typescript",
 	Extensions: []string{".ts", ".cts", ".mts"},
 	FunctionKinds: map[string]bool{
-		"function_declaration":           true,
+		kindFuncDecl:                     true,
 		"function_expression":            true,
 		kindArrowFunction:                true,
 		kindMethodDefinition:             true,
@@ -283,12 +354,27 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	},
 	SwitchKinds: map[string]bool{"switch_statement": true},
 	BindKinds: map[string]string{
-		"required_parameter": fieldPattern, "optional_parameter": fieldPattern, "variable_declarator": fieldName,
+		"required_parameter": fieldPattern, "optional_parameter": fieldPattern, kindVarDeclarator: fieldName,
 		"assignment_expression": fieldLeft, "augmented_assignment_expression": fieldLeft,
 		kindForInStatement: fieldLeft, kindCatchClause: "parameter", kindArrowFunction: "parameter",
 		"update_expression": "argument",
 	},
 	UpdateKinds: map[string]bool{"update_expression": true},
+	DeclKinds: map[string]bool{
+		"required_parameter": true, "optional_parameter": true, kindVarDeclarator: true,
+		kindCatchClause: true, kindArrowFunction: true,
+	},
+	BareDeclKinds: map[string]bool{kindVarDeclarator: true},
+	EachKinds:     map[string]bool{kindForInStatement: true},
+	DeclTokens:    map[string]bool{"const": true, "let": true, "var": true},
+	ScopeKinds: map[string]bool{
+		"statement_block": true, kindForStatement: true, kindForInStatement: true, kindCatchClause: true,
+		"switch_case": true, "switch_default": true,
+	},
+	HoistKinds: map[string]string{
+		kindFuncDecl: fieldName, "generator_function_declaration": fieldName,
+		"class_declaration": fieldName, "abstract_class_declaration": fieldName,
+	},
 	newLanguage: func() *ts.Language {
 		return ts.NewLanguage(tests.LanguageTypescript())
 	},
@@ -315,6 +401,12 @@ var TSX = &Language{ //nolint:gochecknoglobals // language vocabularies are cons
 	SwitchKinds:      TypeScript.SwitchKinds,
 	BindKinds:        TypeScript.BindKinds,
 	UpdateKinds:      TypeScript.UpdateKinds,
+	DeclKinds:        TypeScript.DeclKinds,
+	BareDeclKinds:    TypeScript.BareDeclKinds,
+	EachKinds:        TypeScript.EachKinds,
+	DeclTokens:       TypeScript.DeclTokens,
+	ScopeKinds:       TypeScript.ScopeKinds,
+	HoistKinds:       TypeScript.HoistKinds,
 	newLanguage:      func() *ts.Language { return ts.NewLanguage(tests.LanguageTSX()) },
 }
 
