@@ -786,3 +786,42 @@ func decodeNames(section []byte) []string {
 
 	return names
 }
+
+// fragLine is one statement without its slots: what a pass reads that lines
+// statements up by shape and never by name.
+type fragLine struct {
+	line   int
+	ntok   int
+	shape  uint32
+	header bool
+}
+
+// lines unpacks every statement's line, token count, and shape, and skips
+// the slots, so it allocates one slice. A payload cut short answers the
+// statements it held whole.
+func (f Fragments) lines() []fragLine {
+	h := f.hashes()
+	r := &fragReader{rest: h.rest}
+	size := r.next()
+	if r.bad || size > len(r.rest) {
+		return nil
+	}
+	r.rest = r.rest[:size]
+	out := make([]fragLine, 0, len(h.shapes)/hashWidth)
+	line := 0
+	for i := range len(h.shapes) / hashWidth {
+		delta, count, nslots := r.next(), r.next(), r.next()
+		for range nslots {
+			r.next()
+		}
+		if r.bad {
+			break
+		}
+		line += delta
+		out = append(out, fragLine{
+			line: line, ntok: count >> packBits, shape: hashAt(h.shapes, i), header: count&packHeader != 0,
+		})
+	}
+
+	return out
+}

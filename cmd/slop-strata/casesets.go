@@ -56,7 +56,7 @@ func printCaseSets(w io.Writer, list *caseSetList, all bool) {
 	for i := range shown {
 		rows = append(rows, caseSetRows(&shown[i])...)
 	}
-	header := []string{colSite, "", "rank", colSites, "cases", "lacks"}
+	header := []string{colSite, "", colRank, colSites, "cases", "lacks"}
 	shortenFirstColumn(header, rows)
 	report.Fprintf(w, "\ncase sets, %d of %d (rank: sites × weight of the cases they share)\n", len(shown), list.Total)
 	report.Table(w, header, rows)

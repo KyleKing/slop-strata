@@ -60,6 +60,10 @@ type Finding struct {
 	// they alone, with the rule, make the ID, so the ID holds while lines and imports move.
 	Members []string `json:"members,omitempty"`
 	Line    int      `json:"line"`
+	// End is the last line the finding covers, set by the change rules that
+	// know it and 0 otherwise. It is no part of the output or of an ID: one
+	// rule's findings defer to another's by it (see DeferDuplicates).
+	End int `json:"-"`
 }
 
 // Ctx is what a per-blob rule sees.

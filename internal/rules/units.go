@@ -26,6 +26,9 @@ type Unit struct {
 	End      int     `json:"e,omitempty"`
 	Mass     float64 `json:"m,omitempty"`
 	Public   bool    `json:"p,omitempty"`
+	// Func marks a function or a method: the units a class, a type, or a
+	// module is compared to its siblings by.
+	Func bool `json:"x,omitempty"`
 }
 
 // Weight is one function's line range and complexity mass.
@@ -102,13 +105,22 @@ func (fp *Fingerprint) addUnit(n *ts.Node, name string, public bool, forwards st
 	})
 }
 
+// addFunc records a unit that is a function or a method.
+func (fp *Fingerprint) addFunc(n *ts.Node, name string, public bool, forwards string) {
+	before := len(fp.Units)
+	fp.addUnit(n, name, public, forwards)
+	if len(fp.Units) > before {
+		fp.Units[before].Func = true
+	}
+}
+
 // goUnits reads one top-level Go declaration. A method is a unit of its own,
 // named for its receiver type, and a grouped declaration gives one per name.
 func goUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	switch n.Kind() {
 	case kindFunctionDecl, kindMethodDecl:
 		name := lang.FunctionName(ctx.Lang, n, ctx.Src)
-		fp.addUnit(n, name, goPublic(name), forwardTarget(ctx, n))
+		fp.addFunc(n, name, goPublic(name), forwardTarget(ctx, n))
 		if n.Kind() == kindFunctionDecl {
 			fp.declare(n, name, goPublic(name), "")
 			fp.option(ctx, n, name)
@@ -187,7 +199,7 @@ func pyUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 	switch def.Kind() {
 	case kindFunctionDef:
 		name := ctx.fieldText(def, fieldName)
-		fp.addUnit(n, name, !strings.HasPrefix(name, "_"), forwardTarget(ctx, def))
+		fp.addFunc(n, name, !strings.HasPrefix(name, "_"), forwardTarget(ctx, def))
 		fp.declare(def, name, !strings.HasPrefix(name, "_"), kind)
 	case kindClassDef:
 		name := ctx.fieldText(def, fieldName)
@@ -267,7 +279,7 @@ func pyMethods(ctx *Ctx, class *ts.Node, owner string, fp *Fingerprint) {
 			continue
 		}
 		if name := ctx.fieldText(def, fieldName); name != "" && !isDunder(name) {
-			fp.addUnit(c, owner+"."+name, !strings.HasPrefix(name, "_"), forwardTarget(ctx, def))
+			fp.addFunc(c, owner+"."+name, !strings.HasPrefix(name, "_"), forwardTarget(ctx, def))
 		}
 	}
 }
@@ -303,7 +315,7 @@ func tsUnits(ctx *Ctx, n *ts.Node, exported bool, fp *Fingerprint) {
 		for _, d := range lang.NamedChildren(n) {
 			name := d.ChildByFieldName(fieldName)
 			if d.Kind() == kindVarDeclarator && name != nil && name.Kind() == kindIdentifier {
-				fp.addUnit(d, ctx.Text(name), exported, forwardTarget(ctx, d.ChildByFieldName("value")))
+				tsValueUnit(ctx, d, ctx.Text(name), exported, fp)
 				fp.declare(d, ctx.Text(name), exported, "")
 			}
 		}
@@ -312,12 +324,24 @@ func tsUnits(ctx *Ctx, n *ts.Node, exported bool, fp *Fingerprint) {
 	}
 }
 
+// tsValueUnit records one declared variable, as a function when a function
+// is what it is given.
+func tsValueUnit(ctx *Ctx, d *ts.Node, name string, exported bool, fp *Fingerprint) {
+	value := d.ChildByFieldName("value")
+	if value != nil && ctx.Lang.FunctionKinds[value.Kind()] {
+		fp.addFunc(d, name, exported, forwardTarget(ctx, value))
+
+		return
+	}
+	fp.addUnit(d, name, exported, forwardTarget(ctx, value))
+}
+
 // tsNamedUnit records a declaration that is one name and no more: a
 // function, an interface, a type alias, or an enum.
 func tsNamedUnit(ctx *Ctx, n *ts.Node, exported bool, fp *Fingerprint) {
 	switch n.Kind() {
 	case kindFunctionDecl, "generator_function_declaration":
-		fp.addUnit(n, ctx.fieldText(n, fieldName), exported, forwardTarget(ctx, n))
+		fp.addFunc(n, ctx.fieldText(n, fieldName), exported, forwardTarget(ctx, n))
 		fp.declare(n, ctx.fieldText(n, fieldName), exported, "")
 	case kindInterfaceDecl, "type_alias_declaration", "enum_declaration":
 		fp.addUnit(n, ctx.fieldText(n, fieldName), exported, "")
@@ -356,8 +380,10 @@ func tsExportUnits(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
 		fp.Default = fp.Units[before].Name
 	case target.Kind() == kindIdentifier:
 		fp.Default = ctx.Text(target)
+	case ctx.Lang.FunctionKinds[target.Kind()]:
+		fp.addFunc(n, textDefault, true, forwardTarget(ctx, target))
 	default:
-		fp.addUnit(n, textDefault, true, forwardTarget(ctx, target))
+		fp.addUnit(n, textDefault, true, "")
 	}
 }
 
@@ -401,7 +427,7 @@ func tsMethods(ctx *Ctx, class *ts.Node, owner string, fp *Fingerprint) {
 			fn = c.ChildByFieldName("value")
 		}
 		if fn != nil && ctx.Lang.FunctionKinds[fn.Kind()] {
-			fp.addUnit(c, owner+"."+name, true, forwardTarget(ctx, fn))
+			fp.addFunc(c, owner+"."+name, true, forwardTarget(ctx, fn))
 		}
 	}
 }

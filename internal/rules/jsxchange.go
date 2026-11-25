@@ -69,7 +69,8 @@ func NewJSXShapes(rev map[string]*Fingerprint, changes []DupChange, experimental
 		found[c.cluster] = true
 		at := fresh[0]
 		out[at.file.path] = append(out[at.file.path], Finding{
-			Rule: RuleNewJSXShape, Line: at.record().line, Scope: unitAt(at.file.fp, at.record().line),
+			Rule: RuleNewJSXShape, Line: at.record().line, End: at.record().end,
+			Scope: unitAt(at.file.fp, at.record().line),
 			Match: jsxSiteName(held[0]), Note: jsxNote(c.block, fresh, held),
 		})
 	}
@@ -199,4 +200,27 @@ func pluralHolds(n int) string {
 	}
 
 	return fmt.Sprintf("%d other places hold", n)
+}
+
+// DeferDuplicates drops the x/new-duplicate findings that an x/new-jsx-shape
+// finding of the same file covers: one that starts and ends on the lines of
+// the block of markup the other reports. A copied block is then one finding
+// and not two, and the one kept is the one that names the block. It answers
+// dups, changed in place.
+func DeferDuplicates(dups, shapes map[string][]Finding) map[string][]Finding {
+	for path, blocks := range shapes {
+		kept := slices.DeleteFunc(dups[path], func(f Finding) bool {
+			return slices.ContainsFunc(blocks, func(b Finding) bool {
+				return b.Line <= f.Line && max(f.End, f.Line) <= b.End
+			})
+		})
+		if len(kept) == 0 {
+			delete(dups, path)
+
+			continue
+		}
+		dups[path] = kept
+	}
+
+	return dups
 }

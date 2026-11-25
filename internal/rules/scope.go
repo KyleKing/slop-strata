@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"slices"
@@ -114,4 +115,21 @@ func Identify(path string, fs []Finding) []Finding {
 	}
 
 	return out
+}
+
+// CompareFindings orders the findings of one file for output: by line, rule,
+// match, scope, anchor, and note, and last by ID. It is a total order over
+// findings that Identify has numbered, so two hits of one rule on one line,
+// which differ in nothing but their ID, print in the same order on every run
+// whatever order the passes handed them over in.
+func CompareFindings(a, b Finding) int {
+	return cmp.Or(
+		cmp.Compare(a.Line, b.Line),
+		strings.Compare(a.Rule, b.Rule),
+		strings.Compare(a.Match, b.Match),
+		strings.Compare(a.Scope, b.Scope),
+		strings.Compare(a.Anchor, b.Anchor),
+		strings.Compare(a.Note, b.Note),
+		strings.Compare(a.ID, b.ID),
+	)
 }
