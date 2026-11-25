@@ -330,6 +330,247 @@ func TestSplitCountsVariablesByTheScopeThatDeclaresThem(t *testing.T) {
 	}
 }
 
+// The loop of five, the branch in it, and the last line each read five of
+// the variables around them: a or x, b, c, d, and n.
+const pyFive = `def five(a, b, c, d, n):
+    for x in a:
+        if x > b:
+            for y in c:
+                if y > d and x > b:
+                    n += x
+    return n if a and b or c and d or a and n else 0
+`
+
+func TestSplitBoundsTheVariablesABlockReads(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, src string
+		inputs    int // of the split, or 0 for none
+	}{
+		{name: "five are one too many", src: pyFive},
+		{
+			// The branch reads x, b, c, and n once d is gone.
+			name: "four are not", inputs: 4,
+			src: strings.Replace(pyFive, "y > d and x > b", "y > 1 and x > b", 1),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := splitOf(t, "five.py", tt.src)
+			switch {
+			case tt.inputs == 0 && got != nil:
+				t.Errorf("split = %+v, want none", got)
+			case tt.inputs != 0 && (got == nil || got.Inputs != tt.inputs):
+				t.Errorf("split = %+v, want one with %d inputs", got, tt.inputs)
+			}
+		})
+	}
+}
+
+// Three sections of one list: each tests a field of v for nil and writes what
+// it holds. Every section scores 6 where it sits, and the function 18.
+const goSections = `package p
+
+func restore(v *View, w Writer) {
+	if v.Fg != nil {
+		for _, c := range v.Fg {
+			if c.Set {
+				w.Write(c.Code)
+			}
+		}
+	}
+	if v.Bg != nil {
+		for _, c := range v.Bg {
+			if c.Set {
+				w.Write(c.Code)
+			}
+		}
+	}
+	if v.Ul != nil {
+		for _, c := range v.Ul {
+			if c.Set {
+				w.Write(c.Code)
+			}
+		}
+	}
+}
+`
+
+// goSectionsAfterALoop is a loop of its own, which reads one variable more,
+// and then two of the sections, so that the two are all of their list.
+const goSectionsAfterALoop = `package p
+
+func restore(v *View, w Writer, lim int) {
+	for _, c := range v.Fg {
+		if c.Set {
+			if c.Wide > lim {
+				w.Write(c.Code)
+			}
+		}
+	}
+	if v.Bg != nil {
+		for _, c := range v.Bg {
+			if c.Set {
+				w.Write(c.Code)
+			}
+		}
+	}
+	if v.Ul != nil {
+		for _, c := range v.Ul {
+			if c.Set {
+				w.Write(c.Code)
+			}
+		}
+	}
+}
+`
+
+// goDeepSection is two sections of one list. The arm of the first is a call
+// and a loop, and scores 14 of the function's 25 where it sits: with or
+// without the call, the loop is the most a cut can take off.
+const goDeepSection = `package p
+
+func restore(v *View, w Writer) {
+	if v.Fg != nil {
+		w.Begin()
+		for _, c := range v.Fg {
+			for _, d := range c.Parts {
+				if d.Set {
+					if d.Wide {
+						w.Write(d.Code)
+					}
+				}
+			}
+		}
+	}
+	if v.Bg != nil {
+		for _, c := range v.Bg {
+			if c.Set {
+				if c.Wide {
+					w.Write(c.Code)
+				}
+			}
+		}
+	}
+}
+`
+
+func TestSplitPassesOverSomeOfAListOfLikeSections(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, path, src string
+		start, end      int // the lines of the split, or 0 for none
+	}{
+		{name: "one section, or two of three", path: "restore.go", src: goSections},
+		{
+			name: "in Python", path: "restore.py",
+			src: strings.Repeat("    if v.fg is not None:\n        for c in v.fg:\n            if c.set:\n"+
+				"                w.write(c.code)\n", 3),
+		},
+		{
+			name: "in TypeScript", path: "restore.ts",
+			src: strings.Repeat("  if (v.fg !== null) {\n    for (const c of v.fg) {\n      if (c.set) {\n"+
+				"        w.write(c.code)\n      }\n    }\n  }\n", 3),
+		},
+		{
+			// A header is its shape and not its names: != and == are two shapes.
+			name: "but a section among branches that test something else", path: "restore.go",
+			src:   strings.NewReplacer("v.Bg != nil", "v.Bg == nil").Replace(goSections),
+			start: 4, end: 10,
+		},
+		{
+			name: "and a section among loops, which all share a header", path: "restore.go",
+			src:   strings.ReplaceAll(goSections, "\tif v.", "\tfor v."),
+			start: 4, end: 10,
+		},
+		{
+			name: "and every section of the list together", path: "restore.go", src: goSectionsAfterALoop,
+			start: 11, end: 24,
+		},
+		{
+			// Every statement of a block goes before a part of it, so the arm
+			// would be named with its call. It is all there is in a section.
+			name: "the whole arm of a section is passed over for the loop in it", path: "restore.go",
+			src: goDeepSection, start: 6, end: 14,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			src := tt.src
+			switch {
+			case strings.HasSuffix(tt.path, ".py"):
+				src = "def restore(v, w):\n" + src
+			case strings.HasSuffix(tt.path, ".ts"):
+				src = "function restore(v: View, w: Writer) {\n" + src + "}\n"
+			}
+			got := splitOf(t, tt.path, src)
+			switch {
+			case tt.start == 0 && got != nil:
+				t.Errorf("split = %+v, want none", got)
+			case tt.start != 0 && (got == nil || got.StartLine != tt.start || got.EndLine != tt.end):
+				t.Errorf("split = %+v, want lines %d to %d", got, tt.start, tt.end)
+			}
+		})
+	}
+}
+
+// The second loop of gather fills a list that the line ahead of it makes from
+// base. Cut after that line, the loop reads rows, seen, and lim. With it, the
+// two read base, rows, and lim: as many, and the shorter cut would win. The
+// break keeps the inside of the loop where it is, and the first loop with
+// the line ahead of it takes one variable more across.
+const pyGather = `def gather(rows, base, lim):
+    total = 0
+    for r in rows:
+        if r.a > lim and r.a in base:
+            if r.b:
+                total += 1
+    seen = list(base)
+    for r in rows:
+        if r.ok:
+            for c in r.cells:
+                if c:
+                    seen.append(c)
+            if len(seen) > lim:
+                break
+    return total
+`
+
+func TestSplitTakesADeclarationWithTheBlockThatAloneReadsIt(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, src string
+		start     int
+	}{
+		{name: "the line that makes the list goes with the loop that fills it", src: pyGather, start: 7},
+		{
+			name: "a list that is read again afterwards stays where it is", start: 8,
+			src: strings.Replace(pyGather, "return total", "return total + len(seen)", 1),
+		},
+		{
+			name: "and so does one that an earlier line names", start: 9,
+			src: strings.NewReplacer("    total = 0\n", "    total = 0\n    seen = None\n").Replace(pyGather),
+		},
+		{
+			// The branch ahead of the loop is no declaration to take along.
+			name: "a branch ahead of the block is not taken with it", start: 9,
+			src: strings.Replace(pyGather, "    seen = list(base)\n",
+				"    if base:\n        seen = list(base)\n", 1),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := splitOf(t, "gather.py", tt.src)
+			if got == nil || got.StartLine != tt.start {
+				t.Errorf("split = %+v, want one that starts on line %d", got, tt.start)
+			}
+		})
+	}
+}
+
 // BenchmarkAnalyze measures one file of forty functions that each hold a
 // block to move out, which is the most the split search adds to a parse.
 func BenchmarkAnalyze(b *testing.B) {

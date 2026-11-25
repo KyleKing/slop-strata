@@ -482,6 +482,7 @@ const (
 	seenReadAfter // the first use after the block reads it
 	seenLoopRead  // a loop around the block reads it outside the block
 	seenRebound   // the innermost loop around the block gives it a new value on every pass
+	seenApart     // it is named outside the block and outside the statement ahead of it
 )
 
 // crossing is where a block sits: its byte range, the function it is in, and
@@ -490,6 +491,9 @@ type crossing struct {
 	loops      []loopSpan
 	start, end uint
 	fn         byteSpan
+	// before is the statement ahead of the block in the block it sits in, or
+	// empty when that one branches or loops, or when there is none.
+	before byteSpan
 	// ends is true when the block always leaves the function, so that no
 	// later line of it sees what the block wrote.
 	ends bool
@@ -510,8 +514,35 @@ type loopSpan struct {
 // written in the block and then read by the first use after it, or kept by a
 // loop around the block (declared outside the loop's body and read in the
 // loop, unless that loop binds it anew on every pass), or declared outside the
-// function the block is in.
-func (f *flow) across(c *crossing) (int, int) {
+// function the block is in. The third result is true when the cut orphans a
+// declaration: the statement ahead of the block declares one of its inputs,
+// and nothing but that statement and the block names it. The declaration is
+// part of the step then, and the block that starts one statement later is
+// not all of it.
+func (f *flow) across(c *crossing) (int, int, bool) {
+	f.note(c)
+	inputs, outputs, orphan := 0, 0, false
+	for id, st := range f.state {
+		v := &f.vars[id]
+		if st&seenInside == 0 || v.self {
+			continue
+		}
+		inside := v.decl >= c.start && v.decl < c.end
+		if !inside && (st&seenReadFirst != 0 || st&(seenLateRead|seenValue) == seenLateRead|seenValue) {
+			inputs++
+			orphan = orphan || (st&seenApart == 0 && inSpan(c.before, v.decl))
+		}
+		if st&seenWriteInside != 0 && outlives(v, st, c, inside) {
+			outputs++
+		}
+	}
+
+	return inputs, outputs, orphan
+}
+
+// note reads every use of the function into the state of its variable, by
+// where the use stands to the block.
+func (f *flow) note(c *crossing) {
 	clear(f.state)
 	for i := range f.uses {
 		u := &f.uses[i]
@@ -525,22 +556,6 @@ func (f *flow) across(c *crossing) (int, int) {
 			f.noteAfter(st, u, c)
 		}
 	}
-	inputs, outputs := 0, 0
-	for id, st := range f.state {
-		v := &f.vars[id]
-		if st&seenInside == 0 || v.self {
-			continue
-		}
-		inside := v.decl >= c.start && v.decl < c.end
-		if !inside && (st&seenReadFirst != 0 || st&(seenLateRead|seenValue) == seenLateRead|seenValue) {
-			inputs++
-		}
-		if st&seenWriteInside != 0 && outlives(v, st, c, inside) {
-			outputs++
-		}
-	}
-
-	return inputs, outputs
 }
 
 // outlives reports whether a variable the block writes is read with that
@@ -570,6 +585,9 @@ func outlives(v *variable, st uint16, c *crossing, inside bool) bool {
 // the block starts, and a loop around the block that gives it a new one on
 // every pass.
 func (f *flow) noteBefore(st *uint16, u *use, c *crossing) {
+	if !inSpan(c.before, u.at) {
+		*st |= seenApart
+	}
 	if u.write && !u.bare {
 		*st |= seenValue
 	}
@@ -583,6 +601,7 @@ func (f *flow) noteBefore(st *uint16, u *use, c *crossing) {
 // noteAfter notes one use behind the block: whether the first of them reads
 // what the block left.
 func (f *flow) noteAfter(st *uint16, u *use, c *crossing) {
+	*st |= seenApart
 	if *st&seenAfter == 0 {
 		*st |= seenAfter
 		if u.read {

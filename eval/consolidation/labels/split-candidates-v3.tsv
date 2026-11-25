@@ -1,0 +1,119 @@
+fzf	go	1	yes	the scroll-offset arm of constrain, every statement of it	src/terminal.go:8803-8839	carried
+fzf	go	2	yes	reconciles the selection after the revision changes	src/terminal.go:2088-2135	carried
+fzf	go	3	arguable	a nine-line colour-range chain in the default arm of a long switch	src/ansi.go:534-542	carried
+fzf	go	4	yes	sets the minimum height, already under a comment	src/options.go:3864-3894	carried
+fzf	go	5	yes	moves the wrap point back to the last space, one value in and out	src/util/chars.go:440-455	tuned
+cobra	go	1	yes	the grouped-commands branch of the usage printer	command.go:2001-2016	carried
+cobra	go	2	arguable	the local-flag check and the subcommand loop, cut before the next two steps; it appends to completions and sets directive	completions.go:502-528	tuned
+cobra	go	3	yes	the persistent post-run loop, every exit returns an error	command.go:1028-1042	carried
+cobra	go	4	no	two of three parallel loops over the flag groups	flag_groups.go:242-271	carried
+cobra	go	5	yes	builds the see-also list, the whole arm	doc/yaml_docs.go:121-134	tuned
+chi	go	1	yes	the whole param-pattern arm, ends in its own return	tree.go:752-793	carried
+chi	go	2	yes	the handlers loop of walk	tree.go:903-921	carried
+chi	go	3	yes	builds the handler map	tree.go:663-676	carried
+chi	go	4	yes	validates one content type	middleware/compress.go:79-89	carried
+chi	go	5	yes	the checks on a mounted sub-router	mux.go:307-321	carried
+bubbletea	go	1	yes	the whole restore-from-the-last-view arm of close	cursed_renderer.go:199-257	carried
+bubbletea	go	2	arguable	one small arm of the internal-message switch	tea.go:841-852	carried
+bubbletea	go	3	arguable	the last four of a chain of parallel equality checks	cursed_renderer.go:997-1016	carried
+bubbletea	go	4	arguable	the killed branch: one arm wraps the error and the other renders	tea.go:1271-1288	carried
+bubbletea	go	5	yes	restores the cursor and the two colours: all three like blocks, no input	cursed_renderer.go:123-146	tuned
+flask	py	1	yes	the whole nested-blueprint loop, the end of the function	src/flask/sansio/blueprints.py:349-377	tuned
+flask	py	2	yes	coerces the return value into a response, one output	src/flask/app.py:1357-1405	carried
+flask	py	3	yes	locates the app from the import path or the default files	src/flask/cli.py:344-356	carried
+flask	py	4	yes	collects the dotenv values	src/flask/cli.py:745-755	carried
+flask	py	5	yes	builds the rows of the routes table	src/flask/cli.py:1071-1083	tuned
+httpx	py	1	yes	maps one NO_PROXY host to a mount key	httpx/_utils.py:65-74	carried
+httpx	py	2	yes	formats one certificate item	httpx/_main.py:200-206	carried
+httpx	py	3	yes	validates the keyword components, under a section comment	httpx/_urlparse.py:266-286	carried
+httpx	py	4	yes	validates the keyword arguments	httpx/_urls.py:79-105	carried
+httpx	py	5	yes	the whole else arm: turns a list or a dict into the stored dict	httpx/_urls.py:437-461	tuned
+pydantic	py	1	yes	picks the JSON schema key of a constraint, one output	pydantic/_internal/_known_annotated_metadata.py:260-272	tuned
+pydantic	py	2	yes	the whole warning arm: builds the valid namespaces and warns	pydantic/_internal/_fields.py:132-148	carried
+pydantic	py	3	yes	merges json_schema_extra, with the line that reads the current value	pydantic/fields.py:702-729	tuned
+pydantic	py	4	yes	reads the config from a call or a dict literal	pydantic/mypy.py:588-597	carried
+pydantic	py	5	yes	sets the generic metadata, with its check	pydantic/_internal/_model_construction.py:153-199	tuned
+rich	py	1	yes	the control-code dispatch	rich/_windows_renderer.py:23-56	carried
+rich	py	2	arguable	the SGR loop with its iterator: three of its inputs are local aliases	rich/ansi.py:169-209	tuned
+rich	py	3	yes	reads the handler parameters of a tag, one output	rich/markup.py:179-211	tuned
+rich	py	4	yes	the Windows write branch	rich/console.py:2077-2114	carried
+rich	py	5	yes	names the set attributes: all three bit groups with the line that reads the bits	rich/style.py:299-328	tuned
+vite	ts	1	yes	the no-preload branch, every statement of it, ending in a return	packages/vite/src/node/plugins/importAnalysisBuild.ts:568-629	carried
+vite	ts	2	yes	the position-to-location branch of the error formatter	packages/vite/src/node/server/pluginContainer.ts:970-1027	carried
+vite	ts	3	arguable	a loop body that fills two lists and sets a third variable on one path	packages/vite/src/node/plugins/importAnalysis.ts:1089-1122	tuned
+vite	ts	4	arguable	a loop body around a lazily made manifest, which goes in and comes out	packages/vite/src/node/plugins/manifest.ts:126-158	tuned
+vite	ts	5	arguable	the lazy set and the delete that reads it; the set alone was the cut	packages/vite/src/node/plugins/asset.ts:383-399	tuned
+trpc	ts	1	yes	the pairwise collision loop	www/src/components/sponsors/jelly.ts:186-213	carried
+trpc	ts	2	yes	copies deprecated headers	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts:219-230	carried
+trpc	ts	3	yes	the whole procedure arm: collects one procedure's descriptions	packages/openapi/src/schemaExtraction.ts:296-320	carried
+trpc	ts	4	yes	copies deprecated headers, in the fetch adapter	packages/server/src/adapters/fetch/fetchRequestHandler.ts:73-81	carried
+trpc	ts	5	arguable	the walk up the member chain, cut after the two declarations it fills	packages/upgrade/src/transforms/hooksToOptions.ts:752-770	tuned
+zod	ts	1	yes	the string-format chain with the line that reads the format	packages/zod/src/v4/classic/from-json-schema.ts:510-564	carried
+zod	ts	2	yes	walks one issue path into the error tree	packages/zod/src/v3/ZodError.ts:235-267	carried
+zod	ts	3	yes	walks one issue path into the error tree, in v4	packages/zod/src/v4/core/errors.ts:362-400	carried
+zod	ts	4	arguable	the flatten step: one of its two inputs is a closure defined above it	packages/zod/src/v4/core/to-json-schema.ts:661-688	tuned
+zod	ts	5	yes	walks one issue path into the error tree, with the cursor it moves	packages/zod/src/v4/core/errors.ts:441-474	tuned
+query	ts	1	yes	the Nx workspace branch	packages/angular-query/schematics/migrate-from-experimental/workspace.ts:230-250	carried
+query	ts	2	yes	inserts each table into its section	scripts/generate-docs.ts:787-802	carried
+query	ts	3	arguable	a ten-line loop body in a function that scores 22	packages/eslint-plugin-query/src/rules/no-unstable-deps/no-unstable-deps.rule.ts:88-98	carried
+query	ts	4	arguable	eight lines under three ifs in a 23-line method; an early return was the fix	packages/query-core/src/mutationCache.ts:193-200	tuned
+query	ts	5	arguable	the array and object halves of a 35-line comparison, cut after its first check	packages/query-core/src/utils.ts:358-374	tuned
+rich	py	-	arguable	the whole SGR loop: three of its inputs are local aliases	rich/ansi.py:170-209	tuned
+zod	ts	-	arguable	the path walk, cut one statement after the declaration of its cursor	packages/zod/src/v4/core/errors.ts:442-474	tuned
+cobra	go	-	arguable	the third of three parallel loops over the flag groups; it moves, and singling it out is arbitrary	flag_groups.go:275-289	tuned
+cobra	go	-	no	the error check after a call: as a function its caller still tests the error it hands back	command.go:1125-1135	tuned
+bubbletea	go	-	arguable	the cursor block, the first of three like restore blocks	cursed_renderer.go:123-134	tuned
+flask	py	-	arguable	the first half of a loop body, eleven plain lines	src/flask/debughelpers.py:144-154	tuned
+rich	py	-	no	one of four parallel attribute groups	rich/style.py:309-319	tuned
+vite	ts	-	yes	the whole asset arm: adds every asset to the manifest	packages/vite/src/node/plugins/manifest.ts:141-157	tuned
+vite	ts	-	yes	builds the heading of one group of dependencies, one output	packages/vite/rollupLicensePlugin.ts:43-75	tuned
+click	py	1	yes	the whole arm: words the default of an option and stores it	src/click/core.py:3643-3665	fresh
+click	py	2	arguable	the whole else arm of a loop body: it appends to three lists it is handed	src/click/core.py:3449-3468	fresh
+click	py	3	arguable	three statements from the middle of a loop body that mirrors the standard library, four inputs	src/click/_textwrap.py:57-71	fresh
+click	py	4	yes	picks the default metavar and stores it	src/click/core.py:1782-1795	fresh
+click	py	5	yes	turns the message into text or bytes with its newline, one output	src/click/utils.py:294-306	fresh
+date-fns	ts	1	arguable	the whole arm that picks the unit: it sets value and unit, which the count reads as no output because the other arm writes them next	pkgs/core/src/intlFormatDistance/index.ts:158-196	fresh
+date-fns	ts	2	arguable	the seconds ladder, every path returns; one rung of a long ladder of like returns	pkgs/core/src/formatDistance/index.ts:134-146	fresh
+date-fns	ts	3	yes	picks the unit, one output	pkgs/core/src/formatDistanceStrict/index.ts:163-179	fresh
+date-fns	ts	4	arguable	the whole body of the day loop, with the offset it carries from pass to pass; the hour scan inside was the cut	pkgs/tz/src/tzScan/index.ts:62-91	fresh
+date-fns	ts	5	yes	the check for incompatible tokens, which throws	pkgs/core/src/parse/index.ts:435-451	fresh
+date-fns	ts	-	arguable	the whole under-two-minutes arm, every path returns, five inputs	pkgs/core/src/formatDistance/index.ts:133-153	fresh-before
+echo	go	1	yes	the whole time arm of the type switch, every exit an error	binder_generic.go:502-554	fresh
+echo	go	2	yes	the whole param arm: scans one parameter name, the index in and out	route_path.go:30-49	fresh
+echo	go	3	yes	the whole multipart arm: builds the body and sets the request	echotest/context.go:109-136	fresh
+echo	go	4	yes	prunes the empty ancestors of a removed node, with the cursor it moves	router.go:452-483	fresh
+echo	go	5	arguable	the token loop and the error it settles on, cut after the two declarations it fills	middleware/csrf.go:198-220	fresh
+gin	go	1	no	the tail of the walk loop: it returns on some paths and continues the outer loop with new state on others, which the count reads as no output	tree.go:594-670	fresh
+gin	go	2	yes	backs the write index up one path element, one value in and out	path.go:79-92	fresh
+gin	go	3	yes	the whole array arm, every path returns	binding/form_mapping.go:278-305	fresh
+gin	go	4	arguable	the struct branch and the fallthrough return after it, cut as the end of the function	binding/form_mapping.go:118-135	fresh
+gin	go	5	yes	logs the recovered panic	recovery.go:70-80	fresh
+gin	go	-	arguable	the method-not-allowed and not-found tail of the function, five inputs	gin.go:767-788	fresh-before
+gorm	go	1	yes	saves one has-one relation, the whole loop body; its continue becomes a return	callbacks/associations.go:117-186	fresh
+gorm	go	2	arguable	builds the join clauses, 165 lines, cut one line after the declaration of the clause it fills; the write in one branch and the read in the next branch's condition are not counted as an input	callbacks/query.go:105-269	fresh
+gorm	go	3	yes	the ON CONFLICT update-all handling	callbacks/create.go:367-412	fresh
+gorm	go	4	yes	the embedded-struct handling, under its comment	schema/field.go:389-445	fresh
+gorm	go	5	no	two of several check sections that each set one flag, which the count reads as no output	migrator/migrator.go:537-576	fresh
+gorm	go	-	arguable	the whole default arm: five inputs, one of them a closure, and one output	callbacks/update.go:262-314	fresh-before
+gorm	go	-	arguable	the whole slice arm: five inputs, one of them a closure	callbacks/associations.go:42-92	fresh-before
+requests	py	1	arguable	a ten-line loop body in a 30-line function	src/requests/models.py:168-177	fresh
+requests	py	2	arguable	the field loop with the line that prepares the next loop's files, cut after the declaration of the list it fills	src/requests/models.py:200-219	fresh
+requests	py	3	arguable	the whole non-stream arm: it relies on two variables set to None above it	src/requests/models.py:633-650	fresh
+requests	py	4	yes	the whole handler arm: maps a retry error to the exception to raise	src/requests/adapters.py:714-729	fresh
+requests	py	5	yes	the whole verify arm: finds the CA bundle and sets it on the connection	src/requests/adapters.py:322-342	fresh
+requests	py	-	arguable	the tell branch, the default, and the return, cut as the end of the function	src/requests/utils.py:201-228	fresh-before
+starlette	py	1	yes	the whole first-body arm	starlette/middleware/gzip.py:128-163	fresh
+starlette	py	2	yes	works out the netloc from the headers or the server, one output	starlette/datastructures.py:42-58	fresh
+starlette	py	3	arguable	the second half of a loop body, ten lines	starlette/schemas.py:78-87	fresh
+starlette	py	4	yes	normalises the hostname, one value in and out	starlette/datastructures.py:127-139	fresh
+starlette	py	5	arguable	seven lines, one of four checks that each append a failure	starlette/middleware/cors.py:124-130	fresh
+swr	ts	1	arguable	the array and object branches: both write the result, which the count reads as no output, and share a scratch index	src/_internal/utils/hash.ts:46-64	fresh
+swr	ts	2	no	two of five like one-line loops and the step after them	src/_internal/utils/cache.ts:137-155	fresh
+swr	ts	-	no	twelve lines that read five variables; clearer as it is	src/_internal/utils/mutate.ts:189-200	fresh-before
+werkzeug	py	1	arguable	the scan loop with its two counters, cut after the declaration of the list it fills	src/werkzeug/http.py:585-622	fresh
+werkzeug	py	2	arguable	the data branch and an unrelated assignment after it, cut as the end of the function	src/werkzeug/test.py:322-341	fresh
+werkzeug	py	3	no	the body of a loop that carries two variables from pass to pass and resets one	src/werkzeug/debug/tbtools.py:158-189	fresh
+werkzeug	py	4	arguable	the whole part arm of a state machine: it sets the event, which the count reads as no output because the next arm writes it too	src/werkzeug/sansio/multipart.py:162-200	fresh
+werkzeug	py	5	arguable	the second half of the base case, ten lines, two of its inputs variables of the function around it	src/werkzeug/routing/matcher.py:108-117	fresh
+werkzeug	py	-	arguable	the whole base case: five inputs and two nonlocal variables it sets	src/werkzeug/routing/matcher.py:97-117	fresh-before
+zustand	ts	1	arguable	the whole __setState arm, every path returns; its inputs are the closure's state and one of them a function	src/middleware/devtools.ts:444-477	fresh
