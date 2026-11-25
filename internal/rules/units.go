@@ -236,7 +236,7 @@ const pyAll = "__all__"
 // to, as entry targets: the module publishes them whether or not any file of
 // the tree reads them.
 func pyAllNames(ctx *Ctx, list *ts.Node, fp *Fingerprint) {
-	if list == nil || (list.Kind() != kindList && list.Kind() != "tuple") {
+	if list == nil || (list.Kind() != kindList && list.Kind() != kindTuple) {
 		return
 	}
 	for _, item := range lang.NamedChildren(list) {

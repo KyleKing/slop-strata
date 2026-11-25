@@ -88,11 +88,12 @@ func TestRulesHoldUnderAdversarialEdits(t *testing.T) {
 	}
 }
 
-// changeOnlyRules are tested where a change can be built: x/last-ref and
-// x/new-duplicate read two trees, so their fixtures run the command in
-// cmd/slop-strata.
+// changeOnlyRules are tested where a change can be built: x/last-ref,
+// x/new-duplicate, and x/dup-literal read two trees, so their fixtures run
+// the command in cmd/slop-strata.
 var changeOnlyRules = []string{ //nolint:gochecknoglobals // a fixed list
-	"x/last-ref", rules.RuleNewDuplicate, rules.RuleNewCaseSet, rules.RuleNewJSXShape, rules.RuleNewSibling,
+	"x/last-ref", "x/dup-literal", rules.RuleNewDuplicate, rules.RuleNewCaseSet, rules.RuleNewJSXShape,
+	rules.RuleNewSibling,
 }
 
 // TestEveryRuleHasAnAdversarialCase fails when a rule ships with no fixture,

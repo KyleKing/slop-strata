@@ -59,11 +59,12 @@ func nextItems(res *changeResult) []nextItem {
 }
 
 // notedRule reports whether a rule's findings carry a note that is their
-// reason: where the code, the cases, the markup, or the class they repeat
-// already is.
+// reason: where the code, the cases, the markup, the class, or the literal
+// they repeat already is.
 func notedRule(rule string) bool {
 	switch rule {
-	case rules.RuleNewDuplicate, rules.RuleNewCaseSet, rules.RuleNewJSXShape, rules.RuleNewSibling:
+	case rules.RuleNewDuplicate, rules.RuleNewCaseSet, rules.RuleNewJSXShape, rules.RuleNewSibling,
+		rules.RuleDupLiteral:
 		return true
 	}
 

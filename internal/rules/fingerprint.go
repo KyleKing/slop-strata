@@ -10,31 +10,12 @@ import (
 	"github.com/kyleking/slop-strata/internal/lang"
 )
 
-// minLiteralLen is the shortest string content worth tracking across files;
-// below it repeats are vocabulary, not duplication.
-const minLiteralLen = 8
-
-// minDupFiles is how many distinct files must share a literal before it is
-// reported.
-const minDupFiles = 3
-
-// minDupOccurrences is how many times a literal must appear across the tree
-// before it is reported.
-const minDupOccurrences = 4
-
 // minCloneStatements and minCloneLines keep trivial shapes (getters, one-line
 // wrappers) out of the clone report: a body must reach either bound.
 const (
 	minCloneStatements = 6
 	minCloneLines      = 8
 )
-
-// LiteralUse is where a string literal first appears in one file and how many
-// times the file carries it.
-type LiteralUse struct {
-	Line  int `json:"line"`
-	Count int `json:"count"`
-}
 
 // CloneUnit is one function's normalized-body hash plus where it lives. Test
 // marks a test case, whose name is the function's or, for a subtest, its label.
@@ -55,7 +36,7 @@ type IfaceDecl struct {
 // Fingerprint is the per-blob record cross-file passes join on. It travels
 // inside the blob cache entry, so passes never re-parse.
 type Fingerprint struct {
-	Literals    map[string]LiteralUse `json:"literals,omitempty"`     // literal text -> first line and count
+	Literals    map[string]LiteralUse `json:"literals,omitempty"`     // literal content -> how the file writes it
 	MethodImpls map[string][]string   `json:"method_impls,omitempty"` // receiver type -> method names
 	Implements  map[string][]int      `json:"implements,omitempty"`   // interface name -> lines (ts)
 	Declared    map[string]int        `json:"declared,omitempty"`     // top-level names -> line
@@ -140,58 +121,6 @@ func Collect(ctx *Ctx) *Fingerprint {
 	fp.Directives = ctx.commentDirectives()
 
 	return fp
-}
-
-// collectLiteral records string literals long enough to be interesting, with
-// each distinct literal's first line and per-file count. Module names and
-// mapping keys repeat by design, so they are skipped.
-func collectLiteral(ctx *Ctx, n *ts.Node, fp *Fingerprint) {
-	if !strings.Contains(n.Kind(), "string") || repeatsByDesign(ctx, n) {
-		return
-	}
-	text := ctx.Text(n)
-	if len(strings.Trim(text, "\"'`")) < minLiteralLen || strings.Contains(text, "${") || strings.Contains(text, "%") {
-		return
-	}
-	if fp.Literals == nil {
-		fp.Literals = map[string]LiteralUse{}
-	}
-	use, ok := fp.Literals[text]
-	if !ok {
-		use.Line = lineOf(n)
-	}
-	use.Count++
-	fp.Literals[text] = use
-}
-
-// repeatsByDesign reports whether a string is a module path or a mapping key.
-func repeatsByDesign(ctx *Ctx, n *ts.Node) bool {
-	p := n.Parent()
-	if p == nil {
-		return false
-	}
-	switch p.Kind() {
-	case "import_spec", kindImportStmt, kindImportFrom, kindExportStatement:
-		return true
-	case kindArguments:
-		call := p.Parent()
-
-		return call != nil && call.Kind() == kindCallExpression && ctx.calleeText(call) == textRequire
-	case "pair":
-		key := p.ChildByFieldName("key")
-
-		return key != nil && key.Equals(*n)
-	case "literal_element":
-		keyed := p.Parent()
-		if keyed == nil || keyed.Kind() != "keyed_element" {
-			return false
-		}
-		key := keyed.ChildByFieldName("key")
-
-		return key != nil && key.Equals(*p)
-	}
-
-	return false
 }
 
 // collectClone hashes a function's normalized subtree: identifiers and

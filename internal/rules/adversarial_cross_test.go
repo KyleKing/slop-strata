@@ -8,7 +8,6 @@ func crossAdversarial() []advCase {
 		goCouldBePrivateCase(), pyCouldBePrivateCase(), tsCouldBePrivateCase(),
 		goCloneCase(), pyCloneCase(), tsCloneCase(),
 		goDupTestCase(), pyDupTestCase(), tsDupTestCase(),
-		goDupLiteralCase(), pyDupLiteralCase(), tsDupLiteralCase(),
 		goSingleImplCase(), tsSingleImplCase(), goUnusedOptionCase(),
 		goSpentTestCase(), pySpentTestCase(), tsSpentTestCase(),
 		goStaleConfigCase(), pyStaleConfigCase(), tsStaleConfigCase(),
@@ -647,112 +646,6 @@ it("adds large numbers", () => {
 `)}
 
 	return c
-}
-
-const ruleDupLiteral = "x/dup-literal"
-
-// literalShape is one literal used in three files of a language: twice in the
-// first and once in each of the others. Use renders a file from the
-// expression each of its uses writes.
-type literalShape struct {
-	name    string
-	files   [3]string
-	lead    string // opens every file
-	use     func(file int, expr string) string
-	quoted  string // the literal as written
-	other   string // the same content under another quote
-	halves  string // the literal built from two parts
-	named   string // a name for it
-	declare string // what declares that name, at the top of the first file
-	borrow  string // what brings that name into the other files
-	comment string // a comment line
-}
-
-func (s literalShape) build() advCase {
-	file := func(i int, prefix, expr string) string { return s.lead + prefix + s.use(i, expr) }
-	all := func(expr, first, rest string) fixturetest.Tree {
-		return fixturetest.Tree{
-			s.files[0]: file(0, first, expr), s.files[1]: file(1, rest, expr), s.files[2]: file(2, rest, expr),
-		}
-	}
-	c := advCase{rules: []string{ruleDupLiteral}}
-	c.Name = s.name
-	c.Base = all(s.quoted, "", "")
-	c.Dodges = []fixturetest.Variant{
-		one("add a comment beside one use", s.files[2], file(2, s.comment, s.quoted)),
-	}
-	c.Persists = []fixturetest.Variant{
-		one("write one copy under another quote", s.files[2], file(2, "", s.other)),
-		{Name: "build it from two halves everywhere, which repeats the halves", Files: all(s.halves, "", "")},
-	}
-	c.Gaps = []fixturetest.Variant{
-		one("name it in one file, which drops a use", s.files[0], file(0, s.declare, s.named)),
-	}
-	c.Fixes = []fixturetest.Variant{{Name: "name it once and use the name", Files: all(s.named, s.declare, s.borrow)}}
-
-	return c
-}
-
-func goDupLiteralCase() advCase {
-	verbs := [3]string{"get", "post", "put"}
-
-	return literalShape{
-		name: "go: one literal written out in three files", files: [3]string{"api/get.go", "api/post.go", "api/put.go"},
-		lead: "package api\n\n",
-		use: func(file int, expr string) string {
-			out := "func " + verbs[file] + "(r req) { r.set(\"Content-Type\", " + expr + ") }\n"
-			if file == 0 {
-				out += "\nfunc head(r req) { r.set(\"Accept\", " + expr + ") }\n"
-			}
-
-			return out
-		},
-		quoted: "\"application/vnd.app+json\"", other: "`application/vnd.app+json`",
-		halves: "\"application/\"+\"vnd.app+json\"", named: "vendorType",
-		declare: "const vendorType = \"application/vnd.app+json\"\n\n", comment: "// the vendor type\n",
-	}.build()
-}
-
-func pyDupLiteralCase() advCase {
-	verbs := [3]string{"get", "post", "put"}
-
-	return literalShape{
-		name:  "python: one literal written out in three files",
-		files: [3]string{"api/get.py", "api/post.py", "api/put.py"},
-		use: func(file int, expr string) string {
-			out := "def " + verbs[file] + "(r):\n    r.set(\"Content-Type\", " + expr + ")\n"
-			if file == 0 {
-				out += "\n\ndef head(r):\n    r.set(\"Accept\", " + expr + ")\n"
-			}
-
-			return out
-		},
-		quoted: "\"application/vnd.app+json\"", other: "'application/vnd.app+json'",
-		halves: "\"application/\" + \"vnd.app+json\"", named: "VENDOR_TYPE",
-		declare: "VENDOR_TYPE = \"application/vnd.app+json\"\n\n\n",
-		borrow:  "from api.get import VENDOR_TYPE\n\n\n", comment: "# the vendor type\n",
-	}.build()
-}
-
-func tsDupLiteralCase() advCase {
-	verbs := [3]string{"get", "post", "put"}
-
-	return literalShape{
-		name:  "typescript: one literal written out in three files",
-		files: [3]string{"src/get.ts", "src/post.ts", "src/put.ts"},
-		use: func(file int, expr string) string {
-			out := "export function " + verbs[file] + "(r: Req) {\n  r.set(\"Content-Type\", " + expr + ")\n}\n"
-			if file == 0 {
-				out += "\nexport function head(r: Req) {\n  r.set(\"Accept\", " + expr + ")\n}\n"
-			}
-
-			return out
-		},
-		quoted: "\"application/vnd.app+json\"", other: "'application/vnd.app+json'",
-		halves: "\"application/\" + \"vnd.app+json\"", named: "VENDOR_TYPE",
-		declare: "export const VENDOR_TYPE = \"application/vnd.app+json\"\n\n",
-		borrow:  "import { VENDOR_TYPE } from \"./get\"\n\n", comment: "// the vendor type\n",
-	}.build()
 }
 
 const ruleSingleImpl = "x/single-impl-iface"
