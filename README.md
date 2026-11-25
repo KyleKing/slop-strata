@@ -183,6 +183,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `split_candidates` lists, on `snapshot --experimental`, the functions that hold a block worth moving into a function of its own, with the block's lines and the cognitive complexity before and after. `--explain split_candidates`
 - `duplicate_groups` lists, on `snapshot --experimental`, code the tree holds more than once, ranked by `removable`, the tokens a merge would take out. `--explain duplicate_groups`
 - `case_sets` lists, on `snapshot --experimental`, the sets of cases the tree enumerates in more than one place, as a `switch`, an `if` chain, or a table, ranked by `rank`, the sites times how rare the cases are. `--explain case_sets`, `--explain rank`, `--explain weight`
+- `jsx_groups` lists, on `snapshot --experimental`, the blocks of JSX markup the tree holds more than once under other text and attribute values, ranked by `rank`, the elements a shared component would take out less the values it would take as props. `--explain jsx_groups`, `--explain elements`, `--explain holes`, `--explain blocks`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
 - `shown` and `hidden` count, per directory on `snapshot`, the declared names that a file of another directory uses and the ones none does. Use decides it and never a visibility keyword, so adding `export` or renaming to a capital changes nothing. `depth` is the hidden share by mass: near 1 the directory hides most of what it holds, near 0 its callers see nearly all of it, and `-` means nothing outside uses it. `widest_surface` names the file with the most shown names. The JSON adds `shown_mass`, `hidden_mass`, and `forwarders`, the pass-through functions left out of both. `--explain shown`, `--explain hidden`, `--explain shown_mass`, `--explain hidden_mass`, `--explain forwarders`, `--explain depth`, `--explain widest_surface`
@@ -197,6 +198,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
 - `new_duplicate` explains the `x/new-duplicate` finding: code a change added that repeats code the tree already holds. `--explain new_duplicate`
 - `new_case_set` explains the `x/new-case-set` finding: a `switch`, an `if` chain, or a table a change added over cases the tree already enumerates. `--explain new_case_set`
+- `new_jsx_shape` explains the `x/new-jsx-shape` finding: a block of markup a change added that the tree already holds under other text and attribute values. `--explain new_jsx_shape`
 - `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline, ignored inline with a reason, or labeled false positive. `--explain suppressed`
 - `stale_baseline` counts, on `snapshot`, the baseline entries that no longer match a finding. `--explain stale_baseline`
 - `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
@@ -241,7 +243,7 @@ tree.go:428  node.findRoute    7.5   2      3: ntParam, ntRegexp,…
 tree.go:606  node.findPattern
 ```
 
-That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates`, `result.duplicate_groups`, and `result.case_sets`.
+That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates`, `result.duplicate_groups`, and `result.case_sets`. A tree with JSX in it gets a fourth list, `result.jsx_groups`, shown below.
 
 **Split candidates** are behind `--experimental`. For every function whose cognitive complexity is 15 or more, the tool tries each run of statements at one nesting level (a whole loop or branch, a loop body, a branch arm, or up to 4 statements of one) and asks what the function would score without it and what the run would score as a function of its own, where the nesting it sat under no longer counts. `36 → 7 + 19` reads: 36 now, 7 left behind, 19 in the new function, and both must be 5 or more. Functions are ranked by `drop`, the complexity now less the larger of those two. A run is listed only when few variables cross its ends: `in` (at most 5) counts the variables declared outside the run that it reads before it gives them a value, and `out` (at most 1) the ones it gives a value that is read afterwards, by a later line, by the next pass of a loop around it, or by the function around a closure. `exits` counts the `return`, `break`, and `continue` statements that leave the run, and a run is listed only when each could be a `return` of the new function with nothing for the caller to check: the run ends the function or always returns, each return hands back an error in Go, or its continues end a loop's body. A run that a `break` leaves, or that holds a `defer` or a `yield`, is never listed. Tests, examples, and benchmarks are left out.
 
@@ -254,6 +256,22 @@ They are gated because of what the list still holds. Of the top five groups in t
 **Case sets** are gated behind `--experimental` as well. A family is a set of cases the tree enumerates in more than one place: a `switch` or `match`, an `if`/`else if` chain that tests one subject against constants, and a table keyed by the cases. The bodies differ, so the duplicate pass sees nothing, and a new case still means an edit at every site with nothing to say so. Each family lists the cases at least half of its sites name, every site, and the cases a site `lacks`. `rank` is the sites times the `weight` of the cases, which is high for constants few places name and low for words many switches share, such as `"left"` and `"right"`. A table counts only when it reads as one arm per case, with functions for values or named constants for keys. A record that copies fields, a table of strings, the named arguments of a call, an object of methods, a check for built-in types, and anything in tests, scripts, migrations, or seed data are left out. `--explain case_sets` has the bounds.
 
 One person read every family the 22 repositories of the evaluation data list. On the twelve above, 23 of 34 were a set a maintainer would tie together or want to know of, 10 a judgment call, and 1 not. Two guards were chosen after that reading, so the other ten repositories are the cleaner measure: 23 of 30, 6, and 1, which is 7 of 12 in Go, 1 of 2 in Python, and 15 of 16 in TypeScript, where 14 are one design in date-fns. Six of the 22 list no family. That reading is wider than the one for duplicate groups: a set counts when it is real and nothing ties it together, whether or not a table is the answer.
+
+**JSX groups** are gated behind `--experimental` too, and are the newest of the four. A group is a block of markup in `.tsx` and `.jsx` files that the tree holds more than once: the same elements with the same attribute names, nested the same way, under other text and other attribute values. That is what copying a block and editing its labels leaves behind, and the duplicate pass reads little of it, because a block of markup is one statement and the values in it differ.
+
+```text
+JSX groups, 5 of 11 (rank: elements × (sites − 1) − holes)
+site                                                           rank  sites  blocks  elements  holes
+src/…/links/[linkId]/LinkPanels.tsx:20  LinkPanels             40    2      1       41        1
+src/…/[pixelId]/PixelPanels.tsx:20      PixelPanels
+src/…/teams/AdminTeamsTable.tsx:63      AdminTeamsTable        21    3      1       12        3
+src/…/admin/users/UsersTable.tsx:53     UsersTable
+src/…/AdminWebsitesTable.tsx:62         AdminWebsitesTable
+```
+
+That is the top of the list for umami at `dbb8d60`: a panel grid of 41 elements that the link page and the pixel page both write out with one value apart, and the edit and delete menu of three admin tables. A block is an element that holds 6 or more, itself counted. Tags and attribute names are the shape. An attribute's value, a run of text, and the code around markup that an expression wraps (the condition of an `&&`, the list of a `.map`) are `holes`, and the count is how many of them are not the same at every site, which is what a shared component would take as props. A group is kept when it has at most one hole per element, a block inside a block of a group with as many sites is not listed again, and the blocks that the same components share are one group with `blocks` saying how many. An `<svg>` is one element whatever it draws, so two icons are no group. Tests, stories, and the stand-alone directories of the duplicate pass are left out.
+
+One person read 51 groups among the 20 listed for each of five public React applications (umami, documenso, dub, formbricks, plane): 37 were a block a maintainer would make one component of, 14 a judgment call, and none wrong. Both guards, the one for drawings and the one that joins the blocks of the same components, were chosen on repositories read first, so the two applications no guard was fitted to are the cleaner measure: 13 of 20 and 7. The top five of each of the five were 24 of 25. Further down a list the share falls: on a private 20k-file Python/TypeScript monorepo the top ten were 9 and 1, and twenty drawn from the other 126 were 9, 10 a judgment call, and 1 wrong. The judgment calls are mostly loading skeletons, confirmation dialogs whose layout a component library dictates, and pairs of six or seven elements that differ in nearly every value. It does not see a near miss, two blocks that differ in one tag or one attribute name, and nothing has measured how much of what gets extracted it finds. The twelve repositories the other lists were read on are libraries and list no group at all.
 
 ## Guardrails
 
@@ -307,6 +325,18 @@ c240c50a44 enumerates 4 cases (KindCircle, KindHexagon, KindSquare, and 1 more) 
 
 It is the [case sets](#where-to-rework) pass over the tree at the end of the change, and it reports a family when the change added one of its places and another was already there. The moment matters because such places are rarely tied together afterwards: on the private repository the rule was designed against, all 169 families a prototype found were still there 1,500 commits later. A place the change moved, indented, or gave another case is not new, and a family whose every place the change added is not reported, since there was nothing to read from. `--brief` prints the note as the reason of its `next:` line. `--explain new_case_set` has the rest, and a `slop-strata:ignore x/new-case-set` comment with the reason, on the first line of the new place, says two places should stay apart.
 
+### Markup a change writes again
+
+`x/new-jsx-shape` is gated too, and only `change` reports it. It names a block of JSX markup the change added that the tree already held under other text and attribute values, and says where:
+
+```text
+id          rule             at
+6aec2e68be  x/new-jsx-shape  ui/teams.tsx:3
+6aec2e68be repeats 7 elements of markup that 1 other place holds already: Users at ui/users.tsx:3. The sites differ in 2 values. Make the block one component that takes what differs as props, or say why the sites stay apart
+```
+
+It is the [JSX groups](#where-to-rework) pass over the tree at the end of the change, and it reports a group when the change added one of its sites and another was already there. A block the change moved, indented again, or only edited the text of is not new, a group whose every site the change added is not reported, and a new block inside a new block already reported is not reported again. The two rules do not know of each other: when part of the new block is the same down to its values, `x/new-duplicate` may report that part as a repeated expression beside this finding. `--brief` prints the note as the reason of its `next:` line. `--explain new_jsx_shape` has the rest, and a `slop-strata:ignore x/new-jsx-shape` comment with the reason says two sites should stay apart: `{/* ... */}` after the block's opening tag, or a `//` comment on the line above where one can stand.
+
 ## Setting findings aside
 
 Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. An `x/import-cycle` finding is the exception: its id comes from the rule and the sorted files of the cycle, so it holds however the imports are written and changes when a file joins or leaves. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
@@ -354,7 +384,7 @@ The labels are evidence about this repository. A rule's precision here says noth
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 9
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 10
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 
@@ -455,6 +485,17 @@ The case sets of `snapshot --experimental` are read on the same walk and joined 
 | vite           | 631   | 2.75 s      | 2.69 s     | 0.32 s      | 0.34 s     | 5.42 MB      | 5.42 MB     |
 | TanStack Query | 2,107 | 7.22 s      | 7.64 s     | 1.02 s      | 1.00 s     | 11.97 MB     | 11.97 MB    |
 | pydantic       | 3,163 | 7.49 s      | 7.45 s     | 0.84 s      | 0.83 s     | 15.13 MB     | 15.13 MB    |
+
+The JSX groups are read on that walk as well: an element that holds six or more is stored as 8 bytes of shape and 2 bytes per hole, and one more pass groups them. The table is the same measurement on six React applications, with the `.tsx` and `.jsx` files each holds. The cache grows by 0.04% to 0.63%, and by 0.25% on the private monorepo, 885 KB on 352 MB for 5,621 such files. Time is inside what two runs differ by: that monorepo took 101.4 s cold before and 102.1 s after, and the best of three warm runs 18.18 s and 17.71 s. The pass itself takes 0.8 ms to 5.4 ms on these six and 20 ms there.
+
+| Repository | JSX files | Cold before | Cold after | Warm before | Warm after | Cache before | Cache after |
+| ---------- | --------- | ----------- | ---------- | ----------- | ---------- | ------------ | ----------- |
+| excalidraw | 330       | 4.37 s      | 4.40 s     | 0.49 s      | 0.50 s     | 11.06 MB     | 11.07 MB    |
+| umami      | 576       | 2.77 s      | 2.75 s     | 0.50 s      | 0.48 s     | 10.81 MB     | 10.83 MB    |
+| documenso  | 743       | 5.50 s      | 5.46 s     | 0.84 s      | 0.89 s     | 18.80 MB     | 18.86 MB    |
+| dub        | 1,102     | 3.46 s      | 3.39 s     | 0.72 s      | 0.71 s     | 13.07 MB     | 13.15 MB    |
+| formbricks | 1,391     | 27.85 s     | 28.09 s    | 3.59 s      | 3.69 s     | 83.97 MB     | 84.27 MB    |
+| plane      | 1,869     | 7.15 s      | 7.37 s     | 1.63 s      | 1.62 s     | 32.61 MB     | 32.66 MB    |
 
 ## Read more
 

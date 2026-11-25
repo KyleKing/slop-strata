@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 9
+const Version = 10
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -264,9 +264,10 @@ var Docs = map[string]string{
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
 		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, " +
-		"new-case-set, and snapshot stale-prose rules " +
+		"new-case-set, new-jsx-shape, and snapshot stale-prose rules " +
 		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
-		"split_candidates, duplicate_groups and case_sets lists, which are gated for the same reason. " +
+		"split_candidates, duplicate_groups, case_sets and jsx_groups lists, which are gated for the same " +
+		"reason. " +
 		"Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
@@ -284,9 +285,9 @@ var Docs = map[string]string{
 		"The reason is required. An ignore without one suppresses nothing and is reported as " +
 		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
 		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp. " +
-		"The exceptions are x/last-ref, x/new-duplicate, and x/new-case-set, which only change reports: " +
-		"label cannot find their ids, so accept one with a baseline or labels file entry for the id. See " +
-		"new_duplicate and new_case_set.",
+		"The exceptions are x/last-ref, x/new-duplicate, x/new-case-set, and x/new-jsx-shape, which only " +
+		"change reports: label cannot find their ids, so accept one with a baseline or labels file entry " +
+		"for the id. See new_duplicate, new_case_set, and new_jsx_shape.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
 		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
@@ -296,7 +297,7 @@ var Docs = map[string]string{
 		"tree carries the id of. The finding was fixed, its line or matched text was edited, or it is an import " +
 		"cycle that shrank, which the entry still covers by its members. Entries of rules this run did not " +
 		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref, x/new-duplicate, " +
-		"x/new-case-set) are not counted. " +
+		"x/new-case-set, x/new-jsx-shape) are not counted. " +
 		"Run slop-strata snapshot --write-baseline to drop them, so a fixed finding that comes back reads as " +
 		"new. It never changes the exit status. change and history do not score the whole tree against the " +
 		"baseline and always report 0.",
@@ -592,7 +593,10 @@ var Docs = map[string]string{
 		"says a new case needs one edit per site: a table or a type the sites read would need one.",
 	"rank": "Per family in result.case_sets: weight times the number of sites, which the families are " +
 		"listed by. A family ranks high when many places enumerate it and its cases are rare in the " +
-		"tree.",
+		"tree. Per group in result.jsx_groups: elements x (sites - 1) - holes, which the groups are " +
+		"listed by: the elements one shared component per block would take out of the tree, less one " +
+		"for each value it would have to take as a prop. A group ranks high when a large block sits in " +
+		"many places under few differences.",
 	"weight": "Per family in result.case_sets: the sum, over the family's cases, of the natural logarithm " +
 		"of one more than the tree's places per place that names the case, rounded to two decimals. " +
 		"A case few places name weighs much, and one that half the tree's switches name weighs little, " +
@@ -614,6 +618,62 @@ var Docs = map[string]string{
 		"case_sets leaves out. Only change reports it, so label cannot find its id. When a hit is " +
 		"right, have the new place read the table or call the function that is there. When the places " +
 		"should stay apart, say why in a slop-strata:ignore comment on the finding's line.",
+	"jsx_groups": "result.jsx_groups on snapshot with --experimental: blocks of markup the tree holds " +
+		"more than once under other text and other attribute values, with total and the 20 groups that " +
+		"rank highest. Markup is the JSX of .tsx and .jsx files. A block is an element that holds 6 " +
+		"elements or more, itself counted. Two blocks have one shape when they have the same tags as " +
+		"written, the same attribute names whatever their order, and the same children in the same " +
+		"order. What a shared component would take as a prop is a hole and no part of the shape: the " +
+		"value of an attribute, a run of text and expressions between two elements, and the code around " +
+		"markup that an expression wraps, such as the condition of an && or the list a .map runs over. " +
+		"The kind of that expression is part of the shape, so a block under a condition and one under a " +
+		"loop are two shapes. An svg element is one element and one hole whatever it draws, and the " +
+		"parts of a drawing (g, path, circle, rect, and the like) count as no element, so two icons are " +
+		"no group. The blocks of one shape are a group when its sites differ in at most one hole per " +
+		"element: past that they share a skeleton a component library dictates and little of what " +
+		"they say. A block inside a block of a group with as many sites is not listed again. The blocks " +
+		"that repeat across the same units, site for site, are one group, since two forms that share " +
+		"five fields are one thing to merge and not five. Per group: sites, blocks, elements, holes, " +
+		"and rank. Per site: path, unit (the smallest declaration that holds it), and line and end_line " +
+		"of the block, the largest one for a group of several. Left out: test files and test " +
+		"directories, and the stand-alone directories and story files x/new-duplicate leaves out. Not " +
+		"seen: a block of under 6 elements, two blocks that differ in one tag or one attribute name, " +
+		"markup built without JSX, and repeated logic with no markup, which duplicate_groups reads. " +
+		"Gated because one person read the groups and both guards (the drawing rule, and one group " +
+		"per set of units) were chosen on repositories read first: of 51 groups read among the 20 " +
+		"listed in each of five public React applications 37 were a block a maintainer would make " +
+		"one component of, 14 a judgment call, and none wrong, and of the 20 in the two applications " +
+		"no guard was fitted to, 13 and 7. Lower in a long list more are judgment calls: see DESIGN.md. " +
+		"No target. A group says the sites are one component written out several times: a change to " +
+		"the block needs an edit per site.",
+	"blocks": "Per group in result.jsx_groups: how many separate blocks of markup the group's units " +
+		"share, site for site. The sites give the lines of the one that ranks highest alone, and " +
+		"elements and holes count them all.",
+	"elements": "Per group in result.jsx_groups: the elements one site holds, over every block of the " +
+		"group. An element is one tag with its attributes; a fragment and a part of a drawing count " +
+		"none, and an svg counts one.",
+	"holes": "Per group in result.jsx_groups: how many of the attribute values, runs of text, and " +
+		"wrapping expressions of the group's blocks are not the same at every site, which is what " +
+		"shared components would take as props. Values are compared by a 16-bit hash with white space " +
+		"left out, so one in 65,536 differing values reads as the same. A group with 0 holes is the " +
+		"same markup at every site.",
+	"new_jsx_shape": "x/new-jsx-shape, on change with --experimental: a block of markup the change added " +
+		"that the tree already held under other text and attribute values. It is the pass behind " +
+		"result.jsx_groups (see jsx_groups) over the tree at the end of the change: a group is reported " +
+		"when the change added one of its sites and at least one other was there before. A block is " +
+		"new when the change added its first line and the changed files hold more blocks of its shape " +
+		"than they did, so a block that moved, was indented again, or had only its text or attribute " +
+		"values edited is not. The finding sits on the first line of the new block, its match names " +
+		"the file and unit of a site that was there, and its note gives the elements of the block, up " +
+		"to three of the sites that were there, and how many values the sites differ in. A change that " +
+		"adds several sites to one group reports the first and names the second, and a new block " +
+		"inside a new block already reported is not reported again. --brief prints the note as the " +
+		"reason of the next line. Not reported: a group whose every site the change added, since " +
+		"nothing was there to reuse, and whatever jsx_groups leaves out. Only change reports it, so " +
+		"label cannot find its id. When a hit is right, make the block one component that takes what " +
+		"differs as props and use it at both sites. When the sites should stay apart, say why in a " +
+		"slop-strata:ignore comment on the first line of the new block, written as {/* ... */} after " +
+		"the opening tag, or on the line above it where a // comment can stand.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +

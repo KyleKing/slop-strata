@@ -32,6 +32,10 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    enumerate the cases the new switch, chain, or table lists. When it is
    right, read from the table or call the function that is there: a second
    list of the same cases is one more place every new case must reach.
+   An `x/new-jsx-shape` finding's `note` names the places that already hold
+   the markup the new block repeats, and how many values the sites differ
+   in. When it is right, make the block one component that takes those
+   values as props and use it at both sites.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

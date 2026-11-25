@@ -11,6 +11,7 @@ import (
 
 // benchSources builds one file per language: twenty imports, then functions
 // enough to make the imports a small share of the tree, as in real files.
+// The tsx file is the ts one with three components of markup after it.
 func benchSources() map[string]string {
 	var py, ts, goSrc strings.Builder
 	goSrc.WriteString("package bench\n\nimport (\n")
@@ -29,7 +30,10 @@ func benchSources() map[string]string {
 			i, i, n)
 	}
 
-	return map[string]string{"bench.py": py.String(), "bench.ts": ts.String(), "bench.go": goSrc.String()}
+	return map[string]string{
+		"bench.py": py.String(), "bench.ts": ts.String(), "bench.go": goSrc.String(),
+		"bench.tsx": ts.String() + jsxBenchSource(0) + jsxBenchSource(1) + jsxBenchSource(2),
+	}
 }
 
 // BenchmarkCollect measures fingerprinting one parsed file, the pass that

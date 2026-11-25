@@ -23,13 +23,7 @@ type caseSetList struct {
 
 // caseSets runs the case pass over a snapshot's reports.
 func caseSets(reports []*engine.FileReport) *caseSetList {
-	tree := make(map[string]*rules.Fingerprint, len(reports))
-	for _, r := range reports {
-		if r.Skipped == "" && r.Print != nil {
-			tree[r.Path] = r.Print
-		}
-	}
-	families := rules.CaseFamilies(tree)
+	families := rules.CaseFamilies(scoredPrints(reports))
 	out := &caseSetList{Total: len(families), Families: families[:min(len(families), caseSetLimit)]}
 	if out.Families == nil {
 		out.Families = []rules.CaseFamily{}
@@ -62,7 +56,7 @@ func printCaseSets(w io.Writer, list *caseSetList, all bool) {
 	for i := range shown {
 		rows = append(rows, caseSetRows(&shown[i])...)
 	}
-	header := []string{"site", "", "rank", "sites", "cases", "lacks"}
+	header := []string{colSite, "", "rank", colSites, "cases", "lacks"}
 	shortenFirstColumn(header, rows)
 	report.Fprintf(w, "\ncase sets, %d of %d (rank: sites × weight of the cases they share)\n", len(shown), list.Total)
 	report.Table(w, header, rows)

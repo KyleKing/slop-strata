@@ -92,7 +92,7 @@ func TestRulesHoldUnderAdversarialEdits(t *testing.T) {
 // x/new-duplicate read two trees, so their fixtures run the command in
 // cmd/slop-strata.
 var changeOnlyRules = []string{ //nolint:gochecknoglobals // a fixed list
-	"x/last-ref", rules.RuleNewDuplicate, rules.RuleNewCaseSet,
+	"x/last-ref", rules.RuleNewDuplicate, rules.RuleNewCaseSet, rules.RuleNewJSXShape,
 }
 
 // TestEveryRuleHasAnAdversarialCase fails when a rule ships with no fixture,

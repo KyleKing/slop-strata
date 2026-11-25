@@ -25,15 +25,22 @@ type duplicateList struct {
 	Removable int              `json:"removable"`
 }
 
-// duplicateGroups runs the duplicate pass over a snapshot's reports.
-func duplicateGroups(reports []*engine.FileReport) *duplicateList {
+// scoredPrints maps the files of a snapshot that were scored to their
+// fingerprints: the tree the passes over a whole snapshot read.
+func scoredPrints(reports []*engine.FileReport) map[string]*rules.Fingerprint {
 	tree := make(map[string]*rules.Fingerprint, len(reports))
 	for _, r := range reports {
 		if r.Skipped == "" && r.Print != nil {
 			tree[r.Path] = r.Print
 		}
 	}
-	groups := rules.DuplicateGroups(tree)
+
+	return tree
+}
+
+// duplicateGroups runs the duplicate pass over a snapshot's reports.
+func duplicateGroups(reports []*engine.FileReport) *duplicateList {
+	groups := rules.DuplicateGroups(scoredPrints(reports))
 	out := &duplicateList{Total: len(groups), Groups: groups[:min(len(groups), duplicateLimit)]}
 	for i := range groups {
 		out.Removable += groups[i].Removable
@@ -143,7 +150,7 @@ func printDuplicates(w io.Writer, list *duplicateList, all bool) {
 	for i := range shown {
 		rows = append(rows, duplicateRows(&shown[i])...)
 	}
-	header := []string{"site", "", "removable", "sites", "tokens", "differs"}
+	header := []string{colSite, "", "removable", colSites, "tokens", "differs"}
 	shortenFirstColumn(header, rows)
 	report.Fprintf(w, "\nduplicate groups, %d of %d (%d tokens removable in all)\n",
 		len(shown), list.Total, list.Removable)

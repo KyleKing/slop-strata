@@ -40,6 +40,8 @@ var errUnknownCmd = errors.New("unknown subcommand")
 const (
 	colDir     = "dir"
 	colRule    = "rule"
+	colSite    = "site"
+	colSites   = "sites"
 	colAdded   = "added"
 	colMass    = "mass"
 	colHotspot = "hotspot"
