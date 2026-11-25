@@ -513,7 +513,12 @@ var Docs = map[string]string{
 		"could be a return of the new function with nothing for the caller to check: no break leaves " +
 		"it; its returns are the end of the function, or the run always ends in a return, a raise, or " +
 		"a throw, or each hands back an error from a Go function whose last result is one; its " +
-		"continues are the end of a loop's body. split.inputs, at most 5, counts the variables " +
+		"continues are the end of a loop's body. A run is passed over when it is some of a list of like " +
+		"sections and not all of it: it stops next to a branch whose header has the shape of the branch " +
+		"at that end of the run, names and literals aside, or it is every statement of one arm of such " +
+		"a branch. Loops are not read that way. It is also passed over when the statement ahead of it " +
+		"declares one of its inputs and nothing else names that variable: the run that starts with the " +
+		"declaration competes in its place. split.inputs, at most 4, counts the variables " +
 		"declared outside the run that the run reads before it gives them a value. split.outputs, at " +
 		"most 1, counts the ones the run gives a value that is read afterwards: by a later line, by " +
 		"the next pass of a loop around the run, or by the function around a closure. Each name is " +
@@ -523,9 +528,10 @@ var Docs = map[string]string{
 		"a write through a field or an index counts as a read. Two things are still missed: a " +
 		"variable one arm of a branch writes and another arm reads is an input the count can leave " +
 		"out, and so is one a loop body writes on one pass and reads under another branch on a later " +
-		"one. On the top five of twelve public repositories, read by one person, 42 of 60 were a " +
-		"block to move as it stands, 13 a judgment call, and 5 wrong, and of the 40 an earlier list " +
-		"did not name, 23, 13, and 4. That is under the 80% a list has to clear to be on by " +
+		"one. On the top five of twelve public repositories, read by one person, 45 of 60 were a " +
+		"block to move as it stands, 14 a judgment call, and 1 wrong, and the rules were chosen on " +
+		"those twelve. On the top five of ten more, which the rules were frozen before, 20 of 43, " +
+		"19, and 4, which is 47%. That is under the 80% a list has to clear to be on by " +
 		"default, so it needs the flag. No target: it is a place to start reading a long function, " +
 		"ranked by how much a cut there would take off it.",
 	"drop": "split.drop in result.split_candidates on snapshot: a function's cognitive complexity less " +

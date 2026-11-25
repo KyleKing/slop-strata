@@ -36,8 +36,15 @@ const splitMaxPart = 4
 // variables a block may read from the code before it and hand to the code
 // after it: more, and the block is not a function waiting to be named.
 const (
-	splitMaxInputs  = 5
+	splitMaxInputs  = 4
 	splitMaxOutputs = 1
+)
+
+// The fields a branch keeps its arms in. With the body of a switch, they are
+// what its header leaves out.
+const (
+	fieldConsequence = "consequence"
+	fieldAlternative = "alternative"
 )
 
 // splitKeep is how many of a function's blocks are checked for what flows in
@@ -106,8 +113,11 @@ type splitCand struct {
 	cc               int
 	exits            int
 	inputs, outputs  int
-	whole            bool // every statement of its block
-	ends             bool // always leaves the function
+	// before is the statement ahead of the run in its block when that one
+	// neither branches nor loops, and is empty otherwise.
+	before byteSpan
+	whole  bool // every statement of its block
+	ends   bool // always leaves the function
 }
 
 // splitter walks one function for the runs of statements worth moving out.
@@ -117,6 +127,10 @@ type splitter struct {
 	kept  []splitCand
 	loops []loopSpan // the loops around the node being walked
 	total int        // the function's cognitive complexity
+	// listed is true while the walk is inside a branch that stands next to
+	// another with a header of the same shape, and no deeper statement has
+	// been entered.
+	listed bool
 	// errFunc is true for a Go function whose last result is an error.
 	errFunc bool
 }
@@ -167,8 +181,11 @@ func (fs flows) findSplit(l *lang.Language, node *ts.Node, src []byte, cognitive
 	var best *splitCand
 	for i := range s.kept {
 		c := &s.kept[i]
-		c.inputs, c.outputs = f.across(&crossing{start: c.start, end: c.end, fn: fn, loops: c.loops, ends: c.ends})
-		if c.inputs <= splitMaxInputs && c.outputs <= splitMaxOutputs && (best == nil || c.beats(best)) {
+		var orphan bool
+		c.inputs, c.outputs, orphan = f.across(&crossing{
+			start: c.start, end: c.end, fn: fn, loops: c.loops, ends: c.ends, before: c.before,
+		})
+		if c.inputs <= splitMaxInputs && c.outputs <= splitMaxOutputs && !orphan && (best == nil || c.beats(best)) {
 			best = c
 		}
 	}
@@ -253,6 +270,118 @@ func (s *splitter) returnsAnError(node *ts.Node) bool {
 type stmtStats struct {
 	node  *ts.Node
 	stats blockStats
+	// head is the shape of the statement's header when it is a branch, and 0
+	// otherwise.
+	head uint32
+}
+
+// like reports whether two statements are branches whose headers have one
+// shape.
+func (a *stmtStats) like(b *stmtStats) bool { return a.head != 0 && a.head == b.head }
+
+// FNV-1a, 32 bits, and what is folded in where a node ends, which is no kind
+// of any grammar.
+const (
+	fnvOffset = 2166136261
+	fnvPrime  = 16777619
+	shapeEnd  = 0xffff
+)
+
+// headOf hashes the header of a branch: its kind, and the kind of every node
+// outside its arms, so that names and literals count as what they are and not
+// as what they spell. `if a.Fg != nil` and `if a.Bg != nil` have one header.
+// Any other statement has none, which is 0. A loop has none either: two loops
+// over two slices are spelled alike whatever they do, and a header that every
+// loop shares says nothing about the two being sections of one list.
+func (s *splitter) headOf(node *ts.Node) uint32 {
+	if kind := node.Kind(); !s.l.NestKinds[kind] || s.l.LoopKinds[kind] {
+		return 0
+	}
+	h := (uint32(fnvOffset) ^ uint32(node.KindId())) * fnvPrime
+	for i := range node.ChildCount() {
+		switch node.FieldNameForChild(uint32(i)) {
+		case fieldBody, fieldConsequence, fieldAlternative:
+		default:
+			h = shapeInto(h, node.Child(i))
+		}
+	}
+
+	return h | 1
+}
+
+// shapeInto folds the kinds of a subtree into a hash, in the order of the
+// source, with a mark where each node ends.
+func shapeInto(h uint32, node *ts.Node) uint32 {
+	h = (h ^ uint32(node.KindId())) * fnvPrime
+	for i := range node.ChildCount() {
+		h = shapeInto(h, node.Child(i))
+	}
+
+	return (h ^ shapeEnd) * fnvPrime
+}
+
+// headScan hands out the header of each statement of a block in turn, with
+// the one before it and the one after it, comments passed over.
+type headScan struct {
+	block      *ts.Node
+	prev, next uint32
+}
+
+// scanHeads starts a scan at the first statement of a block.
+func (s *splitter) scanHeads(block *ts.Node) headScan {
+	return headScan{block: block, next: s.headFrom(block, 0)}
+}
+
+// headFrom answers the header of the first statement of a block at or after
+// the named child i, or 0 when there is none.
+func (s *splitter) headFrom(block *ts.Node, i uint) uint32 {
+	for ; i < block.NamedChildCount(); i++ {
+		if child := block.NamedChild(i); !s.l.CommentKinds[child.Kind()] {
+			return s.headOf(child)
+		}
+	}
+
+	return 0
+}
+
+// step answers the header of the statement that is the named child i, and
+// whether the statement before it or after it shares it. It is called once
+// per statement, in order.
+func (h *headScan) step(s *splitter, i uint) (uint32, bool) {
+	head := h.next
+	h.next = s.headFrom(h.block, i+1)
+	listed := head != 0 && (head == h.prev || head == h.next)
+	h.prev = head
+
+	return head, listed
+}
+
+// children walks the children of a node, adds what they hold to st, and
+// answers the statements among them when the node is a block. While a
+// statement that shares its header with the one next to it is walked, listed
+// is set, for the arms it holds.
+func (s *splitter) children(node *ts.Node, block bool, inner int, st *blockStats) []stmtStats {
+	var stmts []stmtStats
+	var heads headScan
+	if block {
+		heads = s.scanHeads(node)
+	}
+	for i := range node.NamedChildCount() {
+		child := node.NamedChild(i)
+		stmt := block && !s.l.CommentKinds[child.Kind()]
+		outer, head := s.listed, uint32(0)
+		if stmt {
+			head, s.listed = heads.step(s, i)
+		}
+		sub := s.walk(child, inner)
+		s.listed = outer
+		st.add(sub)
+		if stmt {
+			stmts = append(stmts, stmtStats{node: child, stats: sub, head: head})
+		}
+	}
+
+	return stmts
 }
 
 // walk measures a subtree in place, and offers the runs of every block in it.
@@ -285,15 +414,7 @@ func (s *splitter) walk(node *ts.Node, level int) blockStats {
 			each: s.each(node, kind),
 		})
 	}
-	var stmts []stmtStats
-	for i := range node.NamedChildCount() {
-		child := node.NamedChild(i)
-		sub := s.walk(child, inner)
-		st.add(sub)
-		if block && !s.l.CommentKinds[child.Kind()] {
-			stmts = append(stmts, stmtStats{node: child, stats: sub})
-		}
-	}
+	stmts := s.children(node, block, inner, &st)
 	if loop {
 		st.breaks, st.continues = 0, 0
 		s.loops = s.loops[:len(s.loops)-1]
@@ -326,7 +447,8 @@ func (s *splitter) each(node *ts.Node, kind string) bool {
 // of its own loses the nesting it sat under, and the function loses the run.
 // What counts is the worse of the two that are left. A run that holds a defer
 // or a yield is passed over: either means something else once it is moved. So
-// is one whose exits the new function could not spell as a return. A part of
+// is one whose exits the new function could not spell as a return, and one
+// that is some of a list of like sections and not all of it. A part of
 // the block, which is several statements and not all of them, is kept only at
 // splitMaxPart statements or fewer, and only when no longer part would take
 // more off: where one would, the block is a list of steps and the short run
@@ -334,13 +456,13 @@ func (s *splitter) each(node *ts.Node, kind string) bool {
 func (s *splitter) offer(block *ts.Node, stmts []stmtStats, level int) {
 	var parts []splitCand
 	long := 0 // the largest drop of a part that is too long
-	site := blockSite{level: level, count: len(stmts)}
+	site := blockSite{level: level, stmts: stmts, listed: s.listed}
 	site.fnBody, site.loopBody = s.owner(block)
 	for i := range stmts {
 		var run blockStats
 		for j := i; j < len(stmts); j++ {
 			run.add(stmts[j].stats)
-			c, ok := s.candidate(&site, stmts[i:j+1], &run, j == len(stmts)-1)
+			c, ok := s.candidate(&site, i, j, &run)
 			switch {
 			case !ok:
 			case i == j || c.whole:
@@ -362,20 +484,37 @@ func (s *splitter) offer(block *ts.Node, stmts []stmtStats, level int) {
 // blockSite is where a block sits in its function.
 type blockSite struct {
 	loops            []loopSpan // the loops around it, copied for the first run that is kept
-	level            int        // the nesting it sits under
-	count            int        // its statements
-	fnBody, loopBody bool       // it is the body of the function, or of a loop
+	stmts            []stmtStats
+	level            int  // the nesting it sits under
+	fnBody, loopBody bool // it is the body of the function, or of a loop
+	// listed is true for an arm of a branch that stands next to another with
+	// a header of the same shape.
+	listed bool
 }
 
-// candidate scores one run of a block's statements, whose stats are given,
-// and reports whether it takes enough off the function and leaves cleanly. A
-// run that ends its block has last set.
-func (s *splitter) candidate(site *blockSite, stmts []stmtStats, run *blockStats, last bool) (splitCand, bool) {
+// sectioned reports whether the statements i to j of a block are some of a
+// list of like sections and not all of it: the run stops next to a branch
+// whose header has the shape of the one at that end of the run, or it is all
+// there is in one arm of such a branch. `if v.Fg != nil { … }` beside
+// `if v.Bg != nil { … }` is such a list, and moving one of the two out, or the
+// inside of one, leaves the other where it was.
+func (site *blockSite) sectioned(i, j int) bool {
+	stmts := site.stmts
+
+	return (i > 0 && stmts[i-1].like(&stmts[i])) || (j+1 < len(stmts) && stmts[j].like(&stmts[j+1])) ||
+		(site.listed && i == 0 && j == len(stmts)-1)
+}
+
+// candidate scores the run of a block's statements from i to j, whose stats
+// are given, and reports whether it takes enough off the function and leaves
+// cleanly.
+func (s *splitter) candidate(site *blockSite, i, j int, run *blockStats) (splitCand, bool) {
+	stmts, last := site.stmts[i:j+1], j == len(site.stmts)-1
 	alone := run.cognitive - site.level*run.nests
 	remainder := s.total - run.cognitive
 	drop := s.total - max(alone, remainder)
 	if drop < splitMinDrop || float64(drop) < splitMinShare*float64(s.total) || run.pinned > 0 ||
-		min(alone, remainder) < splitMinSide {
+		min(alone, remainder) < splitMinSide || site.sectioned(i, j) {
 		return splitCand{}, false
 	}
 	first, end := stmts[0].node, stmts[len(stmts)-1].node
@@ -393,8 +532,19 @@ func (s *splitter) candidate(site *blockSite, stmts []stmtStats, run *blockStats
 		startRow: first.StartPosition().Row, endRow: end.EndPosition().Row,
 		statements: len(stmts), drop: drop, alone: alone, remainder: remainder, cc: run.cc,
 		exits: run.returns + run.breaks + run.continues, loops: site.loops,
-		whole: last && len(stmts) == site.count, ends: ends,
+		whole: last && i == 0, ends: ends, before: site.before(i),
 	}, true
+}
+
+// before answers the span of the statement ahead of the one at i when that
+// statement neither branches nor loops, which is where a declaration is.
+func (site *blockSite) before(i int) byteSpan {
+	if i == 0 || site.stmts[i-1].stats.cognitive > 0 {
+		return byteSpan{}
+	}
+	prev := site.stmts[i-1].node
+
+	return byteSpan{prev.StartByte(), prev.EndByte()}
 }
 
 // leavesCleanly reports whether every statement that leaves a run can be a
