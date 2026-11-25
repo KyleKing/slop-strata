@@ -1,3 +1,9 @@
+## v0.19.1 (2026-11-25)
+
+### Fix
+
+- **snapshot**: survive shape-hash collisions and keep the evaluation data
+
 ## v0.19.0 (2026-11-24)
 
 ### Feat
