@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 7. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 8. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 7}
+    "schema": {"const": 8}
   },
   "allOf": [
     {
@@ -285,7 +285,7 @@
     },
     "snapshotResult": {
       "type": "object",
-      "required": ["rev", "dirs", "files", "top_functions", "split_candidates", "findings", "total", "imports"],
+      "required": ["rev", "dirs", "files", "top_functions", "findings", "total", "imports"],
       "properties": {
         "rev": {"type": "string"},
         "dirs": {"type": "array", "items": {"$ref": "#/$defs/snapshotDir"}},
@@ -336,7 +336,7 @@
         },
         "split_candidates": {
           "type": "object",
-          "description": "Functions, tests and examples aside, that hold a block worth moving into a function of its own; see the split_candidates doc.",
+          "description": "With --experimental only: functions, tests and examples aside, that hold a block worth moving into a function of its own; see the split_candidates doc.",
           "required": ["functions", "total"],
           "additionalProperties": false,
           "properties": {
@@ -364,13 +364,13 @@
                       "end_line": {"type": "integer", "minimum": 1, "description": "Last line of the block, inclusive."},
                       "statements": {"type": "integer", "minimum": 1, "description": "Statements of the block at its own nesting level."},
                       "drop": {"type": "integer", "minimum": 5, "description": "The function's cognitive complexity less the larger of remainder and cognitive."},
-                      "cognitive": {"type": "integer", "description": "The block's cognitive complexity as a function of its own."},
+                      "cognitive": {"type": "integer", "minimum": 5, "description": "The block's cognitive complexity as a function of its own."},
                       "cc": {"type": "integer", "description": "The block's cyclomatic complexity as a function of its own."},
-                      "remainder": {"type": "integer", "description": "The function's cognitive complexity without the block."},
+                      "remainder": {"type": "integer", "minimum": 5, "description": "The function's cognitive complexity without the block."},
                       "remainder_cc": {"type": "integer", "description": "The function's cyclomatic complexity without the block."},
-                      "inputs": {"type": "integer", "minimum": 0, "maximum": 5, "description": "Variables given a value before the block that it reads. Read off names, with no scopes or types."},
-                      "outputs": {"type": "integer", "minimum": 0, "maximum": 1, "description": "Variables the block gives a value that the function reads after it. Read off names."},
-                      "exits": {"type": "integer", "minimum": 0, "description": "return, break, and continue statements in the block that leave it."}
+                      "inputs": {"type": "integer", "minimum": 0, "maximum": 5, "description": "Variables declared outside the block that it reads before it gives them a value, each name resolved to the scope that declares it. A receiver, self, and this are not counted."},
+                      "outputs": {"type": "integer", "minimum": 0, "maximum": 1, "description": "Variables the block gives a value that is read afterwards: by a later line, by the next pass of a loop around the block, or by the function around a closure."},
+                      "exits": {"type": "integer", "minimum": 0, "description": "return, break, and continue statements in the block that leave it. Each is one the new function can spell as a return, and none is a break."}
                     }
                   }
                 }

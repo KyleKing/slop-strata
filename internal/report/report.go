@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 7
+const Version = 8
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -266,7 +266,7 @@ var Docs = map[string]string{
 		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, and snapshot " +
 		"stale-prose rules " +
 		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
-		"duplicate_groups list, which is gated for the same reason. Enable them per run with " +
+		"split_candidates and duplicate_groups lists, which are gated for the same reason. Enable them per run with " +
 		"--experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
@@ -494,27 +494,37 @@ var Docs = map[string]string{
 		"Only change reports it, so label cannot find its id. When a hit is right, call or widen the code " +
 		"the note names. When the two sites should stay apart, say why in a slop-strata:ignore comment on " +
 		"the finding's line.",
-	"split_candidates": "result.split_candidates on snapshot: the functions, tests and examples aside, that " +
-		"hold a block worth moving into a function of its own, with total and the 20 a split relieves " +
-		"most. A function is read once its cognitive complexity reaches 15. Every run of statements at " +
-		"one nesting level in it is tried: a whole loop or branch, a loop body, a branch arm, or part " +
-		"of one. For a run, split.cognitive and split.cc are the run's as a function of its own, so " +
-		"the nesting it sat under no longer counts against it, and split.remainder and " +
-		"split.remainder_cc are the function's without it. split.drop is the function's cognitive " +
-		"complexity less the larger of the two, which is what the split takes off the worse of the " +
-		"functions it leaves, and it must be 5 or more and a fifth of the function's complexity. The " +
-		"run with the largest drop is listed, among the 64 largest, when it holds no defer and no " +
-		"yield and when few variables cross its ends: split.inputs, at most 5, counts the variables " +
-		"the function gives a value before the run whose first use in the run reads them, and " +
-		"split.outputs, at most 1, the ones the run gives a value whose first use after it reads them. " +
-		"split.exits counts the return, break, and continue statements in the run that leave it, and " +
-		"is not held to a limit. The counts read names, with no scopes and no types: a variable a " +
-		"closure takes from the function around it is not counted, a method's receiver is, a write " +
-		"through a field or an index counts as a read, and a value a loop carries back to code above " +
-		"the run is not seen. So a low count says the block may come out cleanly and never that it " +
-		"will. On 60 listed candidates in twelve public repositories, read by one person, 34 were a " +
-		"block to move as it stands, 22 a judgment call (a slice of a larger step, or early exits " +
-		"that need a flag), and 4 wrong. No target: it is a place to start reading a long function, " +
+	"split_candidates": "result.split_candidates on snapshot with --experimental: the functions, tests and " +
+		"examples aside, that hold a block worth moving into a function of its own, with total and the " +
+		"20 a split relieves most. A function is read once its cognitive complexity reaches 15. Every " +
+		"run of statements at one nesting level in it is tried: a whole loop or branch, a loop body, a " +
+		"branch arm, or up to 4 statements of one. For a run, split.cognitive and split.cc are the " +
+		"run's as a function of its own, so the nesting it sat under no longer counts against it, and " +
+		"split.remainder and split.remainder_cc are the function's without it. split.cognitive and " +
+		"split.remainder must each be 5 or more. split.drop is the function's cognitive complexity " +
+		"less the larger of the two, which is what the split takes off the worse of the functions it " +
+		"leaves, and it must be 5 or more and a fifth of the function's complexity. The run with the " +
+		"largest drop is listed, among the 64 largest, every statement of a block before a part of " +
+		"one that drops as much. It holds no defer and no yield. split.exits counts the return, " +
+		"break, and continue statements in the run that leave it, and a run is listed only when each " +
+		"could be a return of the new function with nothing for the caller to check: no break leaves " +
+		"it; its returns are the end of the function, or the run always ends in a return, a raise, or " +
+		"a throw, or each hands back an error from a Go function whose last result is one; its " +
+		"continues are the end of a loop's body. split.inputs, at most 5, counts the variables " +
+		"declared outside the run that the run reads before it gives them a value. split.outputs, at " +
+		"most 1, counts the ones the run gives a value that is read afterwards: by a later line, by " +
+		"the next pass of a loop around the run, or by the function around a closure. Each name is " +
+		"resolved to the scope that declares it, so a closure's use of a variable of the function " +
+		"around it counts, a method's receiver, self, cls, and this do not, a global or an import is " +
+		"no variable, and a name declared again in a block is another variable. There are no types: " +
+		"a write through a field or an index counts as a read. Two things are still missed: a " +
+		"variable one arm of a branch writes and another arm reads is an input the count can leave " +
+		"out, and so is one a loop body writes on one pass and reads under another branch on a later " +
+		"one. On the top five of twelve public repositories, read by one person, 42 of 60 were a " +
+		"block to move as it stands, 13 a judgment call, and 5 wrong, and of the 40 an earlier list " +
+		"did not name, 23, 13, and 4. On 30 from a private monorepo, the top ten and twenty drawn " +
+		"from the rest, 10, 10, and 10. That is under the 80% a list has to clear to be on by " +
+		"default, so it needs the flag. No target: it is a place to start reading a long function, " +
 		"ranked by how much a cut there would take off it.",
 	"drop": "split.drop in result.split_candidates on snapshot: a function's cognitive complexity less " +
 		"the larger of what the split leaves in it and what the moved block scores alone. See " +

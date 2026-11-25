@@ -110,12 +110,20 @@ func snapshotLists(t *testing.T, repo string, argv ...string) refactorLists {
 	return env
 }
 
-func TestSnapshotListsSplitCandidates(t *testing.T) {
+func TestSnapshotListsNeitherWithoutExperimental(t *testing.T) {
 	t.Parallel()
 	got := snapshotLists(t, refactorRepo(t)).Result
 	if got.Duplicates != nil {
 		t.Errorf("duplicate_groups = %+v without --experimental, want none", got.Duplicates)
 	}
+	if got.Splits != nil {
+		t.Errorf("split_candidates = %+v without --experimental, want none", got.Splits)
+	}
+}
+
+func TestSnapshotListsSplitCandidatesWhenExperimental(t *testing.T) {
+	t.Parallel()
+	got := snapshotLists(t, refactorRepo(t), "--experimental").Result
 	// The test's copy and the example's copy of the function are left out.
 	if got.Splits == nil || got.Splits.Total != 1 || len(got.Splits.Functions) != 1 {
 		t.Fatalf("split_candidates = %+v, want the one production function", got.Splits)
@@ -134,11 +142,7 @@ func TestSnapshotListsSplitCandidates(t *testing.T) {
 
 func TestSnapshotListsDuplicateGroupsWhenExperimental(t *testing.T) {
 	t.Parallel()
-	got := snapshotLists(t, refactorRepo(t), "--experimental").Result
-	if got.Splits == nil || got.Splits.Total != 1 {
-		t.Errorf("split_candidates = %+v, want it with --experimental too", got.Splits)
-	}
-	d := got.Duplicates
+	d := snapshotLists(t, refactorRepo(t), "--experimental").Result.Duplicates
 	if d == nil || d.Total != 1 || len(d.Groups) != 1 {
 		t.Fatalf("duplicate_groups = %+v, want the one group of the two loaders", d)
 	}
@@ -159,22 +163,18 @@ func TestSnapshotTextPrintsTheTwoLists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	for _, want := range []string{
-		"split candidates, 1 of 1 (cognitive: before → rest + block)",
-		"store/tally.go:3  tally  6-12   16 → 7 + 6  4   1    0",
-	} {
-		if !strings.Contains(plain, want) {
-			t.Errorf("snapshot text lacks %q:\n%s", want, plain)
+	for _, gated := range []string{"split candidates", "duplicate groups"} {
+		if strings.Contains(plain, gated) {
+			t.Errorf("snapshot text lists %s without --experimental:\n%s", gated, plain)
 		}
-	}
-	if strings.Contains(plain, "duplicate groups") {
-		t.Errorf("snapshot text lists duplicate groups without --experimental:\n%s", plain)
 	}
 	gated, err := runCLI(t, repo, "snapshot", "--experimental")
 	if err != nil {
 		t.Fatalf("snapshot --experimental: %v", err)
 	}
 	for _, want := range []string{
+		"split candidates, 1 of 1 (cognitive: before → rest + block)",
+		"store/tally.go:3  tally  6-12   16 → 7 + 6  4   1    0",
 		"duplicate groups, 1 of 1 (96 tokens removable in all)", "store/orders.go:3  loadOrders  96",
 		"store/users.go:3   loadUsers",
 	} {

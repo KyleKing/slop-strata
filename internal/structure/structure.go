@@ -233,9 +233,10 @@ func Analyze(l *lang.Language, tree *ts.Tree, src []byte) FileMetrics {
 	}
 
 	fm.Tables = lang.CaseTables(l, root)
+	fs := flows{}
 	lang.EachNamed(root, func(n *ts.Node) {
 		if l.FunctionKinds[n.Kind()] {
-			fm.Funcs = append(fm.Funcs, measureFunc(l, n, src, idx))
+			fm.Funcs = append(fm.Funcs, measureFunc(l, n, src, idx, fs))
 		}
 	})
 
@@ -292,7 +293,7 @@ func (o *owned) collect(l *lang.Language, node *ts.Node) {
 }
 
 // measureFunc computes one function node's metrics.
-func measureFunc(l *lang.Language, node *ts.Node, src []byte, idx *lines) FuncMetrics {
+func measureFunc(l *lang.Language, node *ts.Node, src []byte, idx *lines, fs flows) FuncMetrics {
 	startRow := int(node.StartPosition().Row)
 	endRow := int(node.EndPosition().Row)
 	own := ownedBy(l, node)
@@ -311,7 +312,7 @@ func measureFunc(l *lang.Language, node *ts.Node, src []byte, idx *lines) FuncMe
 
 	var split *Split
 	if c.cognitive >= SplitMinCognitive {
-		split = findSplit(l, node, src, c.cognitive, c.cc)
+		split = fs.findSplit(l, node, src, c.cognitive, c.cc)
 	}
 
 	return FuncMetrics{

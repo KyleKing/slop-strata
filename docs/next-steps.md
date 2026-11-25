@@ -95,17 +95,19 @@ Matches a name and nothing more:
 
 ## Split candidates
 
-`snapshot` lists the functions a split would relieve most, with the block to move. Of 60 read, 34 could move as they stand, 22 were a judgment call, and 4 were wrong. What the reading and the replay showed:
+`snapshot --experimental` lists the functions a split would relieve most, with the block to move. It was on by default in 0.19 and is gated now: of the top five in twelve public repositories 42 of 60 could move as they stand (34 before scopes and the exit rule), 23 of the 40 nobody had read before, and 10 of 30 in a private monorepo, against a bar of 80%. What the two readings and the replay showed:
 
-- The counts of variables in and out read names, with no scopes. A block inside a long closure reads and writes variables of the function around it that are not counted (the mouse arm of fzf's action loop lists 0 inputs). Counting a name the enclosing function binds would fix the common case and needs the walk to start one function up.
+- The counts are no longer the common failure. Names resolve to scopes, closures count what they take, and receivers do not count. Two cases are still wrong, each seen once in 30: a variable one arm of a branch writes and another arm reads is not an input, and a variable a loop body writes on one pass and reads under another branch on a later pass is neither input nor output. Both need the walk to know which writes reach a read, per path, where it now has the order of the code and a nesting depth.
 - A write through a field or an index is a read, so a block that fills a map or mutates an object it was handed shows no output. That is right for extraction and wrong as a measure of coupling.
-- A value a loop carries back to code above the block is not seen. One of the four wrong candidates was a select arm that only updates such state.
-- The ranking is by the size of the cut. Cleaner cuts do not rank higher: the share that could move as they stand was 58%, 67%, 58%, 50%, and 50% from the first rank to the fifth. Ranking by drop per variable crossing the cut was not tried.
-- A block is one run of statements. Two of the four wrong candidates were a run cut to balance the two halves, one statement short of a loop body and two of four parallel blocks. Preferring a whole body or a whole arm over part of one when their drops are close would remove both.
-- `exits` is reported and not bounded. Twelve of the 22 judgment calls were blocks whose `continue` or `return` would need a flag at the call site. A block every path of which returns, or the whole body of a loop, needs none, and the walk does not tell those apart yet.
-- Of 14 functions that a later commit split, 4 were not listed because no run fit the bounds of 5 inputs and 1 output, and in 5 of the 10 that were listed the commit moved another block than the one named. One candidate per function is listed, and the second and third best are not kept.
+- A block that reads exactly 5 variables was `yes` in 8 of 17 public candidates, against 34 of 43 with 4 or fewer. A bound of 4 was not tried, because the candidates that would take their place have not been read, and a bound picked on these labels has to be scored on new ones.
+- Small blocks in functions near the floor are most of what is wrong far down the list: of 20 drawn from below the tenth rank of the private tree, 4 could move as they stand. Raising the floor of 5 on both sides, or of 15 on the function, would cut them and has the same need for new labels.
+- A part of a block is held to 4 statements, which stops a cut that balances two halves and makes a new miss: three candidates were cut one statement after the declaration of the list they fill, or one statement into a loop body because that scored a point more than the whole body. Taking a declaration with the block when the block is its only reader, and a whole body over a part within a point or two, would remove them.
+- Parallel blocks are still cut through: two of several like sections, or the last arms of a chain of like checks, were 4 of the 18 public misses and 3 of the 10 private `no`. The duplicate pass already knows which statements have one shape, and a run that ends between two statements of one shape could be passed over.
+- The ranking is by the size of the cut. The share that could move as they stand was 75%, 92%, 75%, 50%, and 58% from the first rank to the fifth. Ranking by drop per variable crossing the cut was not tried.
+- Of 36 commits whose subject and diff look like an extract-method, the function was listed at the parent in 11, against 14 before these rules, and the block named overlaps the lines moved in 4, against 7. One candidate per function is listed, and the second and third best are not kept.
 - Functions under a cognitive complexity of 15 are not read. Five of 19 extract-method commits split a function under it.
-- The split search runs for every function that qualifies whether or not a snapshot is ever asked for, since it is stored with the blob. It costs up to 0.2 s on a cold run of 3,163 files.
+- The split search runs for every function that qualifies whether or not `--experimental` asks for the list, since it is stored with the blob. It costs up to 0.2 s on a cold run of 3,163 files, and the scope pass adds 15% to 30% to the parse of a file whose every function qualifies.
+- The second reading was by the person who chose the rules. A reading by someone else, on repositories outside the twelve, is what would move the list back to on by default.
 
 ## Parallel conditional chains
 

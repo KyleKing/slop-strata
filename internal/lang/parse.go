@@ -148,7 +148,7 @@ func (l *Language) ParamCount(fnNode *ts.Node) int {
 		EachNamed(container, func(n *ts.Node) {
 			p := n.Parent()
 			if n.Kind() == "identifier" && p != nil &&
-				(p.Kind() == "parameter_declaration" || p.Kind() == "variadic_parameter_declaration") {
+				(p.Kind() == kindParamDecl || p.Kind() == kindVariadicDecl) {
 				count++
 			}
 		})

@@ -52,7 +52,7 @@ def check():
             continue
         out = '%s/%s_%s.json' % (OUT, x['repo'], x['sha'][:10])
         if not os.path.exists(out):
-            p = subprocess.run([BIN, 'snapshot', '--repo', REPOS + '/' + x['repo'], '--rev', x['sha'] + '~1', '--json'], capture_output=True, env=env)
+            p = subprocess.run([BIN, 'snapshot', '--repo', REPOS + '/' + x['repo'], '--rev', x['sha'] + '~1', '--json', '--experimental'], capture_output=True, env=env)
             json.dump(json.loads(p.stdout)['result'].get('split_candidates'), open(out, 'w'))
         sc = json.load(open(out))
         res = []
