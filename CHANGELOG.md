@@ -1,3 +1,9 @@
+## v0.21.0 (2026-11-25)
+
+### Feat
+
+- **snapshot**: list parallel case sets and report a new one on change
+
 ## v0.20.0 (2026-11-25)
 
 ### Feat
