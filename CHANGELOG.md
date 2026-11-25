@@ -1,3 +1,9 @@
+## v0.24.1 (2026-11-25)
+
+### Fix
+
+- **change**: read a key that ends in its field's name as a copy, and measure the change rules
+
 ## v0.24.0 (2026-11-25)
 
 ### Feat
