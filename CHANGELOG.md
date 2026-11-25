@@ -1,3 +1,9 @@
+## v0.20.0 (2026-11-25)
+
+### Feat
+
+- **snapshot**: scope-aware split candidates, moved behind --experimental
+
 ## v0.19.1 (2026-11-25)
 
 ### Fix
