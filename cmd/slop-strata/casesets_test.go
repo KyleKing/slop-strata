@@ -342,23 +342,36 @@ func caseSetRepo(t *testing.T) string {
 	return dir
 }
 
-// snapshotCaseSets reads the case sets of a snapshot.
-func snapshotCaseSets(t *testing.T, repo string, argv ...string) *caseSetList {
+// snapshotField reads one field of a snapshot's result into a value, which
+// stays as it was when the result has no such field.
+func snapshotField(t *testing.T, repo, field string, into any, argv ...string) {
 	t.Helper()
 	out, err := runCLI(t, repo, append([]string{"snapshot", "--json"}, argv...)...)
 	if err != nil {
 		t.Fatalf("snapshot --json %v: %v", argv, err)
 	}
 	var env struct {
-		Result struct {
-			CaseSets *caseSetList `json:"case_sets"`
-		} `json:"result"`
+		Result map[string]json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("parsing JSON: %v\n%s", err, out)
 	}
+	raw, ok := env.Result[field]
+	if !ok {
+		return
+	}
+	if err := json.Unmarshal(raw, into); err != nil {
+		t.Fatalf("parsing %s: %v\n%s", field, err, raw)
+	}
+}
 
-	return env.Result.CaseSets
+// snapshotCaseSets reads the case sets of a snapshot.
+func snapshotCaseSets(t *testing.T, repo string, argv ...string) *caseSetList {
+	t.Helper()
+	var list *caseSetList
+	snapshotField(t, repo, "case_sets", &list, argv...)
+
+	return list
 }
 
 func TestSnapshotListsCaseSetsWhenExperimental(t *testing.T) {

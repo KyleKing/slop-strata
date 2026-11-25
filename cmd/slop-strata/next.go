@@ -58,10 +58,16 @@ func nextItems(res *changeResult) []nextItem {
 	return items[:min(len(items), nextLimit)]
 }
 
+// notedRule reports whether a rule's findings carry a note that is their
+// reason: where the code, the cases, or the markup they repeat already is.
+func notedRule(rule string) bool {
+	return rule == rules.RuleNewDuplicate || rule == rules.RuleNewCaseSet || rule == rules.RuleNewJSXShape
+}
+
 // findingReason says why a new finding is worth a look. A new duplicate
 // carries its own reason: where the code it repeats already is.
 func findingReason(f findingRow) string {
-	if (f.Rule == rules.RuleNewDuplicate || f.Rule == rules.RuleNewCaseSet) && f.Note != "" {
+	if notedRule(f.Rule) && f.Note != "" {
 		return f.Note
 	}
 

@@ -1,0 +1,51 @@
+umami	1	yes	the 41-element panel grid of the link page and the pixel page, alike but for one value
+umami	2	yes	the edit and delete menu column of three admin tables
+umami	3	yes	the sources panel with its two tabs on the link, pixel, and website pages
+umami	4	yes	the share form body of links and of pixels, differing in one path
+umami	5	yes	the controls row of the link page and the pixel page, with no difference
+umami	6	yes	a properties button and its popover, written out in two tables
+umami	7	yes	one data table written twice in a file for two display modes
+umami	8	yes	a stray copy of the link edit form checked in beside it
+umami	9	yes	the edit and view buttons of the link header and the pixel header
+umami	10	plausible	a clear-all button with its tooltip in two filter bars, six elements
+umami	11	plausible	two tab panels of one report that differ in nine of their values
+documenso	1	yes	nine checkbox rows of one form that differ in the event they set
+documenso	2	yes	twelve numeric form fields in two forms, differing in name and label
+documenso	3	plausible	the cancel and confirm footer of twelve delete dialogs, six elements and five values apart
+documenso	4	yes	the text-align select of six field settings forms
+documenso	5	yes	a name field written out in eight forms
+documenso	13	yes	the skeleton cell of seven tables
+documenso	14	yes	the documents folder page and the templates folder page, 35 elements and five values apart
+documenso	17	yes	the skeleton rows of three tables
+documenso	19	yes	one data table with its loading and error states in three tables
+documenso	20	plausible	the skeleton cells of four tables, with other widths
+dub	1	yes	seven fields the OAuth app form and the integration form both write out
+dub	2	yes	the A/B testing modal and a second copy of it in a sub-directory
+dub	3	yes	the title row with its shortcut hint in four link-builder modals
+dub	4	yes	the banned-link page and the disabled-link page
+dub	5	yes	the column picker of two export modals
+dub	13	plausible	the remove-SAML and remove-SCIM modals, nine values apart
+dub	14	yes	two sections of one menu that differ in a heading and a list
+dub	17	yes	the form of two import modals, four values apart
+dub	19	plausible	the transfer-domain and transfer-link forms, six of nine values apart
+dub	20	plausible	two placeholder cards of six elements
+formbricks	1	yes	the description input of thirteen element forms
+formbricks	2	yes	the respondent cell of five summary tables
+formbricks	3	yes	a label, percentage, and count row in six places of five summaries
+formbricks	4	yes	the whole address summary and the contact-info summary, with no difference
+formbricks	5	yes	the collapsed header of five settings cards
+formbricks	13	plausible	the row of three integration lists, each with its own columns
+formbricks	14	yes	the response row of two summary tables
+formbricks	17	yes	the address form and the contact-info form, one value apart
+formbricks	19	plausible	two loading skeletons of eight elements
+formbricks	20	plausible	a two-tab switch in two summaries, six elements
+plane	1	yes	the breadcrumb header of seventeen settings pages, with no difference
+plane	2	yes	the quick-action menu of five issue layouts
+plane	3	yes	the modals and menu of four issue layouts, one value apart
+plane	4	yes	a 24-element content loader in three places
+plane	5	yes	the menu content of six quick-action dropdowns
+plane	13	plausible	one loading skeleton in two unrelated views
+plane	14	yes	the not-a-member screen in a component and again in the layout that could render it
+plane	17	plausible	one toolbar in two apps of the monorepo, which share no component package for it
+plane	19	plausible	a six-bar skeleton on two admin pages
+plane	20	plausible	a loader of six elements in two peek views

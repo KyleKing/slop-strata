@@ -67,6 +67,7 @@ Needs a judgment the rule does not make:
 - `x/dup-literal`: name the literal in one file, which takes the count under four
 - `x/new-duplicate`: rename more than three things in every stretch of the copy, or a name or two in every statement of a copy whose statements no longer sit in a row. A copy with its loop rewritten as a comprehension or a chain of calls, with two statements swapped, with a line added after each statement, or with one left out is still reported, and those are `Persists` variants. A repeated expression is lost when it is taken apart over several statements, when the two sides of a sum are swapped, or when four of its names change
 - `x/new-case-set`: split the cases over two switches of two each, or reach them through local aliases. A place moved to another file, renamed, written as a chain or a table in place of a switch, or left one case short is still reported, and those are `Persists` variants
+- `x/new-jsx-shape`: use another tag for one element, add an attribute to one, or add one child. Any of them is another shape, and the pass has no near miss. Other text, other attribute values, another indent, and a comment change nothing, and a copy under another component name, in another file, or inside a wrapper is still reported, and those are `Persists` variants
 
 Matches a name and nothing more:
 
@@ -123,6 +124,23 @@ Matches a name and nothing more:
 - Files kept parallel on purpose are not set aside: one function in two files under build tags (gin), an ordinal function per locale (date-fns), a table per theme (rich). The duplicate pass's test for two files of one name that are 80% alike is not applied here
 - `x/new-case-set` is rare: 12 findings in 4,787 commits of 22 public repositories, 8 of them yes and 4 plausible by the family each joins, and 4 in the last 100 commits of a private monorepo, 3 and 1. That is too few to say what its precision is, and none was read against what the author did next. A change that writes every place of a family at once is not reported
 - A subject compared through a helper (`is_admin(role)`), a chain of `startswith` tests, and a dispatch through a registry decorator are not read
+
+## JSX groups
+
+`jsx_groups` and `x/new-jsx-shape` are built and gated. What they leave open:
+
+- One person read the groups. Of 51 among the 20 listed in each of five public React applications 37 were yes and 14 a judgment call, and of the 20 in the two applications no guard was fitted to, 13 and 7. Lower in a long list it is weaker: twenty groups drawn from ranks 11 to 136 of a private monorepo were 9 yes, 10 a judgment call, and 1 wrong, against 27% yes and 82% yes or a judgment call for the prototype's random sample of a looser shape. Labels from a second reader on applications outside the six come before any move out of the gate
+- No recall is claimed. The prototype, on that monorepo, found the sites of 7 to 9 of 19 commits that extracted a component, and 4 within its top 50. Seven of the misses had at most 4 elements of markup, under the floor of 6, where the repeated thing was a hook or a line of logic. Lowering the floor to 4 tripled the list there. The Go pass has not been replayed against those commits or any public ones
+- No near miss. Two blocks that differ in one tag, one attribute name, or one child are two shapes. The prototype's looser shape (component tags all alike, attributes dropped but for handlers, a lone `div` or `span` wrapper read through) found twice the groups and every false one it read. Anti-unifying the pairs that share one large block, as `x/new-duplicate` joins stretches, is the version worth trying, and one of the three larger misses above was 2 values and 5 elements away from its twin
+- The gate is one hole per element, taken from the prototype, where it was read off the labels it was scored on. The weakest groups read here sit at it: two sites whose every element differs in a value, such as two bullet lists of five items (the 1 wrong) and two confirmation dialogs. A gate under 1.0, or one that asks for a rank above 0, was not tried, because it would have been fitted to the sample that showed it
+- Loading skeletons and placeholders are 6 of the 14 public judgment calls: rows of `Skeleton` or `Loader.Item` that two views write alike. They are real repeats and a maintainer may still want each view to own its placeholder. Nothing sets them aside
+- Skeletons a component library dictates (a dialog with a header and a footer, a menu with a trigger, a form field with a label and a control) pass when the sites fill them alike. The prototype's false ones were all of this kind, and the hole gate is the only guard against them
+- A group of several blocks gives the lines of one. `blocks` counts the rest and `elements` and `holes` sum them, and the sites of the others are not listed
+- It overlaps `duplicate_groups` and `x/new-duplicate`. A block that is the same down to its values is also a repeated expression of 20 tokens or more, so one copy can be two findings on a change and two rows of a snapshot. The larger of the two should claim the lines, and neither pass reads the other
+- Files kept in step on purpose are not set aside. The duplicate pass's test for two files of one name that are 80% alike is not applied
+- Only JSX is read, in `.tsx` and `.jsx` files. Markup in a `.js` file, built with `createElement` or `h`, or written in a Vue or Svelte template is not, and neither is repeated logic with no markup: hooks, `useQuery` and `useForm` wiring, column definitions
+- A handler written in place and one passed by name are the same hole, and a hole's value is kept as 16 bits, so two values in 65,536 read as one
+- `x/new-jsx-shape` is rare outside one repository: 23 findings in 1,500 commits of six public applications, 17 of them in documenso, and 1 in the last 100 commits of a private monorepo. Six of the 24 join a group that was read, 5 a yes and 1 plausible, and the other 18 were not read, so nothing says what its precision is. A new form whose fields each join a group of their own is one finding per field. None was read against what the author did next. A block edited until its shape matches another that was there is reported only when the change also rewrote its first line
 
 ## Pruning aids measured and not built
 

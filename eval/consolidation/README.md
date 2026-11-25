@@ -1,6 +1,6 @@
 # Consolidation dataset
 
-What `x/new-duplicate`, `duplicate_groups`, `split_candidates`, and `case_sets` were designed and measured against: commits in public repositories that replaced repeated code with one function, constant, or type, each read by hand, the pairs of look-alike fragments nobody merged, and the hand labels behind the tables in [DESIGN.md](../../DESIGN.md) sections 8 and 9.
+What `x/new-duplicate`, `duplicate_groups`, `split_candidates`, `case_sets`, and `jsx_groups` were designed and measured against: commits in public repositories that replaced repeated code with one function, constant, or type, each read by hand, the pairs of look-alike fragments nobody merged, and the hand labels behind the tables in [DESIGN.md](../../DESIGN.md) sections 8 and 9.
 
 Everything here is data and Python. No Go file lives under `eval/`, so the build, the tests, and the linters do not read it.
 
@@ -12,7 +12,7 @@ Everything here is data and Python. No Go file lives under `eval/`, so the build
 | `rejected.jsonl` | 102 | Reviewed candidates that are not events, with the reason |
 | `controls.jsonl` | 393 | Matched negatives: pairs of fragments of like size and shape that were still both there two years later |
 | `analysis.txt` | | What `scripts/analyse.py` printed over the three files: the size, similarity, and history figures DESIGN.md quotes |
-| `repos.tsv` | 22 | Name, URL, and the commit each clone was at when it was mined |
+| `repos.tsv` | 28 | Name, URL, and the commit each clone was at: the 22 that were mined, and six React applications the JSX groups were read on, marked `jsx` in a fourth column |
 | `labels/verdicts.tsv` | 255 | The hand verdict on every reviewed candidate: group id, `T` true, `R` rejected, or `U` unclear, kind or reason, note |
 | `labels/new-duplicate-first.tsv` | 149 | Hand labels on `x/new-duplicate` findings of the first build, `R` real, `P` plausible, `F` false |
 | `labels/new-duplicate-second.tsv` | 83 | The same for the second build, which added expressions and joined stretches |
@@ -20,6 +20,7 @@ Everything here is data and Python. No Go file lives under `eval/`, so the build
 | `labels/split-candidates.tsv` | 60 | Hand labels on the top five split candidates of the same twelve, as 0.19 listed them |
 | `labels/split-candidates-v2.tsv` | 60 | The same reading of the list after scopes, the exit rule, and the bounds on a part and on both sides were added |
 | `labels/case-sets.tsv` | 64 | Hand labels on every case-set family of the 22 repositories |
+| `labels/jsx-groups.tsv` | 51 | Hand labels on JSX groups of five React applications |
 | `scripts/` | | The mining pipeline and the two replays that need nothing but a build of the CLI |
 
 The data files are byte for byte what the scripts wrote, with two exceptions: one trailing tab was taken off line 11 of `labels/verdicts.tsv`, and the two `new-duplicate` label files were converted from the JSON the labelling tool kept (one object per finding, keyed `repo|rev|path|line`) to one row per finding with every field kept.
@@ -53,6 +54,17 @@ All 22 repositories are public. They were cloned on 2026-11-24 and mined over ev
 | zod | https://github.com/colinhacks/zod | `d40c329910436e528d3c26cb1b9179e05abebf05` |
 | zustand | https://github.com/pmndrs/zustand | `5d66d53be80363b94491868b41325ea058fd16bb` |
 
+The 22 are libraries and frameworks, and none lists a JSX group: what markup they hold is in tests and examples. The JSX groups were read on six public React applications instead, cloned on 2026-11-25 at a depth of 300 commits. Nothing was mined from them, `repos.tsv` marks them `jsx`, and `scripts/setup.sh` clones them to `WORK/jsx-repos`, beside the 22 and out of the way of the scripts that walk `WORK/repos`.
+
+| Name | URL | Commit |
+| ---- | --- | ------ |
+| documenso | https://github.com/documenso/documenso | `e745c9ec339f1b16d2f8d181b6457323fb33ebe5` |
+| dub | https://github.com/dubinc/dub | `6b463b4bdd9ed2fd9aa416f67b5b77d317b1471e` |
+| excalidraw | https://github.com/excalidraw/excalidraw | `eaa7fa32a6645ae9da57eda548e838d0e2a024a1` |
+| formbricks | https://github.com/formbricks/formbricks | `44bc3270ebd9301de6c008ee947e27c069f801c1` |
+| plane | https://github.com/makeplane/plane | `723bb178f97b87e80a23df9eed134eb1388d7465` |
+| umami | https://github.com/umami-software/umami | `dbb8d606fbd4e99220fb83bcb4abad3e0f97f42a` |
+
 No author identity is stored. The history fields hold one boolean about authorship, `same_author_as_earlier`, and commit subjects are kept as written.
 
 ## Fields
@@ -78,6 +90,8 @@ No author identity is stored. The history fields hold one boolean about authorsh
 
 `labels/case-sets.tsv`: repository, language, rank in the list, verdict, note. A case-set verdict is `yes` (a maintainer would plausibly tie the places together with a table, a type, or an exhaustive match, or at least wants to know they are parallel), `plausible`, or `no`. `labels/new-duplicate-*.tsv` have a header row. `g`, `s`, `p`, and `tok` in the second are the kind of hit (`run`, `join`, `expr`), its score, its parameters, and its tokens, as an instrumented build printed them, and `key_suffix` is `was` on two rows that label a finding as an earlier build worded it.
 
+`labels/jsx-groups.tsv`: repository, rank in the list, verdict, note. A JSX-group verdict is `yes` (a maintainer would plausibly make the block one component, or render it from one list), `plausible` (a real repeat whose extraction is a judgment call: a loading skeleton, a layout a component library dictates, a pair that differs in most of its values), or `no`.
+
 ## How the numbers were produced
 
 The mining pipeline, in `scripts/`:
@@ -95,6 +109,7 @@ What DESIGN.md quotes, and where it comes from:
 - "153 commits in 20 public repositories" and "393 pairs nobody merged" are the line counts of `events.jsonl` and `controls.jsonl`. The size, similarity, and later-site figures (a median site under 25 tokens in 102, a later site written by a newer commit in 68) are in `analysis.txt`
 - The duplicate group table (32 real, 16 plausible, 12 false of 60) is a count of `labels/duplicate-groups.tsv`, and the first split table (34 yes, 22 arguable, 4 no) of `labels/split-candidates.tsv`. The lists that were read came from `slop-strata snapshot --experimental --json`, built from what became commit 012ad6e, on the twelve repositories at the commits above
 - The case-set tables (23 yes, 10 plausible, 1 no of 34, and 23, 6, 1 of 30) are a count of `labels/case-sets.tsv`: the first 34 rows are every family `slop-strata snapshot --experimental --json` lists on the twelve repositories, and the last 30 every family on the other ten (click, date-fns, echo, gin, gorm, requests, starlette, swr, werkzeug, zustand), all at the commits above. No repository lists more than 16, so the 20 a snapshot prints are all there are. Two guards of the list were chosen after a first build's families on the twelve and on a private repository had been read: a literal written as an argument of a call is not a table, and neither is a TypeScript object of methods. The ten were first run after both, so their 30 rows are the ones no guard was fitted to. The labels from the private repository are not here, and DESIGN.md gives their counts
+- The JSX-group table (37 yes, 14 plausible, 0 no of 51) is a count of `labels/jsx-groups.tsv`: all 11 groups `slop-strata snapshot --experimental --json` lists on umami, and ranks 1 to 5 and 13, 14, 17, 19, and 20 of the 20 it lists on documenso, dub, formbricks, and plane, at the commits above. The five ranks past the fifth were drawn once from 6 to 20 with a fixed seed and used for all four. excalidraw has no row: a first build listed 6 groups there, all icons, the guard for drawings was fitted to them, and the shipped build lists none. A second guard, one group for the blocks the same units share, was fitted after dub's list had been read. formbricks and plane were first run after both, so their 20 rows are the ones no guard was fitted to. The labels from the private repository are not here, and DESIGN.md gives their counts
 - "A group holds two of the sites the commit merged in 28 of 153" is `scripts/replay_groups.py WORK BIN run --experimental` and then `eval`. It snapshots each event's `parent` and asks whether one group overlaps two of the event's sites. `BIN` was that build with `duplicateLimit` and `splitLimit` in `cmd/slop-strata/refactor.go` set to 1000000, so the JSON carries every rank and not the first 20
 - "19 commits whose subject says extract, split, or factor out" is `scripts/extract_commits.py WORK BIN find` and then `check`, with the same binary. `find` lists 36 candidates by subject and diff shape, and a person kept the 19 whose diff moves a block of one function into a new one. Which 19 was not written to a file
 - The second split table (42 yes, 13 arguable, 5 no of 60, and 23, 13, 4 of the 40 marked `fresh`) is a count of `labels/split-candidates-v2.tsv`. The lists came from `slop-strata snapshot --experimental --json` built from the tree that file was added in. The 30 private candidates (10 yes, 10 arguable, 10 no) are from a private 20k-file Python/TypeScript monorepo, its top ten and twenty drawn from the rest with a fixed seed, ten Python and ten TypeScript. Their labels are not here because they name its code
@@ -111,3 +126,4 @@ What DESIGN.md quotes, and where it comes from:
 - The guards `duplicate_groups` added (stand-alone directories, tables of values) were chosen on the twelve repositories the group labels come from, so those labels overstate what the list does elsewhere
 - The split rules were chosen on the twelve repositories the first split labels come from, and the second list was read by the person who chose them, who knew which rule had kept each candidate. The 70% there overstates the list. The 40 `fresh` rows and the 30 private candidates are the ones no rule was fitted to
 - The case-set labels use a wider `yes` than the group labels use `real`: a set of places that are parallel and that nothing ties together counts when a maintainer would want to know of it, whether or not a merge is the answer. Sixteen of the 30 fresh rows are one repository, date-fns, and fourteen of those are one design, a formatter and a parser that each switch over the tokens of one unit
+- The JSX-group labels are one reader's on five applications, each read from the first and the last site of a group. They cover the top of each list and a draw from the rest of its first 20, and nothing past rank 20, where DESIGN.md's private sample says more are judgment calls. Nothing was mined for them, so they say nothing of what the list misses

@@ -1125,7 +1125,7 @@ func printFindings(w io.Writer, findings []findingRow, all bool) {
 	report.Fprintln(w)
 	report.Table(w, []string{"id", colRule, "at", ""}, rows)
 	for _, f := range findings {
-		if f.New && (f.Rule == rules.RuleNewDuplicate || f.Rule == rules.RuleNewCaseSet) {
+		if f.New && notedRule(f.Rule) {
 			report.Fprintf(w, "%s %s\n", f.ID, f.Note)
 		}
 	}
@@ -1224,6 +1224,7 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 		addCrossFindings(rules.NewImportCycles(basePrints, rev, s.cfg.Experimental), rev, sup, res)
 		addCrossFindings(rules.NewDuplicates(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		addCrossFindings(rules.NewCaseSets(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
+		addCrossFindings(rules.NewJSXShapes(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		res.Surface = rules.WidenedSurfaces(basePrints, rev, lineage.DirOf)
 	}
 	if res.Surface == nil {

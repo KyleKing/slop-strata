@@ -174,6 +174,7 @@ func TestSnapshotRuleNamesTheRulesASnapshotRuns(t *testing.T) {
 		{rule: "x/last-ref", experimental: true, want: false},
 		{rule: rules.RuleNewDuplicate, experimental: true, want: false},
 		{rule: rules.RuleNewCaseSet, experimental: true, want: false},
+		{rule: rules.RuleNewJSXShape, experimental: true, want: false},
 		{rule: "sg/pack-rule", experimental: true, want: false},
 	}
 	for _, tc := range cases {
