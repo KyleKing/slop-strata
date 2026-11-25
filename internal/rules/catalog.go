@@ -16,7 +16,6 @@ const (
 	ruleXCloneFunction  = "x/clone-function"
 	ruleXCouldBePrivate = "x/could-be-private"
 	ruleXDeadExport     = "x/dead-export"
-	ruleXDupLiteral     = "x/dup-literal"
 	ruleXDupTestCase    = "x/dup-test-case"
 	ruleXLastRef        = "x/last-ref"
 	ruleXSpentTest      = "x/spent-test"
@@ -28,7 +27,7 @@ var crossRules = []RuleInfo{ //nolint:gochecknoglobals // a fixed vocabulary
 	{ID: ruleXCloneFunction, Experimental: true},
 	{ID: ruleXCouldBePrivate, Experimental: true},
 	{ID: ruleXDeadExport, Experimental: true},
-	{ID: ruleXDupLiteral, Experimental: true},
+	{ID: RuleDupLiteral, Experimental: true},
 	{ID: ruleXDupTestCase, Experimental: true},
 	{ID: ruleXImportCycle, Experimental: true},
 	{ID: ruleXLastRef},
@@ -67,7 +66,7 @@ func Catalog() []RuleInfo {
 // ast-grep packs, are not among them.
 func SnapshotRule(id string, experimental bool) bool {
 	switch id {
-	case ruleXLastRef, RuleNewDuplicate, RuleNewCaseSet, RuleNewJSXShape, RuleNewSibling:
+	case ruleXLastRef, RuleDupLiteral, RuleNewDuplicate, RuleNewCaseSet, RuleNewJSXShape, RuleNewSibling:
 		return false
 	}
 	for _, r := range Catalog() {

@@ -43,6 +43,7 @@ const (
 	colSite    = "site"
 	colSites   = "sites"
 	colRank    = "rank"
+	colFiles   = "files"
 	colAdded   = "added"
 	colMass    = "mass"
 	colHotspot = "hotspot"

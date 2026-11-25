@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 11
+const Version = 12
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -266,8 +266,8 @@ var Docs = map[string]string{
 		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, " +
 		"new-case-set, new-jsx-shape, new-sibling, and snapshot stale-prose rules " +
 		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
-		"split_candidates, duplicate_groups, case_sets, jsx_groups and sibling_sets lists, which are " +
-		"gated for the same reason. " +
+		"split_candidates, duplicate_groups, case_sets, jsx_groups, sibling_sets and literal_groups lists, " +
+		"which are gated for the same reason. " +
 		"Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
@@ -607,7 +607,11 @@ var Docs = map[string]string{
 		"it times one less than the number of those sites, which the sets are listed by: the tokens " +
 		"one shared copy of each member would take out of the tree. Nothing is charged for what the " +
 		"shared copy would have to take as a parameter, so read differing beside it. A set ranks high " +
-		"when long members line up across many sites.",
+		"when long members line up across many sites. Per group in result.literal_groups: files x " +
+		"uses / written, or files alone when a constant names the value, rounded to two decimals, " +
+		"which the groups are listed by: the files that have to agree on the spelling, weighed by the " +
+		"share of the places where a slip changes what the program does. Where a constant names the " +
+		"value every place counts, since each could read the constant.",
 	"weight": "Per family in result.case_sets: the sum, over the family's cases, of the natural logarithm " +
 		"of one more than the tree's places per place that names the case, rounded to two decimals. " +
 		"A case few places name weighs much, and one that half the tree's switches name weighs little, " +
@@ -755,6 +759,68 @@ var Docs = map[string]string{
 		"id. When a hit is right, extend what is there: a shared base class, a generic, or a table " +
 		"of what differs. When the copies should stay apart, say why in a slop-strata:ignore comment " +
 		"on the finding's line or the line above.",
+	"literal_groups": "result.literal_groups on snapshot with --experimental: strings the tree writes out " +
+		"in 3 files and 4 places or more where one name would do, with total and the 20 groups that rank " +
+		"highest. A string is the content of a string literal of 8 to 200 bytes on one line, whatever " +
+		"quotes it is written in, with no value written into it and no % in it. A place is one such " +
+		"literal in the code. No place: a module path, the key of a mapping, a docstring or a directive, " +
+		"a part of a string written in pieces, a Go struct tag, an attribute of JSX markup, and the " +
+		"operand of a typeof test. A place is a use when the code branches or looks something up on the " +
+		"string: an operand of ==, !=, in, or not in, a member of the list such a test reads or that " +
+		"includes is called on, a case of a switch or a match, the key of a subscript, or the first " +
+		"argument of a call to get, has, set, pop, setdefault, delete, getItem, setItem, removeItem, " +
+		"getenv, Getenv, LookupEnv, Lookup, getAttribute, setAttribute, or hasAttribute. A constant " +
+		"names the string when the string is the whole value of a Go const or var of one name at file " +
+		"scope, a Python assignment to one name at module or class level, a TypeScript const at file " +
+		"scope, or a TypeScript enum member; that declaration is one of the places. A string is listed " +
+		"in two cases. A constant names it and 2 places or more write it out all the same. Or 2 places " +
+		"or more are uses and at least one place is not, so the program both produces the value and " +
+		"tests it. Left out in both cases: a string some file writes as a type (a TypeScript literal " +
+		"type, a member of an array or object under as const, an argument of a schema's enum or " +
+		"literal call, a Python annotation, a member of a Python Literal), since the type checker " +
+		"holds its spelling; a string that is also an identifier somewhere in the tree, which is the " +
+		"name of a field, a key, or a member and not a value; a Python dunder name; and a string whose " +
+		"every file has one base name (a route.ts per directory), which are kept parallel on purpose. " +
+		"Per group: value, constant (name, path, line, when one names it), files, written, uses, rank, " +
+		"and sites. Per site, one per file in path order and at most 8 of them: path, line (the first " +
+		"place in the file), written, and uses. Left out: test files and test directories, the " +
+		"stand-alone directories and story files x/new-duplicate leaves out, the directories case_sets " +
+		"leaves out (scripts, migrations, seeds), and a tool's configuration file (*.config.*). Not " +
+		"seen: a string under 8 bytes, a string built from parts, a value compared through a helper, a " +
+		"number, and what a type outside the tree checks, such as a status a vendor's SDK declares. " +
+		"Gated because one person read the groups and the filters were chosen on 15 of the 28 public " +
+		"repositories read: of 50 groups read on the 13 no filter was fitted to, 17 were a value a " +
+		"maintainer would name or already had, 22 a judgment call (a header, a key a protocol " +
+		"defines), and 11 not. Where a constant names the value it was 12, 3, and 5 of 20. No target. " +
+		"A group says the spelling is kept in step by hand in that many files.",
+	"written": "Per group in result.literal_groups: the places that write the string out, over every " +
+		"file the pass reads, the declarations of constants that name it among them. Per site: the " +
+		"places in that file. See literal_groups for what a place is.",
+	"uses": "Per group in result.literal_groups: the places, among written, where the code branches or " +
+		"looks something up on the string: a comparison, a membership test, a switch case, a subscript " +
+		"key, or the key of a lookup call. A slip in the spelling there is not an error anywhere: the " +
+		"branch is just never taken. Per site: the uses in that file.",
+	"dup_literal": "x/dup-literal, on change with --experimental: a string the change wrote out in a new " +
+		"place that the tree already writes out in other files. It is the pass behind " +
+		"result.literal_groups (see literal_groups) over the tree at the end of the change: a group is " +
+		"reported when the change added one of its places and at least one other was there before. A " +
+		"place is new when the change added its line, the file writes the string more often than it " +
+		"did, and so do the changed files taken together, so a place that moved to another file or " +
+		"was edited on its line is not. The declaration of the constant that names the string is never " +
+		"the new place: adding it is the fix. The fingerprint keeps the lines of the first 4 places of " +
+		"a string per file, so a fifth place added to one file is counted and not located, and is not " +
+		"reported. The finding sits on the new place, its match is the value, clipped to 60 bytes, and " +
+		"its note gives the places and files that write it, up to three of the files, and either the " +
+		"constant that names it, with where it is declared, or how many places test it. A string the " +
+		"change writes in several new places is reported once, on the first. --brief prints the note " +
+		"as the reason of the next line. Not reported: a group whose every place the change added, and " +
+		"whatever literal_groups leaves out. Before schema 12 this rule reported on snapshot, once per " +
+		"file per string with no filter, which ran to megabytes on a large tree; a baseline " +
+		"entry from then matches nothing, is not counted in stale_baseline, which counts the rules a " +
+		"snapshot runs, and goes when the baseline is rewritten. Only change reports it, so " +
+		"label cannot find its id. When a hit is right, read the constant, or declare one and read it " +
+		"at each place. When the place should spell the value out, say why in a slop-strata:ignore " +
+		"comment on the finding's line.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +

@@ -3,7 +3,6 @@ package rules
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,9 +26,6 @@ func CrossFile(
 	blobs []BlobPrint, treePaths, entryPoints, configPaths []string, experimental bool,
 ) map[string][]Finding {
 	out := map[string][]Finding{}
-	if crossEnabled(ruleXDupLiteral, experimental) {
-		dupLiterals(blobs, out)
-	}
 	exports := crossEnabled(ruleXDeadExport, experimental) || crossEnabled(ruleXCouldBePrivate, experimental)
 	cycles := crossEnabled(ruleXImportCycle, experimental)
 	var imports *Imports
@@ -323,47 +319,6 @@ func normKey(name string) string {
 	name = strings.ReplaceAll(name, "-", "")
 
 	return name
-}
-
-// dupLiterals flags a literal carried by minDupFiles or more files and
-// appearing minDupOccurrences or more times across the tree. Literals are
-// joined on their content, so the quote a file writes one with is not part
-// of it, and each file reports the literal as it spells it.
-func dupLiterals(blobs []BlobPrint, out map[string][]Finding) {
-	owners := map[string]map[string]string{} // content -> path -> the literal as that file first writes it
-	occurrences := map[string]int{}
-	for _, b := range blobs {
-		for _, lit := range slices.Sorted(maps.Keys(b.Print.Literals)) {
-			content := unquote(lit)
-			if owners[content] == nil {
-				owners[content] = map[string]string{}
-			}
-			if _, seen := owners[content][b.Path]; !seen {
-				owners[content][b.Path] = lit
-			}
-			occurrences[content] += b.Print.Literals[lit].Count
-		}
-	}
-	prints := make(map[string]*Fingerprint, len(blobs))
-	for _, b := range blobs {
-		prints[b.Path] = b.Print
-	}
-	for content, files := range owners {
-		if len(files) < minDupFiles || occurrences[content] < minDupOccurrences {
-			continue
-		}
-		for path, lit := range files {
-			short := lit
-			if len(short) > 60 { //nolint:mnd // a display cap, not a rule
-				short = short[:60] + "…"
-			}
-			out[path] = append(out[path], Finding{
-				Rule: ruleXDupLiteral, Line: prints[path].Literals[lit].Line,
-				Match: short,
-				Note:  fmt.Sprintf("shared by %d files", len(files)),
-			})
-		}
-	}
 }
 
 // deadExports flags an exported name no other file references, split by

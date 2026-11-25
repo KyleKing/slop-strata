@@ -185,6 +185,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `case_sets` lists, on `snapshot --experimental`, the sets of cases the tree enumerates in more than one place, as a `switch`, an `if` chain, or a table, ranked by `rank`, the sites times how rare the cases are. `--explain case_sets`, `--explain rank`, `--explain weight`
 - `jsx_groups` lists, on `snapshot --experimental`, the blocks of JSX markup the tree holds more than once under other text and attribute values, ranked by `rank`, the elements a shared component would take out less the values it would take as props. `--explain jsx_groups`, `--explain elements`, `--explain holes`, `--explain blocks`
 - `sibling_sets` lists, on `snapshot --experimental`, the classes, Go types, and modules written in parallel, with members of the same names whose statements mostly line up, ranked by `rank`, the tokens one shared copy of each member would take out. `--explain sibling_sets`, `--explain rank`
+- `literal_groups` lists, on `snapshot --experimental`, the strings the tree writes out in three files or more where one name would do: a value a constant already names that other places spell out all the same, or a value the code both produces and tests. Ranked by `rank`, the files times the share of places where a slip in the spelling would change what the program does. `--explain literal_groups`, `--explain written`, `--explain uses`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
 - `shown` and `hidden` count, per directory on `snapshot`, the declared names that a file of another directory uses and the ones none does. Use decides it and never a visibility keyword, so adding `export` or renaming to a capital changes nothing. `depth` is the hidden share by mass: near 1 the directory hides most of what it holds, near 0 its callers see nearly all of it, and `-` means nothing outside uses it. `widest_surface` names the file with the most shown names. The JSON adds `shown_mass`, `hidden_mass`, and `forwarders`, the pass-through functions left out of both. `--explain shown`, `--explain hidden`, `--explain shown_mass`, `--explain hidden_mass`, `--explain forwarders`, `--explain depth`, `--explain widest_surface`
@@ -245,7 +246,7 @@ tree.go:428  node.findRoute    7.5   2      3: ntParam, ntRegexp,…
 tree.go:606  node.findPattern
 ```
 
-That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates`, `result.duplicate_groups`, and `result.case_sets`. A tree with JSX in it gets a fourth list, `result.jsx_groups`, and one with classes or modules written in parallel a fifth, `result.sibling_sets`, both shown below.
+That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates`, `result.duplicate_groups`, and `result.case_sets`. A tree with JSX in it gets a fourth list, `result.jsx_groups`, one with classes or modules written in parallel a fifth, `result.sibling_sets`, and one that repeats strings a sixth, `result.literal_groups`, all shown below.
 
 **Split candidates** are behind `--experimental`. For every function whose cognitive complexity is 15 or more, the tool tries each run of statements at one nesting level (a whole loop or branch, a loop body, a branch arm, or up to 4 statements of one) and asks what the function would score without it and what the run would score as a function of its own, where the nesting it sat under no longer counts. `36 → 7 + 19` reads: 36 now, 7 left behind, 19 in the new function, and both must be 5 or more. Functions are ranked by `drop`, the complexity now less the larger of those two. A run is listed only when few variables cross its ends: `in` (at most 4) counts the variables declared outside the run that it reads before it gives them a value, and `out` (at most 1) the ones it gives a value that is read afterwards, by a later line, by the next pass of a loop around it, or by the function around a closure. `exits` counts the `return`, `break`, and `continue` statements that leave the run, and a run is listed only when each could be a `return` of the new function with nothing for the caller to check: the run ends the function or always returns, each return hands back an error in Go, or its continues end a loop's body. A run that a `break` leaves, or that holds a `defer` or a `yield`, is never listed. Neither is a run that is some of a list of like sections: one of several neighbouring branches whose conditions have the same shape, such as `if v.Fg != nil { … }` beside `if v.Bg != nil { … }`, a stretch that stops between two of them, or the inside of one. All of them together can be listed. A run is not cut off from a declaration only it reads: when the line ahead of it declares a variable that nothing else names, the run that starts with that line is the candidate. Tests, examples, and benchmarks are left out.
 
@@ -295,6 +296,28 @@ That is the top of the list for plane at `723bb17`: seven issue filter stores th
 It overlaps the duplicate groups on purpose. A group there is one stretch of statements wherever it sits, and a set here is whole containers, so a copied class is one row here and often several groups there. Of the 34 sets read, 26 had a duplicate group at two of their sites, and 10 of those had one among the 20 groups a snapshot lists: what this list adds is mostly the grouping and the rank, and the members made of statements too common for the other pass.
 
 One person read the top five sets of each of the twelve repositories that list any. `yes` is a set a maintainer would plausibly give a shared base, a generic, or a table. On the eight libraries, which the last guard was fitted on, 9 of 15 were yes, 3 a judgment call, and 3 wrong. On four applications read only after the rules were fixed (documenso, umami, formbricks, plane), 14 of 19 were yes and 5 a judgment call. The wrong ones are two flavours of one API and a file per locale. Classes that implement one interface per vendor or per message look the same as a copy and would be listed too. Sets are few: fourteen of the 22 libraries and two of the six applications list none. [DESIGN.md](DESIGN.md) has the tables.
+
+**Literal groups** are gated behind `--experimental` and are the sixth list. A group is a string the tree writes out in three files and four places or more where one name would do.
+
+```text
+literal groups, 5 of 5 (rank: files × share of places that test or key on the value)
+site                           value                     rank  files  written  uses  constant
+callbacks/callbacks.go:9       "ON CONFLICT"             2.4   4      5        3
+callbacks/create.go:82
+clause/on_conflict.go:14
+… and 1 more
+callbacks/associations.go:418  "gorm:update_track_time"  2.2   3      4        3
+callbacks/create.go:260
+finisher_api.go:99
+```
+
+That is the top of the list for gorm at `ead4e04`: a clause name that the clause's own `Name` method returns and three callers index the clause map by, and a settings key two files set and a third reads. `written` counts the places that write the string out. `uses` counts the ones among them where the code branches or looks something up on it: an equality or membership test, a `switch` case, a subscript key, or the key handed to a lookup call such as `get`. A slip in the spelling there raises nothing, and the branch is just never taken. A string is listed in two cases. A constant at file scope already names it, shown in the `constant` column, and two places or more write it out all the same. Or two places or more are uses and at least one is not, so the program both produces the value and tests it. `rank` is the files times the share of places that are uses, and the files alone where a constant names the value, since every place could read it.
+
+Most strings a tree repeats are neither, and they are left out: a string some file also writes as a type (a literal type, a member of an `as const` list, of a schema's `enum`, or of a Python `Literal`), which the type checker holds together; one that is also an identifier in the tree, which is the name of a field or a key; module paths, mapping keys, docstrings, struct tags, JSX attributes such as a class list, format strings, and strings with a value written into them; anything under 8 bytes; and tests, examples, stories, scripts, migrations, seed data, and configuration files. `--explain literal_groups` has the bounds.
+
+The list replaces what `x/dup-literal` reported on a snapshot before schema 12: one finding per file for every string of 8 bytes that three files held, with no filter. On the 28 public repositories of the evaluation data that was 98,386 findings and 19 MB of their 53 MB of JSON, 39,367 findings and 7.7 MB on formbricks alone. They now list 162 groups, 124 of them inside the 20 a snapshot prints, in 0.15 MB, and eleven list none.
+
+One person read 81 of the groups on 17 repositories, the top five of each and a draw from the rest. On the 15 repositories the filters were chosen on, 14 of 31 were a value a maintainer would name or read the constant of, 10 a judgment call, and 7 not. On the 13 no filter was fitted to, which is the cleaner measure, it was 17 of 50, 22, and 11: 34% by the strict reading and 78% with the judgment calls, under the bar of 80%. Where a constant names the value it was 12 of 20 there, and 5 of 30 where none does. The judgment calls are header names and the keys a protocol defines (WSGI environ keys, ASGI message types): real, load-bearing, and by convention spelled out. The wrong ones are values a type outside the tree checks (a status a vendor's SDK declares, a key of a typed table), names of the platform (`production`, `AbortError`), a constant that holds the same text by chance, and 405 places in test files the path rules do not recognise. [DESIGN.md](DESIGN.md) has the table.
 
 ## Guardrails
 
@@ -372,6 +395,20 @@ id          rule           at
 
 It is the [sibling sets](#where-to-rework) pass over the tree at the end of the change, and it reports a set once, when the change added one of its sites and another was already there. The moment matters because siblings are rarely unified afterwards. It is also a rare finding: one in 6,430 recent commits of the 28 repositories the lists were read on. A class is new when the change added the line that declares it, and a module when the change added its file. One that moved or was renamed is not new, methods added to a class that was there report nothing, and a set whose every site the change added is not reported. `x/new-duplicate` does not know of this rule and usually reports stretches of the same class beside it. `--brief` prints the note as the reason of its `next:` line. `--explain new_sibling` has the rest, and a `slop-strata:ignore x/new-sibling` comment with the reason, on the line above the class, says the copies should stay apart.
 
+### A literal a change writes out again
+
+`x/dup-literal` is gated too, and only `change` reports it. It names a string the change wrote out in a new place that the tree already writes out in other files, and says where:
+
+```text
+id          rule           at
+d7194dc529  x/dup-literal  api/put.go:4
+d7194dc529 written out in 4 places of 4 files, 2 of them a test, a case, or a key: api/accept.go:4, api/check.go:4, api/post.go:4. A slip in one spelling goes unseen. Name it once and read the name at each place, or say why they stay apart
+```
+
+It is the [literal groups](#where-to-rework) pass over the tree at the end of the change, and it reports a group when the change added one of its places and another was already there. When a constant names the value the note says so in place of the count of tests: `vendorType at api/names.go:3 already names it. Read the constant here, or say why this place spells the value out`. A place the change moved to another file or edited on its line is not new, the declaration of the constant is never the new place, since adding it is the fix, and a group whose every place the change added is not reported. Over the last 200 commits of nine of the public repositories it gave 78 findings in 44 of 1,798 commits, 30 of them for a value a constant already named. `--brief` prints the note as the reason of its `next:` line. `--explain dup_literal` has the rest, and a `slop-strata:ignore x/dup-literal` comment with the reason, on the finding's line, says a place should spell the value out.
+
+Before schema 12 this rule reported on `snapshot`, per file. A baseline entry written then matches nothing now. It is not counted in `counts.stale_baseline`, which counts only the rules a snapshot runs, and it stays in the file until the baseline is rewritten.
+
 ## Setting findings aside
 
 Every finding has an `id`, ten hex characters hashed from its rule, path, enclosing function, and matched text. The id survives line moves, so a finding keeps its id when the code above it changes. An `x/import-cycle` finding is the exception: its id comes from the rule and the sorted files of the cycle, so it holds however the imports are written and changes when a file joins or leaves. `snapshot --json` and `change --json` print it, and `snapshot --all` and `change` print it in text.
@@ -419,7 +456,7 @@ The labels are evidence about this repository. A rule's precision here says noth
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 11
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 12
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 

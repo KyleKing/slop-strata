@@ -1,0 +1,81 @@
+httpx	fit	top	1	plausible	"Content-Length": a header three files look up or set, in a library that names no header
+query	fit	top	1	no	"vue-query": a devtools plugin id and the state key of two Nuxt integration apps, alike by chance
+trpc	fit	top	1	plausible	"content-type": twelve header reads in five files of the server and the client
+trpc	fit	top	2	no	"README.md": a file name four site build scripts skip or join
+trpc	fit	top	3	no	"index.html": a file name five site build scripts test for
+vite	fit	top	1	plausible	"/index.html": the fallback path the server sets in one middleware and tests in three
+vite	fit	top	2	no	"node_modules": a directory name every tool spells out
+zod	fit	top	1	plausible	"$ZodTransform": a trait name declared once and looked up by string in three files
+zod	fit	top	2	plausible	"$ZodCheck": the same for another trait
+documenso	fit	top	1	no	"Documenso": the product name, which a constant for the 2FA issuer happens to hold
+documenso	fit	top	2	yes	"internal.seal-document": a job id its definition names and nine callers write out
+documenso	fit	top	3	yes	"MMM yyyy": one date format in seven files of one directory, named in the first
+documenso	fit	top	4	yes	"internal.execute-webhook": a job id named in its definition and written out by three triggers
+documenso	fit	top	5	yes	"internal.sync-organisation-seats": the same for another job
+dub	fit	top	1	no	"trialing": a Stripe subscription status, which the SDK's types check
+dub	fit	top	2	plausible	"Content-Type": a header set through an index or a call in six files
+dub	fit	top	3	plausible	"localhost": four hostname checks that want one helper more than one constant
+dub	fit	top	4	yes	"https://app.dub.co": the app host, exported as DUB_HOST and written out in three other files
+dub	fit	top	5	yes	".dub.link": a domain suffix one file names and three others test with endsWith
+umami	fit	top	1	no	"production": six tests of NODE_ENV
+umami	fit	top	2	yes	"yyyy-MM-dd'T'HH:mm:ss": the bucket format the date library names and three charts write out
+documenso	fit	draw	9	yes	"Invalid email address": the default message of the email validator, passed to it again by three forms
+documenso	fit	draw	10	yes	"send.document.cancelled.emails": a job id named in its definition and written out by three callers
+documenso	fit	draw	11	yes	"send.organisation-member-left.email": the same for another job
+documenso	fit	draw	15	plausible	"If-None-Match": a header five routes read
+documenso	fit	draw	17	yes	"embed-paywall": a message type two embed routes post and the layout lists and tests
+documenso	fit	draw	18	yes	"embed-authentication-required": the same for another message type
+dub	fit	draw	6	yes	"https://api.dub.co": the API host, exported as DUB_API_HOST and written out in three other files
+dub	fit	draw	8	yes	"https://dub.co/docs/quickstart/server": a docs link one file names and two others repeat
+dub	fit	draw	10	plausible	"/register": a route the middleware tests and two pages navigate to
+dub	fit	draw	12	plausible	"cal.link": a default domain three files special-case
+date-fns	fresh	top	1	no	"America/New_York": 405 places, every one in a test.ts beside its subject, which the path rules do not read as a test
+date-fns	fresh	top	2	no	"America/Los_Angeles": the same
+gin	fresh	top	1	plausible	"Content-Type": a header three files index or request
+gorm	fresh	top	1	yes	"ON CONFLICT": a clause name its Name method returns and three callers index the clause map by
+gorm	fresh	top	2	yes	"gorm:update_track_time": a settings key set in two files and read in a third
+gorm	fresh	top	3	yes	"ORDER BY": a clause name, as ON CONFLICT
+gorm	fresh	top	4	yes	"RETURNING": a clause name, as ON CONFLICT
+gorm	fresh	top	5	yes	"GROUP BY": a clause name, as ON CONFLICT
+requests	fresh	top	1	plausible	"Content-Length": a header three files set, test, and purge
+starlette	fresh	top	1	plausible	"http.response.start": an ASGI message type eleven files send or test, which the spec defines and no type here checks
+starlette	fresh	top	2	plausible	"content-type": a header four files look up
+starlette	fresh	top	3	plausible	"content-length": a header three files look up
+starlette	fresh	top	4	plausible	"http.response.pathsend": an ASGI message type and extension name in three files
+starlette	fresh	top	5	plausible	"websocket.disconnect": an ASGI message type in three files
+werkzeug	fresh	top	1	plausible	"SCRIPT_NAME": a WSGI environ key six files read
+werkzeug	fresh	top	2	plausible	"REQUEST_METHOD": a WSGI environ key six files read
+werkzeug	fresh	top	3	plausible	"Content-Length": a header seven files read or set
+werkzeug	fresh	top	4	plausible	"Content-Type": a header written 22 times in six files
+werkzeug	fresh	top	5	plausible	"wsgi.input": a WSGI environ key four files read
+excalidraw	fresh	top	1	yes	"pointermove": an event name the EVENT enum holds and six files pass to addEventListener as a string
+excalidraw	fresh	top	2	yes	"pointercancel": the same
+excalidraw	fresh	top	3	no	"Lilita One": a key of the FONT_FAMILY table, which the compiler checks at each lookup
+excalidraw	fresh	top	4	yes	"pointerdown": as pointermove
+excalidraw	fresh	top	5	no	"Comic Shanns": as Lilita One
+formbricks	fresh	top	1	plausible	"application/json": a media type in 53 files, named once in a package the others do not read
+formbricks	fresh	top	2	yes	"private, no-store": a cache policy one route file names READ_CACHE and 25 others write out 69 times
+formbricks	fresh	top	3	yes	"You are not authorized to access this resource": one message, named in one file and written out in 17
+formbricks	fresh	top	4	yes	"Malformed JSON input, please check your request body": the default message of the body parser, repeated by 15 routes
+formbricks	fresh	top	5	yes	"#recall:": a marker the types package names RECALL_PREFIX and 14 files test for as a string
+plane	fresh	top	1	plausible	"assignees__id": a Django lookup path named in one task and written in 20 files
+plane	fresh	top	2	plausible	"labels__id": the same
+plane	fresh	top	3	no	"currentColor": a CSS keyword, the default fill of icons and charts in 15 files
+plane	fresh	top	4	no	"application/json": the constant is the media_type attribute of an authentication class
+plane	fresh	top	5	no	"escape-key": a close reason of a component library, which its types check
+formbricks	fresh	draw	11	yes	"filter[status][in]": a query parameter the parser names and four clients append as a string
+formbricks	fresh	draw	29	yes	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": exported as EXCEL_EXPORT_CONTENT_TYPE and written out in three files
+formbricks	fresh	draw	34	no	"TimeoutError": the name of a DOMException
+formbricks	fresh	draw	39	no	"token_expired": a Slack error and a survey link issue, alike by chance
+plane	fresh	draw	9	yes	"data-logo-in-use": an attribute the editor's enum names and three readers and a validator write out
+plane	fresh	draw	10	yes	"last_30_days": a filter value the constants package names and a filter, a store, and the API write out
+plane	fresh	draw	13	no	"integrations": the constant is the db_table of a model's Meta class
+plane	fresh	draw	16	yes	"issue-embed-component": a tag name two enums hold and a hook and an extension write out
+plane	fresh	draw	28	plausible	"GITEA_OAUTH_PROVIDER_ERROR": a key of the error-code table, indexed by string in three files
+plane	fresh	draw	31	plausible	"/api/users/me/": an endpoint three clients call and the server names again to drop its cache
+plane	fresh	draw	32	no	"AbortError": the name of a DOMException
+starlette	fresh	draw	6	plausible	"http.response.early_hint": an ASGI message type in three files
+werkzeug	fresh	draw	6	plausible	"wsgi.url_scheme": a WSGI environ key four files read
+werkzeug	fresh	draw	9	plausible	"wsgi.errors": a WSGI environ key three files read
+werkzeug	fresh	draw	11	plausible	"Location": a header three files read
+werkzeug	fresh	draw	14	plausible	"Content-Encoding": a header four files set, drop, or list

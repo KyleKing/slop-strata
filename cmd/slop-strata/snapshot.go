@@ -30,6 +30,7 @@ type snapshotResult struct {
 	CaseSets   *caseSetList               `json:"case_sets,omitempty"`
 	JSXGroups  *jsxGroupList              `json:"jsx_groups,omitempty"`
 	Siblings   *siblingSetList            `json:"sibling_sets,omitempty"`
+	Literals   *literalGroupList          `json:"literal_groups,omitempty"`
 	Splits     *splitList                 `json:"split_candidates,omitempty"`
 	Rev        string                     `json:"rev"`
 	Dirs       []dirSnapshot              `json:"dirs"`
@@ -132,6 +133,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 		res.CaseSets = caseSets(reports)
 		res.JSXGroups = jsxGroups(reports)
 		res.Siblings = siblingSets(reports)
+		res.Literals = literalGroups(reports)
 	}
 	counts := countRows(res.Skipped, res.Errors)
 	counts.Suppressed = suppressedCounts(sup)
@@ -482,6 +484,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	printCaseSets(w, res.CaseSets, all)
 	printJSXGroups(w, res.JSXGroups, all)
 	printSiblingSets(w, res.Siblings, all)
+	printLiteralGroups(w, res.Literals, all)
 	if len(res.TestDirs) > 0 {
 		report.Fprintf(w, "\ntests, not ranked with the above\n")
 		printDirTable(w, res.TestDirs)
@@ -516,7 +519,7 @@ func printDirTable(w io.Writer, dirs []dirSnapshot) {
 		})
 	}
 	header := []string{
-		colDir, "files", colErosion, colMass, "table_mass", "over_50", "rule_hits", "fan_in", "fan_out", colHotspot,
+		colDir, colFiles, colErosion, colMass, "table_mass", "over_50", "rule_hits", "fan_in", "fan_out", colHotspot,
 	}
 	report.Table(w, header, rows)
 }

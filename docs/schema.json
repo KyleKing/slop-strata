@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 11. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 12. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 11}
+    "schema": {"const": 12}
   },
   "allOf": [
     {
@@ -544,6 +544,57 @@
                   "tokens": {"type": "integer", "minimum": 60, "description": "The tokens of those statements, counted once."},
                   "differing": {"type": "integer", "minimum": 0, "description": "The statements of the shared members that do not line up, summed over the sites."},
                   "rank": {"type": "integer", "minimum": 60, "description": "Summed over the shared members: the tokens that line up x (the sites holding the member - 1)."}
+                }
+              }
+            }
+          }
+        },
+        "literal_groups": {
+          "type": "object",
+          "description": "With --experimental only: strings the tree writes out in several files where one name would do; see the literal_groups doc.",
+          "required": ["groups", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "total": {"type": "integer", "minimum": 0, "description": "Every group, listed or not."},
+            "groups": {
+              "description": "The 20 groups that rank highest, largest rank first.",
+              "type": "array", "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": ["value", "sites", "files", "written", "uses", "rank"],
+                "additionalProperties": false,
+                "properties": {
+                  "value": {"type": "string", "minLength": 8, "maxLength": 200, "description": "The string's content, without its quotes."},
+                  "constant": {
+                    "type": "object",
+                    "description": "The constant at file scope whose whole value is the string, the first in path order. Absent when no file declares one.",
+                    "required": ["name", "path", "line"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {"type": "string"},
+                      "path": {"type": "string"},
+                      "line": {"type": "integer", "minimum": 1}
+                    }
+                  },
+                  "sites": {
+                    "description": "The files that write the string, in path order, the first 8 of them. files counts them all.",
+                    "type": "array", "minItems": 3, "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "line", "written", "uses"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {"type": "string"},
+                        "line": {"type": "integer", "minimum": 1, "description": "The line of the first place in the file."},
+                        "written": {"type": "integer", "minimum": 1, "description": "The places in the file that write the string."},
+                        "uses": {"type": "integer", "minimum": 0, "description": "Those of them that compare with it, name it as a case, or use it as a key."}
+                      }
+                    }
+                  },
+                  "files": {"type": "integer", "minimum": 3, "description": "The files that write the string."},
+                  "written": {"type": "integer", "minimum": 4, "description": "The places that write it, the declarations of constants among them."},
+                  "uses": {"type": "integer", "minimum": 0, "description": "The places that compare with it, name it as a case, or use it as a key."},
+                  "rank": {"type": "number", "minimum": 0, "description": "files x uses / written, or files when a constant names the value."}
                 }
               }
             }

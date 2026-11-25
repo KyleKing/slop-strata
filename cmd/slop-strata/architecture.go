@@ -660,7 +660,7 @@ func printCycleOrigins(w io.Writer, cycles []cycleOrigin) {
 		}
 		rows = append(rows, row)
 	}
-	header := []string{"cycle with", "id", "files", "first_seen", "then", "commit", "by"}
+	header := []string{"cycle with", "id", colFiles, "first_seen", "then", "commit", "by"}
 	shortenFirstColumn(header, rows)
 	report.Fprintln(w)
 	report.Table(w, header, rows)

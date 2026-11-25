@@ -1232,6 +1232,7 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 		addCrossFindings(rules.NewCaseSets(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		addCrossFindings(shapes, rev, sup, res)
 		addCrossFindings(rules.NewSiblings(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
+		addCrossFindings(rules.NewDupLiterals(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		res.Surface = rules.WidenedSurfaces(basePrints, rev, lineage.DirOf)
 	}
 	if res.Surface == nil {
