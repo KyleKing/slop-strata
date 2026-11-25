@@ -80,6 +80,7 @@ type Fingerprint struct {
 	Passed      []string              `json:"passed,omitempty"`      // imported names bound and never used
 	Members     []string              `json:"members,omitempty"`     // names read off a value, not a module
 	Frags       Fragments             `json:"frags,omitempty"`       // statements, for the duplicate pass
+	Cases       CaseSets              `json:"cases,omitempty"`       // switches, if chains, and tables, by their cases
 	Barrel      bool                  `json:"barrel,omitempty"`      // only imports and re-exports, declares nothing
 }
 
@@ -100,7 +101,9 @@ func Collect(ctx *Ctx) *Fingerprint {
 	uses := &nameUse{selected: map[string][]string{}, inImports: map[string]int{}}
 
 	frags := newFragCollector(ctx)
+	cases := newCaseCollector(ctx)
 	frags.walk(ctx.Root, fragWalk{}, func(n *ts.Node, kind string) {
+		cases.visit(n, kind)
 		collectImportRef(ctx, n, kind, fp)
 		collectIface(ctx, n, kind, fp)
 		uses.note(ctx, n, kind)
@@ -126,6 +129,7 @@ func Collect(ctx *Ctx) *Fingerprint {
 		}
 	})
 	fp.Frags = frags.fragments()
+	fp.Cases = cases.caseSets()
 	collectUnits(ctx, fp)
 	uses.finish(ctx, fp)
 	fp.Barrel = isBarrel(ctx, fp)

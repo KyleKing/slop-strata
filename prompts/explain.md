@@ -28,6 +28,10 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    that code: a copy under new names is the finding again. A note that
    starts "repeats an expression of" is about one expression inside a
    statement, and the repair is one name both places use.
+   An `x/new-case-set` finding's `note` names the places that already
+   enumerate the cases the new switch, chain, or table lists. When it is
+   right, read from the table or call the function that is there: a second
+   list of the same cases is one more place every new case must reach.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

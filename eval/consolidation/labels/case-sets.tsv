@@ -1,0 +1,64 @@
+bubbletea	go	1	yes	the progress bar states in the renderer's switch and in the type's String method
+bubbletea	go	2	yes	the mouse modes in two switches of one renderer
+chi	go	1	yes	the node types in findRoute and findPattern
+cobra	go	1	yes	the same grouping of reflect kinds three times, twice in one function
+fzf	go	1	plausible	direction words: two switches parse one position option, the border and key parsers only share the words
+fzf	go	2	yes	seven switches over the preview position constants
+fzf	go	3	yes	the window types in NewWindow of both renderers and in BorderColor
+fzf	go	4	yes	the sort criteria in Run and in buildResultFromBounds
+fzf	go	5	yes	the underline styles in both renderers
+fzf	go	6	yes	three escaped characters in a switch and in an if chain of the same parser
+fzf	go	7	yes	the inline roles in two adjacent methods
+fzf	go	8	yes	the layouts in two switches of one function
+fzf	go	9	yes	the scheme names in algo.Init and parseScheme
+pydantic	python	1	yes	two if chains over a choice's schema type in one class
+pydantic	python	2	plausible	a table of generic handlers and a table of allowed default types that overlap in the collection ABCs
+pydantic	python	3	yes	the six IP types in two tables
+rich	python	1	plausible	the light and the dark theme, one table per theme over the same token types
+rich	python	2	yes	the control types in the format table and in the Windows renderer's if chain
+rich	python	3	plausible	left, center, right in three classes that each justify their own thing
+rich	python	4	yes	the colour types in two methods of Color
+query	typescript	1	plausible	the reducers of Query and Mutation, each over its own action union, and a status switch that shares three words
+trpc	typescript	1	yes	two tables typed by one key union and a switch over the same keys
+trpc	typescript	2	no	two implementations of one interface written as objects of arrow functions; the type ties them
+trpc	typescript	3	yes	the card kinds in two switches
+trpc	typescript	4	yes	query, mutation, subscription in three switches
+trpc	typescript	5	plausible	the connection states in the same hook of two packages kept side by side
+trpc	typescript	6	yes	the handle kinds twice in one function
+vite	typescript	1	yes	the HMR payload types in the client and in the module runner
+vite	typescript	2	plausible	three plugin hook names in two switches with different jobs
+vite	typescript	3	plausible	AST node types in two unrelated passes
+zod	typescript	1	plausible	type names in eleven places across v3 and v4; some are one set, the two major versions are apart by design
+zod	typescript	2	plausible	string formats in v3's parser and v4's JSON schema reader
+zod	typescript	3	yes	the check kinds in a switch and in a table of contributors
+zod	typescript	4	yes	the number checks in three chains of v3
+echo	go	1	yes	the HTTP methods in routeMethods.set and routeMethods.find
+echo	go	2	yes	the node kinds in five switches of the router
+echo	go	3	plausible	where a value comes from, as struct tag names in the binder and as lookup sources in the extractor
+echo	go	4	yes	the multipart file header types in two functions of the binder
+gin	go	1	plausible	one function in two files under build tags, kept in step by design
+gin	go	2	no	four reflect kinds in two unrelated functions
+gorm	go	1	plausible	the numeric reflect kinds listed in four switches, one of them a helper the others could call
+gorm	go	2	plausible	struct, slice, and array in eight switches that each walk a value
+gorm	go	3	yes	the relationship types in three switches
+gorm	go	4	yes	the unix time precisions in create and twice in update
+gorm	go	5	yes	the clause operations in three switches of one file
+gorm	go	6	yes	the relation guesses twice in one function
+starlette	python	1	plausible	ASGI message types in the gzip middleware and the test client, each a consumer of the protocol
+werkzeug	python	1	yes	the multipart events in the parser and in the encoder
+date-fns	typescript	1	plausible	unit names in two distance formatters and in the ordinal function of six locales, a file per locale
+date-fns	typescript	2	yes	the local day tokens in the formatter and in the parser
+date-fns	typescript	3	yes	the stand-alone local day tokens in the formatter and in the parser
+date-fns	typescript	4	yes	the ISO day tokens in the formatter and in the parser
+date-fns	typescript	5	yes	the AM/PM tokens in two formatters and the parser
+date-fns	typescript	6	yes	the quarter tokens in the formatter and in the parser
+date-fns	typescript	7	yes	the stand-alone quarter tokens in the formatter and in the parser
+date-fns	typescript	8	yes	the month tokens in the formatter and in the parser
+date-fns	typescript	9	yes	the stand-alone month tokens in the formatter and in the parser
+date-fns	typescript	10	yes	the day of week tokens in the formatter and in the parser
+date-fns	typescript	11	yes	the era tokens in the formatter and in the parser
+date-fns	typescript	12	yes	the AM/PM/midnight tokens in the formatter and in the parser
+date-fns	typescript	13	yes	the day period tokens in the formatter and in the parser
+date-fns	typescript	14	yes	the ISO timezone with Z tokens in the formatter and in the parser
+date-fns	typescript	15	yes	the ISO timezone tokens in the formatter and in the parser
+date-fns	typescript	16	yes	the long date tokens in two long formatters of one file
