@@ -1,3 +1,9 @@
+## v0.23.0 (2026-11-25)
+
+### Feat
+
+- **snapshot**: list sibling classes and modules and report a new one on change
+
 ## v0.22.0 (2026-11-25)
 
 ### Feat
