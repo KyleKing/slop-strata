@@ -1,3 +1,9 @@
+## v0.24.0 (2026-11-25)
+
+### Feat
+
+- **snapshot**: list repeated string values as groups and report a new copy on change
+
 ## v0.23.1 (2026-11-25)
 
 ### Fix
