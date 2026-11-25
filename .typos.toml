@@ -1,7 +1,12 @@
 [files]
 # Generated from commit subjects by commitizen, so a typo here can only be fixed
 # by rewriting history. Catch it in the commit message instead.
-extend-exclude = ["CHANGELOG.md"]
+extend-exclude = [
+  "CHANGELOG.md",
+  # Commit subjects and reviewer notes of other repositories, kept as written.
+  "eval/consolidation/*.jsonl",
+  "eval/consolidation/labels/*.tsv",
+]
 
 [default]
 # Abbreviated commit hashes. Every one of them is a word made of a-f, and
@@ -12,6 +17,9 @@ extend-ignore-re = ['\[[a-z]\][A-Za-z]+']
 
 # golangci-lint linter identifiers that typos reads as misspellings.
 [default.extend-words]
+# A word stem the mining scripts under eval/ match in commit subjects:
+# duplicate, duplicated, duplication.
+duplicat = "duplicat"
 decorder = "decorder"
 importas = "importas"
 # "PNGs" tokenizes as "PN" + "Gs", and PN is a typo for ON.

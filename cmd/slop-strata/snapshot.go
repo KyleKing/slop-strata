@@ -331,18 +331,18 @@ func (s *session) snapshotRollup(
 func rankDirs(
 	byDir map[string][]structure.FileMetrics, live map[string][]rules.Finding, touches map[string]int, test bool,
 ) []dirSnapshot {
+	findings := make(map[string]int, len(byDir))
+	for p, fs := range live {
+		if lang.IsTestPath(p) == test {
+			findings[lineage.DirOf(p)] += len(fs)
+		}
+	}
 	dirs := make([]dirSnapshot, 0, len(byDir))
 	for _, d := range report.SortedKeys(byDir) {
 		agg := structure.Aggregate(byDir[d])
-		findings := 0
-		for p, fs := range live {
-			if lineage.DirOf(p) == d && lang.IsTestPath(p) == test {
-				findings += len(fs)
-			}
-		}
 		dirs = append(dirs, dirSnapshot{
 			Dir: d, Files: agg.Files, Erosion: agg.Erosion, Mass: agg.Mass, TableMass: agg.TableMass,
-			Funcs: agg.FuncCount, Over50: agg.Over50, Findings: findings,
+			Funcs: agg.FuncCount, Over50: agg.Over50, Findings: findings[d],
 			Touches90d: touches[d], Hotspot: float64(touches[d]) * agg.Mass,
 			Provisional: agg.FuncCount < structure.ProvisionalFuncs,
 		})

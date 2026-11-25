@@ -103,7 +103,8 @@ func (p *dupPass) pairsExpr(q *dupFile, i int, site dupSite) bool {
 }
 
 // diffSubs fills in the texts the two expressions of a run differ in, and
-// reports whether they are few enough.
+// reports whether they are few enough. The two hold as many slots as each
+// other: pairsExpr turns away two shapes that share a hash.
 func (r *dupRun) diffSubs() bool {
 	a, b := &r.file.subs[r.qsub], &r.with.subs[r.csub]
 	mine := r.file.stmts[a.stmt].slots[a.slot : a.slot+a.nslots]

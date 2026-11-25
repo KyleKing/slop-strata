@@ -246,6 +246,20 @@ func TestDuplicateGroupsStayQuiet(t *testing.T) {
 			tree: map[string]string{"store/users.go": users, "demo/main.go": orders},
 		},
 		{
+			name: "two files of stories",
+			tree: map[string]string{
+				"ui/users.stories.ts":  tallySrc(tsTally, "parseUsers", "users"),
+				"ui/orders.stories.ts": tallySrc(tsTally, "parseOrders", "orders"),
+			},
+		},
+		{
+			name: "a file of stories and production code",
+			tree: map[string]string{
+				"ui/users.ts":          tallySrc(tsTally, "parseUsers", "users"),
+				"ui/orders.stories.ts": tallySrc(tsTally, "parseOrders", "orders"),
+			},
+		},
+		{
 			name: "two scaffolding templates",
 			tree: map[string]string{"create/template-react/app.go": users, "create/template-vue/app.go": orders},
 		},
@@ -317,6 +331,8 @@ func TestAsideNamesTheFilesThatStandAlone(t *testing.T) {
 		"store/users.go": false, "store/users_test.go": true, "examples/a/main.go": true, "pkg/bench/run.py": true,
 		"create/template-vue/src/app.ts": true, "create/templates/app.ts": true, "src/templater/render.go": false,
 		"mod/__testfixtures__/a.input.ts": true, "tests/test_app.py": true,
+		"ui/button.stories.tsx": true, "ui/button.stories.ts": true, "ui/menu.stories.jsx": true,
+		"ui/menu.stories.js": true, "ui/stories.ts": false, "ui/stories/list.ts": false, "ui/histories.ts": false,
 	}
 	for path, want := range tests {
 		if got := rules.Aside(path); got != want {

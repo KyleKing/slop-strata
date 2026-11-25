@@ -144,17 +144,33 @@ func sitesOf(list []shapeAt, shape uint32) []shapeAt {
 	return list[lo:hi]
 }
 
-// runStart names an aligned run by its two files and where it starts in each.
-type runStart struct {
+// diagonal names the pairs of statements of two files that sit one offset
+// apart: every pair of one aligned run is on one diagonal.
+type diagonal struct {
 	file, with *dupFile
-	q, c       int
+	offset     int
+}
+
+// reached is the runs already read, per diagonal: for each, the statements of
+// the run's own side it spans, from lo up to hi.
+type reached map[diagonal][][2]int
+
+// holds reports whether a run already read spans statement i of a diagonal.
+func (r reached) holds(d diagonal, i int) bool {
+	for _, span := range r[d] {
+		if span[0] <= i && i < span[1] {
+			return true
+		}
+	}
+
+	return false
 }
 
 // pairRuns lists, heaviest first, the best window of every run of statements
 // two production sites share, when it meets the floor a finding meets.
 func (p *groupPass) pairRuns() []dupRun {
 	var out []dupRun
-	seen := map[runStart]bool{}
+	seen := reached{}
 	for lo := 0; lo < len(p.stmts); {
 		hi := lo + 1
 		for hi < len(p.stmts) && p.stmts[hi].shape == p.stmts[lo].shape {
@@ -186,8 +202,10 @@ func (p *groupPass) pairRuns() []dupRun {
 
 // pairRun grows two statements of one shape into the run around them and
 // answers its best window. The later statement is the run's own side. A run
-// is read once, from whichever of its statements comes up first.
-func (p *groupPass) pairRun(earlier, later shapeAt, seen map[runStart]bool) (dupRun, bool) {
+// is read once, from whichever of its statements comes up first: the others
+// find it in seen and are not grown again, so a long run costs its length
+// and not its length squared.
+func (p *groupPass) pairRun(earlier, later shapeAt, seen reached) (dupRun, bool) {
 	q, c := p.all[later.file], p.all[earlier.file]
 	if q.aside || c.aside || (q != c && p.mirror(q, c)) {
 		return dupRun{}, false
@@ -195,12 +213,17 @@ func (p *groupPass) pairRun(earlier, later shapeAt, seen map[runStart]bool) (dup
 	if int(later.idx) >= len(q.decoded()) || int(earlier.idx) >= len(c.decoded()) || q.stmts[later.idx].header {
 		return dupRun{}, false // the first two are a payload cut short
 	}
-	run := extend(q, int(later.idx), dupSite{file: c, idx: int(earlier.idx)})
-	key := runStart{file: q, with: c, q: run.q, c: run.c}
-	if seen[key] {
+	at := diagonal{file: q, with: c, offset: int(later.idx - earlier.idx)}
+	if seen.holds(at, int(later.idx)) {
 		return dupRun{}, false
 	}
-	seen[key] = true
+	site := dupSite{file: c, idx: int(earlier.idx)}
+	before, after := reach(q, int(later.idx), site)
+	if after == 0 {
+		return dupRun{}, false // two shapes with one hash
+	}
+	seen[at] = append(seen[at], [2]int{int(later.idx) - before, int(later.idx) + after})
+	run := runAround(q, int(later.idx), site, before, after)
 	if p.ceiling(&run) < dupMinScore {
 		return dupRun{}, false
 	}

@@ -1,0 +1,84 @@
+repo	rev	path	line	verdict	cause	repeats_path	repeats_line	g	s	p	tok	key_suffix
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	147	P	generic variant with a default shares the lookup	binder_generic.go	117	join	36.0	0	36
+gorm	ccc3cb758a1ca4ccab61ec8572bf5ac1afcaeb5f	callbacks/associations.go	54	P	two setup lines shared by sibling callbacks	callbacks/associations.go	274	join	21.8	0	26
+fzf	d754cfab8767d60e9c1b946e6ffc5b6e2e711cf2	src/tui/tcell.go	1105	P	two backends of one interface	src/tui/light.go	1197	join	26.3	0	34
+zod	7a00236683c79000dbab0d92f6faf0b7fba39f59	packages/zod/src/v4/core/checks.ts	424	R		packages/zod/src/v4/core/checks.ts	293	join	24.0	0	24
+vite	7471e8c3b32d3d55243590bb7713e602c9fb0212	packages/vite/src/client/bundledDevHmrClient.ts	380	R		packages/vite/src/client/bundledDevHmrClient.ts	337	join	36.0	0	36
+trpc	1283c63af31aab98bda30fb6168e753480c7d455	tooling/release/src/changes.ts	104	P		tooling/release/src/version.ts	105	join	24.0	1	32
+fzf	677e854850a70b7243fd35703d4f03b6651961b3	src/terminal.go	7686	F	arms of one switch	src/terminal.go	7674	join	25.1	0	31
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	callbacks/update.go	96	R		callbacks/create.go	93	join	27.4	0	51
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	echotest/context.go	130	P	branches of one function	echotest/context.go	100	join	22.0	0	23
+echo	af07b69b44c0688d03208dda296f5694de9476e4	route_path.go	52	P	branches of one function	route_path.go	39	join	27.6	1	41
+fzf	d754cfab8767d60e9c1b946e6ffc5b6e2e711cf2	src/tui/tcell.go	1078	R		src/tui/tcell.go	1128	join	24.5	1	50
+rich	9f43cccfce3b39b8ac637b4e8cdfe2f0946e9c23	rich/console.py	2334	R		rich/console.py	2229	join	34.0	1	42
+gorm	f648834d22f67c1b682d3e44ac2eb252c31b3f1a	logger/sql.go	131	P	branches of one function	logger/sql.go	89	join	47.0	1	55
+fzf	f779e6a4df17493a0be5d8a68ef48d009df4d4b4	src/algo/algo.go	493	R		src/algo/algo.go	696	join	60.2	1	85
+zod	eca96871536603076bdd00b8779b947144133aa4	packages/zod/src/v4/classic/from-json-schema.ts	886	F	adjacent blocks of one function	packages/zod/src/v4/classic/from-json-schema.ts	878	join	37.0	2	61
+vite	4d16e7c14d5e1c361f148238b1e81131238ab8e9	packages/vite/src/node/plugins/importAnalysisBuild.ts	56	F	adjacent arms of one function	packages/vite/src/node/plugins/importAnalysisBuild.ts	53	join	20.0	2	36
+httpx	f8981f3d124f9b8db9073fd5c8afa11acb55a738	httpx/_client.py	1414	P	sync and async twins	httpx/_client.py	674	join	20.8	0	36
+swr	b75456a8ceb7947f745ca79203c2f6577cb98ea2	src/index/use-swr.ts	219	R		src/index/use-swr.ts	360	join	19.0	0	19
+fzf	d754cfab8767d60e9c1b946e6ffc5b6e2e711cf2	src/tui/light.go	1223	P		src/tui/light.go	1182	join	19.0	2	59
+cobra	68b6b24f0c9926a779f7113d1040396a30fdedaf	flag_groups.go	144	R		flag_groups.go	121	join	12.3	0	39
+gorm	a827495be126f896c0f744043410642d70bbac1b	internal/lru/lru.go	210	P	small sibling methods	internal/lru/lru.go	199	join	13.6	0	51
+swr	723867fde8f0d0cfeb82362bc34d8971c61a1565	src/_internal/utils/cache.ts	108	R		src/_internal/utils/cache.ts	72	join	15.7	1	39
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	middleware/proxy.go	260	P		middleware/proxy.go	241	join	13.0	0	13
+echo	fc410094b2f3415cf2bf5204082137b205bfd5af	scheme.go	120	F	sequential checks of one function	scheme.go	114	join	12.6	1	24
+trpc	9f058097e45f6592d5a2a539667c4098db7c1a5b	www/build/sponsors-opencollective.ts	206	F	a line shared by chance	www/build/sponsors-github.ts	220	join	13.0	1	21
+trpc	29452ef1146dceed5f86c07b8e49017ae5f8c332	packages/react-query/src/utils/createUtilityFunctions.ts	101	R		packages/react-query/src/shared/hooks/createHooksInternal.tsx	226	join	16.1	1	31
+trpc	c869fa1075fc3ce11b38495c5e6044fb97b335d2	tooling/release/src/release.ts	382	F	a line shared by chance	tooling/release/src/release.ts	348	join	18.0	1	26
+starlette	9c594b56e8da9c3d8c35baa40f357e7bc94f6d02	starlette/middleware/opentelemetry.py	23	F	idiom of the framework	starlette/middleware/body_limit.py	80	join	12.9	0	13
+swr	c6e765f1eb67df3fc83c0c188af0b99e5bcee291	core/use-swr.ts	704	P	type members repeated	core/use-swr.ts	49	join	12.7	0	17
+zod	e32e08836e451e26f53f5ff6efe4fb92b07a47ad	packages/docs/app/sitemap.ts	10	R		packages/docs/app/blog/page.tsx	8	expr	25.0	0	25
+vite	785b0add368b212881617ab093cff4c4fde133ea	packages/vite/src/node/plugins/importAnalysis.ts	249	R		packages/vite/src/node/optimizer/index.ts	1150	exprstmt	28.0	0	28
+httpx	d293374b6603816420a2bb8e7f4fe5a5f09cbfcc	httpx/_urlparse.py	71	P	data literal	httpx/_urlparse.py	59	expr	21.0	0	21
+trpc	6894895d7f988b122d8b90b667afe29a355b1c12	www/src/components/error-page.tsx	35	P		www/src/components/not-found.tsx	25	expr	25.0	0	25
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/vite.config.ts	79	F	a config per package	packages/angular-query-devtools/vite.config.ts	102	expr	47.0	0	47
+gorm	9c4070ed19fd0ba9c93b49131deffec31d678610	callbacks/query.go	289	P		callbacks/query.go	101	expr	20.0	0	20
+zod	773a48676ede1a2144d4f2e60892e6c0cd6625a7	packages/zod/src/v4/core/util.ts	1093	P	wrapper around a body that differs	packages/zod/src/v4/core/util.ts	1114	exprcond	37.0	0	37
+gorm	e015bd08ebb5cc27aabf1731735324138879a44b	generics.go	754	F	call of the shared helper with another callback	generics.go	744	exprcond	25.0	0	25
+swr	3668c90af08d19b849bdadac0466873d23d8a721	src/infinite/types.ts	50	R		src/_internal/types.ts	397	expr	36.0	1	44
+trpc	36733f389243de4288ddb4046b1ae94df3d6999a	tooling/oxlint-plugin/noDirectFakeTimers.ts	10	F	one declaration per file by design	tooling/oxlint-plugin/noSymbolDispose.ts	12	expr	28.0	2	44
+trpc	95544c15153d78bf8f8d16d39bba8f7fb15fb003	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts	62	F	wrapper around a body that differs	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts	720	exprcond	20.0	0	20
+zod	eca96871536603076bdd00b8779b947144133aa4	packages/zod/src/v4/classic/from-json-schema.ts	323	P	wrapper around a body that differs	packages/zod/src/v4/classic/from-json-schema.ts	169	exprcond	22.0	0	22
+zod	cafbee4772ef481611fef6f5fb9ed9a1b9597069	packages/zod/src/v4/core/util.ts	800	P		packages/zod/src/v4/core/util.ts	766	exprstmt	20.0	0	20
+fzf	e54f11c64ef457e0bdae1ab983ab6193cbaaf721	src/zellij.go	36	R		src/tmux.go	136	exprcond	23.0	0	23
+zod	f3e7c72e8ce66bb1d5113aeb5e1c0c658981d2f7	packages/docs/app/(doc)/not-found.tsx	8	R		packages/docs/app/not-found.tsx	10	exprstmt	35.0	0	35
+gorm	eabca1fa13dcf0acdd7d467300c4bd0414b1e0a2	generics.go	207	F	one-line wrappers of a fluent API	generics.go	201	exprcond	21.0	0	21
+gin	71496abe6836462e2ed70436b7d72ea2a3585417	gin.go	297	R		gin.go	285	expr	28.0	0	28
+trpc	a432842a0b8394d3473c925a820ca6b81469bdac	packages/upgrade/src/transforms/provider.ts	717	P		packages/upgrade/src/transforms/hooksToOptions.ts	132	expr	23.0	0	23
+query	ec1910188588b182394a589313678714bc6a1798	packages/eslint-plugin-query/src/rules/stable-query-client/stable-query-client.rule.ts	51	R		packages/eslint-plugin-query/src/utils/ast-utils.ts	166	expr	21.0	0	21
+gorm	e015bd08ebb5cc27aabf1731735324138879a44b	generics.go	885	R		schema/relationship.go	744	expr	51.0	0	51
+fzf	a650900edac4d755aaf0044182036debb6b0a98a	src/algo/runeindex_x86.go	59	P	twin loops kept apart for speed	src/algo/runeindex_x86.go	37	exprcond	20.0	1	28
+trpc	a432842a0b8394d3473c925a820ca6b81469bdac	packages/upgrade/src/transforms/provider.ts	533	P		packages/upgrade/src/lib/ast/codemod.ts	101	expr	23.0	0	23
+vite	5ff255e5b9f1460dd844ccf7a82d6f59f8899033	packages/vite/src/node/ssr/fetchModule.ts	186	R	a function that returns this expression is already there	packages/vite/src/node/plugins/forwardConsole.ts	198	exprstmt	22.0	0	22
+cobra	6b0bd3076cfafd1c108264ed1e4aa0c0fe3f8537	command.go	675	R		command.go	639	exprcond	37.0	0	37
+zod	62471c9088a048d2cce5d53ed29ece573d1879f6	packages/docs/app/blog/[slug]/page.tsx	29	P		packages/docs/app/blog/[slug]/page.tsx	98	expr	23.0	0	23
+zod	f3cb3644eb0b3b14b9e8e78b4e04ef221d6ef169	packages/docs/loaders/source.ts	31	R		packages/docs/app/blog/page.tsx	8	expr	66.0	0	66
+zod	37b015017b17420e81e76555066bdfa39c24cdc5	packages/zod/src/v4/core/parse.ts	154	P	sync and async twins	packages/zod/src/v4/core/parse.ts	50	join	26.3	1	39
+gin	440eb14ab8ed503d4a31dfecc9946a90cd73b955	path.go	169	R		path.go	31	join	40.2	1	60
+gorm	1643a36260cbc5bcc6e4abab6489325b64c57e7a	schema/field.go	945	P		schema/field.go	919	join	24.9	0	33
+zod	37b015017b17420e81e76555066bdfa39c24cdc5	packages/zod/src/v4/core/parse.ts	132	P		packages/zod/src/v4/core/parse.ts	24	join	27.3	0	32
+trpc	238821d4ee57675e5ec6bee73b9f3d4da30523ac	packages/client/src/internals/signals.ts	51	F	idiom of abort listeners	packages/client/src/links/wsLink/wsClient/wsClient.ts	243	join	24.0	0	24
+fzf	f779e6a4df17493a0be5d8a68ef48d009df4d4b4	src/algo/algo.go	517	P	fast path kept beside the general one	src/algo/algo.go	445	join	25.4	1	44
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	192	P	generic variant with a default	binder_generic.go	167	join	25.0	0	25
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	callbacks/delete.go	164	R		callbacks/create.go	111	join	27.4	0	51
+trpc	c869fa1075fc3ce11b38495c5e6044fb97b335d2	tooling/release/src/release.ts	451	R		tooling/release/src/release.ts	303	join	32.9	0	36
+fzf	9c401f9c9ab5aef77d300b240264fdae2b982474	src/algo/algo.go	445	P	fast path kept beside the general one	src/algo/algo.go	538	join	33.9	0	47
+zod	37b015017b17420e81e76555066bdfa39c24cdc5	packages/zod/src/v4/core/parse.ts	132	P		packages/zod/src/v4/core/parse.ts	72	join	27.3	0	32	was
+zod	37b015017b17420e81e76555066bdfa39c24cdc5	packages/zod/src/v4/core/parse.ts	154	P	sync and async twins	packages/zod/src/v4/core/parse.ts	132	join	26.3	1	39	was
+vite	5ff255e5b9f1460dd844ccf7a82d6f59f8899033	packages/vite/src/module-runner/runner.ts	524	P	two runtimes send the same message	packages/vite/src/client/bundledDevClient.ts	28	expr	16.0	0	16
+zod	c5ce5f60c1313d685ad20a2d86ef5db25aafd6fb	packages/zod/src/v4/core/compile.ts	1885	F	wrapper around a body that differs	packages/zod/src/v4/core/compile.ts	1252	exprcond	19.0	0	19
+trpc	7a3f50a24fa338010c3dd0b8af89ce4455b30f58	packages/react-query/src/shared/proxy/useQueriesProxy.ts	121	R		packages/react-query/src/shared/hooks/createHooksInternal.tsx	276	expr	15.0	0	15
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	middleware/extractor.go	168	F	signature of a closure	middleware/extractor.go	129	exprcond	19.0	0	19
+fzf	d754cfab8767d60e9c1b946e6ffc5b6e2e711cf2	src/terminal.go	1171	P	small predicate	src/options.go	3622	exprstmt	15.0	0	15
+gorm	cc2d46e5be425300e064a39868cfdb333f24e4ac	finisher_api.go	615	F	idiom	schema/field.go	947	expr	16.0	0	16
+trpc	95f0b5c65333c802a63e83eb30f62f70517fd7d4	packages/client/src/links/httpBatchStreamLink.ts	210	F	a call of the shared helper	packages/client/src/links/httpBatchLink.ts	108	exprstmt	17.0	0	17
+trpc	1283c63af31aab98bda30fb6168e753480c7d455	tooling/release/src/release.ts	346	F	signature of a wrapped function	tooling/release/src/release.ts	309	expr	16.0	0	16
+swr	342b82c818454b05c05ae7294c531674926539db	_internal/utils/preload.ts	18	P	type-level	_internal/types.ts	24	expr	17.0	0	17
+zod	abfb38977dc28dc9993e3fa6a2ecc2f52a8d0c4c	packages/zod/src/v4/core/json-schema-processors.ts	417	P		packages/zod/src/v4/core/json-schema-processors.ts	341	expr	18.0	0	18
+gorm	7e44f73ad3b657a86bbdc881787b03c25ab789a5	schema/utils.go	118	P		finisher_api.go	78	exprcond	19.0	0	19
+trpc	a432842a0b8394d3473c925a820ca6b81469bdac	packages/upgrade/src/lib/ast/scanners.ts	189	R		packages/upgrade/src/lib/ast/scanners.ts	245	expr	19.0	0	19
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/schematics/migrate-from-experimental/workspace.ts	61	P		packages/angular-query/schematics/migrate-from-experimental/source.ts	53	expr	16.0	0	16
+gorm	e015bd08ebb5cc27aabf1731735324138879a44b	generics.go	729	P		generics.go	698	exprstmt	15.0	0	15
+trpc	d7f0ddb53b0eca19d0fb36c45a80cac947b39649	packages/client/src/links/wsLink/wsClient/wsClient.ts	165	F	one-line call	packages/client/src/links/wsLink/wsClient/wsClient.ts	201	exprstmt	15.0	0	15
+gorm	a827495be126f896c0f744043410642d70bbac1b	internal/stmt_store/stmt_store.go	139	F	interface narrowed on purpose	interfaces.go	35	expr	18.0	0	18

@@ -1,0 +1,90 @@
+== EVENTS 153 repos 20 distinct commits 142
+per repo {'pydantic': 23, 'vite': 16, 'trpc': 14, 'gorm': 12, 'query': 11, 'flask': 10, 'fzf': 9, 'gin': 8, 'httpx': 7, 'werkzeug': 6, 'bubbletea': 5, 'starlette': 5, 'echo': 4, 'requests': 4, 'cobra': 4, 'swr': 4, 'click': 4, 'zod': 4, 'chi': 2, 'rich': 1}
+per lang Counter({'py': 60, 'ts': 49, 'go': 44})
+kind Counter({'extract': 145, 'parameterise': 5, 'other': 2, 'pullup': 1})
+stratum Counter({'S1_extract_res': 145, 'S3_pullup': 3, 'S2_extract_unres': 3, 'S4_merge_delete': 2})
+type-level (alias/TypeVar/annotation) events 22/153 (14%)
+-- size
+ntok_min <25 109/153 (71%) | ntok_median <25 102/153 (67%) | ntok_median<15 55/153 (36%)
+nstmt_min <6 132/153 (86%) | nstmt_median<6 126/153 (82%) | nstmt_min==1 79/153 (52%)
+ntok_median quartiles [11.8, 19.0, 32.0] max 240.0
+n_sites dist [(2, 97), (3, 27), (4, 9), (5, 10), (6, 1), (7, 2), (8, 7)] (8 = 8+)
+same_file 95/153 (62%) same_dir (incl same file) 138/153 (90%) cross_package 11/153 (7%)
+test_only 19/153 (12%) any_test 19/153 (12%)
+-- similarity of sites before unification (best pair)
+jacc5>=0.5 94/153 (61%) | >=0.3 114/153 (75%) | <0.3 but shape>=0.7 19/153 (12%) | jacc5==0 10/153 (7%)
+old detector (jacc5>=0.5 & ntok_min>=25) 22/153 (14%)
+old detector, any-pair (jacc5>=0.5 & ntok_median>=25) 24/153 (16%)
+raw seq-ratio >=0.5 141/153 (92%) shape seq-ratio quartiles [0.8, 1.0, 1.0] raw quartiles [0.8, 0.9, 1.0]
+holes (best pair) quartiles [0.0, 0.0, 2.0] zero holes 88/153 (58%) unaligned==0 85/153 (56%)
+families (non-exclusive) {'F3_same_shape_diff_tokens': 36, 'F1_token_clone>=25tok': 24, 'F4_sibling_class_methods': 31, 'F3b_weak_shape': 23, 'F2_small_fragment_jacc>=.5': 70, 'F5_type_level': 22}
+exclusive by similarity:  {'F3': 36, 'F1': 24, 'F3b': 23, 'F2': 70}
+-- history (events with >=2 aged sites)
+n 153
+dup lifetime days (since last site born) quartiles [11.1, 62.5, 263.6] median 62.5 | <30d 60/153 (39%) <1y 121/153 (79%) >=2y 13/153 (8%)
+oldest site age days quartiles [26.5, 158.0, 472.1]
+same birth commit 85/153 (56%) | later site born after earlier by a different commit 68/153 (44%)
+  of those: spread>=30d 46/153 (30%) spread>=365d 18/153 (12%)
+same author as earlier site (among later-after-earlier with author info) 36/68 (53%)
+diverged (site-specific later edits visible in blame) 48/153 (31%) | lockstep commits>=1 28/153 (18%)
+prior co-change commits quartiles [4.0, 15.0, 37.0]
+
+== CONTROLS 393 events with controls 87 repos 18 tight 385
+events used in paired comparison 87 repos 18 per repo {'pydantic': 13, 'werkzeug': 6, 'echo': 3, 'requests': 2, 'flask': 10, 'gin': 6, 'vite': 13, 'bubbletea': 3, 'httpx': 3, 'gorm': 6, 'fzf': 5, 'trpc': 3, 'cobra': 3, 'chi': 1, 'starlette': 4, 'swr': 2, 'click': 3, 'rich': 1}
+variable | n | event mean | control mean | diff | 95% repo-cluster bootstrap CI | repos where diff>0 / <0
+sim_shape                n= 87 ev=    0.888 ct=    0.833 diff=    0.056 CI=[   0.032,   0.081] repos +15/-3
+sim_raw                  n= 87 ev=    0.842 ct=    0.628 diff=    0.213 CI=[   0.166,   0.274] repos +18/-0
+sim_jacc5                n= 87 ev=    0.622 ct=    0.166 diff=    0.457 CI=[   0.320,   0.600] repos +18/-0
+holes                    n= 87 ev=    1.379 ct=    3.102 diff=   -1.723 CI=[  -2.103,  -1.292] repos +2/-16
+ntok_median              n= 87 ev=   24.040 ct=   19.893 diff=    4.147 CI=[   2.144,   6.854] repos +12/-6
+nstmt_min                n= 87 ev=    2.897 ct=    3.106 diff=   -0.210 CI=[  -0.589,   0.289] repos +9/-8
+same_file                n= 87 ev=    0.586 ct=    0.387 diff=    0.199 CI=[   0.084,   0.315] repos +16/-2
+same_dir                 n= 87 ev=    0.897 ct=    0.689 diff=    0.208 CI=[   0.121,   0.302] repos +15/-2
+cross_package            n= 87 ev=    0.057 ct=    0.251 diff=   -0.193 CI=[  -0.279,  -0.108] repos +2/-15
+cochange_commits         n= 87 ev=   31.874 ct=   23.622 diff=    8.252 CI=[  -2.573,  18.198] repos +13/-5
+prior_commits_per_file   n= 87 ev=   48.684 ct=   44.035 diff=    4.649 CI=[  -8.760,  19.225] repos +12/-6
+prior_12m_per_file       n= 87 ev=   28.017 ct=   19.776 diff=    8.241 CI=[   2.504,  17.574] repos +14/-4
+birth_spread_days        n= 87 ev=  119.630 ct=  333.215 diff= -213.585 CI=[-517.197, -15.174] repos +4/-14
+dup_lifetime_days        n= 87 ev=  217.144 ct=  466.368 diff= -249.224 CI=[-489.630, -74.275] repos +3/-15
+diverged                 n= 87 ev=    0.287 ct=    0.392 diff=   -0.104 CI=[  -0.239,   0.089] repos +8/-10
+later_after_earlier      n= 87 ev=    0.483 ct=    0.734 diff=   -0.251 CI=[  -0.401,  -0.096] repos +5/-13
+controls: jacc5>=0.5 54/393 (14%) ntok<25 303/393 (77%) same_file 141/393 (36%)
+
+== message flags among verified events: any flagged word 12/153 (8%) | strong words (dedup/duplicat/dry/consolidat/factor/unify/reuse/share) 9/153 (6%)
+events by commit-level: events/commit 1.0774647887323943
+
+== detector precision by stratum (reviewed random sample): groups total | reviewed | T | U | R | precision T/(T+R+U) | est. true groups in stratum
+S1_extract_resolved      total= 343 reviewed=200 T=146 U= 8 R= 46 prec=0.73 est_true=250
+S2_extract_unresolved    total= 331 reviewed= 14 T=  3 U= 1 R= 10 prec=0.21 est_true=71
+S3_pullup                total=  76 reviewed= 27 T=  3 U= 2 R= 22 prec=0.11 est_true=8
+S4_merge_delete          total= 708 reviewed= 14 T=  2 U= 1 R= 11 prec=0.14 est_true=101
+reject reasons {'spurious': 30, 'mirror': 21, 'unclear': 12, 'api_change': 9, 'move': 6, 'test_rewrite': 3, 'rename': 3, 'base_class_swap': 2, 'inverse': 2, 'move_delegate': 1, 'modernization': 1, 'local_extract': 1, 'api_compose': 1, 'example_rewrite': 1, 'refactor_other': 1, 'snapshot': 1, 'deprecation_shim': 1, 'large_refactor': 1, 'library_swap': 1, 'api_replace': 1, 'duplicate_commit': 1, 'per_copy': 1}
+
+== per-repo funnel: commits(non-merge) | groups(candidates) | reviewed | verified events | controls
+bubbletea  commits= 1827 cand_groups=  45 reviewed=  9 events=  5 controls= 12
+chi        commits=  774 cand_groups=  26 reviewed=  5 events=  2 controls=  5
+click      commits= 2190 cand_groups=  52 reviewed=  8 events=  4 controls= 11
+cobra      commits=  992 cand_groups=  21 reviewed=  4 events=  4 controls= 15
+date-fns   commits= 2451 cand_groups=  16 reviewed=  2 events=  0 controls=  0
+echo       commits= 1782 cand_groups=  75 reviewed=  7 events=  4 controls= 11
+flask      commits= 3832 cand_groups=  99 reviewed= 11 events= 10 controls= 47
+fzf        commits= 3673 cand_groups=  32 reviewed=  9 events=  9 controls= 25
+gin        commits= 1807 cand_groups=  52 reviewed=  9 events=  8 controls= 25
+gorm       commits= 2563 cand_groups=  95 reviewed= 17 events= 12 controls= 30
+httpx      commits= 1486 cand_groups=  96 reviewed= 14 events=  7 controls= 15
+pydantic   commits= 5949 cand_groups= 194 reviewed= 35 events= 23 controls= 61
+query      commits= 6015 cand_groups=  80 reviewed= 24 events= 11 controls=  0
+requests   commits= 4884 cand_groups=  31 reviewed=  4 events=  4 controls= 10
+rich       commits= 3394 cand_groups=  40 reviewed=  4 events=  1 controls=  5
+starlette  commits= 1731 cand_groups=  48 reviewed=  8 events=  5 controls= 20
+swr        commits=  978 cand_groups=  13 reviewed=  5 events=  4 controls=  7
+trpc       commits= 4984 cand_groups=  72 reviewed= 20 events= 14 controls= 12
+vite       commits= 9892 cand_groups= 122 reviewed= 20 events= 16 controls= 59
+werkzeug   commits= 4554 cand_groups= 134 reviewed= 11 events=  6 controls= 23
+zod        commits= 2971 cand_groups= 110 reviewed= 29 events=  4 controls=  0
+zustand    commits= 1350 cand_groups=   5 reviewed=  0 events=  0 controls=  0
+== extra (manual) ==
+message-flag recall sample: 60 random strong-word-flagged commits (of 358): 10 hand-judged consolidation-like (17%); structural detector produced any candidate for 3/10 (23, 28, 41 in data/recall_sample.json);
+ of the 7 missed, >=4 were single-site 'reuse an existing helper' or type/struct merges that the >=2-site design excludes by construction.
+message words among verified events: subject 8% (core words); subject+body 19/153 = 12% (core words), 34/153 = 22% incl. refactor/simplif/cleanup.
+self-audit: 5 random events re-read from full hunks (fzf ca4bdfb, vite 92601db(1 of 2 sites visible), fzf 3b68dcd, swr 97c49ba, pydantic 0ca1cf2): all consistent with the label; pydantic 0ca1cf2 weak.

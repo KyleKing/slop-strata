@@ -224,10 +224,15 @@ var asideDirs = map[string]bool{ //nolint:gochecknoglobals // fixed vocabulary
 // directory per flavor: `template-react`, `template-vue-ts`.
 const asidePrefix = "template-"
 
-// dupAside reports whether a file is a test or sits in a tree of stand-alone
-// files. The rule reports neither, and never pairs one with production code.
+// asideInfix marks a Storybook file, `button.stories.tsx`: one component shown
+// in each of its states, a file per component and every file laid out alike.
+const asideInfix = ".stories."
+
+// dupAside reports whether a file is a test, a file of stories, or sits in a
+// tree of stand-alone files. The rule reports none of them, and never pairs
+// one with production code.
 func dupAside(file string) bool {
-	if lang.IsTestPath(file) {
+	if lang.IsTestPath(file) || strings.Contains(path.Base(file), asideInfix) {
 		return true
 	}
 	dir := path.Dir(file)
@@ -241,8 +246,8 @@ func dupAside(file string) bool {
 	return false
 }
 
-// Aside reports whether a file is a test, an example, a benchmark, or another
-// file that stands alone by design: the files the duplicate passes leave out,
+// Aside reports whether a file is a test, an example, a benchmark, a file of
+// stories, or another file that stands alone by design: the files the duplicate passes leave out,
 // for a caller that ranks code worth reworking and wants the same ones out.
 func Aside(file string) bool { return dupAside(file) }
 
@@ -490,12 +495,13 @@ func (p *dupPass) mirror(a, b *dupFile) bool {
 	return is
 }
 
-// extend grows a seed pair into the longest run of statements of equal shape
-// around it, staying on added lines in q and never letting the two stretches
-// of one file overlap.
-func extend(q *dupFile, i int, site dupSite) dupRun {
-	c := site.file
-	cs := c.decoded()
+// reach counts the statements that line up around a seed pair: how many
+// before it, and how many from it on. Two statements line up when they have
+// one shape hash, one token count, and one slot count, and the seed is held
+// to that too: two shapes can share a hash, and a seed of that kind reaches
+// nothing, itself included.
+func reach(q *dupFile, i int, site dupSite) (int, int) {
+	cs := site.file.decoded()
 	same := func(a, b int) bool {
 		if a < 0 || b < 0 || a >= len(q.stmts) || b >= len(cs) || !q.counts(a) {
 			return false
@@ -504,6 +510,9 @@ func extend(q *dupFile, i int, site dupSite) dupRun {
 
 		return x.shape == y.shape && x.ntok == y.ntok && len(x.slots) == len(y.slots)
 	}
+	if !same(i, site.idx) {
+		return 0, 0
+	}
 	lo, hi := 0, 1
 	for same(i-lo-1, site.idx-lo-1) {
 		lo++
@@ -511,8 +520,25 @@ func extend(q *dupFile, i int, site dupSite) dupRun {
 	for same(i+hi, site.idx+hi) {
 		hi++
 	}
-	run := dupRun{file: q, with: c, q: i - lo, c: site.idx - lo, n: lo + hi}
-	if c == q {
+
+	return lo, hi
+}
+
+// extend grows a seed pair into the longest run of statements of equal shape
+// around it, staying on added lines in q and never letting the two stretches
+// of one file overlap. A seed that reaches nothing answers a run of no
+// statements.
+func extend(q *dupFile, i int, site dupSite) dupRun {
+	lo, hi := reach(q, i, site)
+
+	return runAround(q, i, site, lo, hi)
+}
+
+// runAround is the run of a seed pair that reaches lo statements back and hi
+// on, cut where its two stretches would overlap inside one file.
+func runAround(q *dupFile, i int, site dupSite, lo, hi int) dupRun {
+	run := dupRun{file: q, with: site.file, q: i - lo, c: site.idx - lo, n: lo + hi}
+	if run.with == q {
 		run.n = min(run.n, max(run.q-run.c, run.c-run.q))
 	}
 

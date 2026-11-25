@@ -1,0 +1,150 @@
+repo	rev	path	line	verdict	cause	repeats_path	repeats_line	key_suffix
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/src/inject-is-mutating.ts	24	P	sibling one-liners	packages/angular-query/src/inject-is-fetching.ts	24
+trpc	6b2fa563aef2e3a18d80e16532bb7a012176e235	tooling/release/src/notes.ts	310	P	one statement	tooling/release/src/release.ts	551
+echo	8148ea9fe6989037ab19656228c23a540629f48d	group.go	47	F	adjacent	group.go	44
+fzf	2f27a3ede2f5063459809454ccf691dc876e5337	src/pattern.go	372	P	guard repeated in sibling loops	src/pattern.go	343
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	87	R		binder_generic.go	60
+zod	cc4cd4ee9c52fcaa10964e48cc144541e41a5ed9	scripts/update-iso-4217.ts	5	F	idiom	scripts/check-semver.ts	6
+fzf	6f17d49dbb1972295f3e16f403a19f6063ab0c05	src/options.go	3631	P		src/options.go	3627
+gorm	a827495be126f896c0f744043410642d70bbac1b	internal/lru/lru.go	252	R		internal/lru/lru.go	236
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/src/inject-queries.ts	149	R		packages/angular-query/src/inject-base-query.ts	78
+fzf	743930a38d43bcf07cc18e332489a4344e421c56	src/terminal.go	6738	P	one statement	src/terminal.go	6757
+zod	37b015017b17420e81e76555066bdfa39c24cdc5	packages/zod/src/v4/core/parse.ts	154	P		packages/zod/src/v4/core/parse.ts	50
+trpc	a432842a0b8394d3473c925a820ca6b81469bdac	packages/upgrade/src/transforms/provider.ts	67	P		packages/upgrade/src/transforms/hooksToOptions.ts	196
+trpc	b6497780354f85d52d517f1dbfcb90472ed066c4	packages/react-query/src/utils/createUtilityFunctions.ts	99	P		packages/react-query/src/shared/hooks/createHooksInternal.tsx	221
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	222	R		binder_generic.go	118
+echo	c12cb08a8679d45dbefe31ab604e60c9ebb64c3c	middleware/logger_strings.go	118	P		middleware/logger_strings.go	61
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/zod/src/v4/core/parse.ts	182	P		packages/zod/src/v4/core/parse.ts	156
+gorm	3e2c4fc446f0a601124771d012ee167cbb0d7de0	clause/where.go	191	R		clause/where.go	221
+gin	192ac89eefc1c30f7c97ae48a9ffb1c6f1c8c8bc	binding/form_mapping.go	291	P		binding/form_mapping.go	266
+zod	b801439b5fb160d651084ff7d7c27a61e24a7334	packages/bench/moltar-libs.ts	191	F	bench	packages/bench/moltar-libs.ts	187
+trpc	8f4826679aa737dd84b1b26040a4c417a8bb7dfc	www/build/compact-code.ts	85	P		www/build/compact-code.ts	76
+trpc	11101cde9b261b11a9069b7572c1c37634e34bed	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts	220	R		packages/server/src/adapters/node-http/nodeHTTPRequestHandler.ts	39
+pydantic	1c8a330acc3077e77da64e3672c7c875fb4c6eaa	pydantic-core/python/pydantic_core/core_schema.py	1696	P	type-level	pydantic-core/python/pydantic_core/core_schema.py	1639
+starlette	93c01e5014735ec64ad1885f0f525172c9c1691f	benchmarks/streaming_response_benchmark.py	45	P	bench	benchmarks/request_benchmark.py	86
+gorm	1901911908ffe2ecafb4d7435f3859f3fcad2e73	generics.go	435	P		generics.go	202
+zod	99fce394a026823e602b9c30d8d5d9f5f1932ce7	packages/bench/compile-vs-zod-compiler.ts	439	P	bench	packages/bench/compile-matrix.ts	329
+trpc	06528e2d60c0c0ff980b0909c380c2dc518bc54f	packages/client/src/links/wsLink/wsClient/wsClient.ts	193	P		packages/client/src/links/wsLink/wsClient/wsClient.ts	143
+starlette	9ee951980bae776103715b66305f807d9e8245da	starlette/responses.py	249	P		starlette/responses.py	166
+fzf	7782da6c00ebc8f9df77da9816165323cc6d218c	src/tui/tui.go	767	F	data literal	src/tui/tui.go	781
+echo	c57fcb3746c4bfdab1b65363aa9e9edc7b6cab28	bind.go	320	R		bind.go	304
+trpc	c869fa1075fc3ce11b38495c5e6044fb97b335d2	tooling/release/src/release.ts	454	F	idiom	tooling/release/src/release.ts	306
+zod	62471c9088a048d2cce5d53ed29ece573d1879f6	packages/bench/compile-scaling.ts	58	F	bench	packages/bench/compile-scaling.ts	54
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	group.go	153	P		group.go	81
+starlette	be5bf5e9585fc9cc43cbff6699cc845569e838db	benchmarks/gzip_benchmark.py	311	F	bench	benchmarks/gzip_benchmark.py	274
+starlette	0eb9ca82bc9c3f50713155860b5ebc6bcc95dc40	benchmarks/gzip_benchmark.py	216	F	bench	benchmarks/gzip_benchmark.py	181
+query	b38ddac2b7105f18da2409c8be5c8ae0bf35a99b	integrations/solid/astro-7/src/components/App.jsx	9	F	sample app	integrations/solid/vite/src/App.jsx	4
+zod	c5b9bcb39b7953c6a984849c6527863acdae0af7	packages/bench/memory/indent-leak.ts	52	F	bench	packages/bench/memory/compiled-slope.ts	25
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/bench/validate-abort-sweep.ts	161	F	bench	packages/bench/validate-abort-sweep.ts	156
+swr	387d3d438bf5eb969e1778ff9da199205349ad63	e2e/site/component/manual-retry-mutate.tsx	8	F	e2e	e2e/site/app/suspense-retry-18-3/use-remote-data.ts	7
+trpc	b9b460ad186ed6940ad044bdef521c7ca37f2528	packages/tanstack-react-query/src/unstable-handles/handles.ts	729	P	overloads	packages/tanstack-react-query/src/unstable-handles/handles.ts	704
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	statement.go	423	F	adjacent	statement.go	421
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	statement.go	437	P		statement.go	423
+gorm	22d5239dec782d09f54bc11acbd7c99b85f770d2	logger/slog.go	85	P		logger/slog.go	73
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	router.go	515	R		router.go	487
+zod	b801439b5fb160d651084ff7d7c27a61e24a7334	packages/bench/moltar-libs.ts	183	F	bench	packages/bench/moltar-libs.ts	179
+vite	b516bc2f0a0b040a4c4a2fb636bf5bb61d9ad5a2	playground/hmr/vite.config.ts	219	F	playground	playground/hmr/vite.config.ts	187
+echo	bc1e1904f1f7b641b3c5eca11be634735a3688f9	response.go	89	R		middleware/body_dump.go	103
+pydantic	6b819ee1bb1a77c989cb7727af14109cbdf0767e	pydantic-core/python/pydantic_core/core_schema.py	2296	P	type-level	pydantic-core/python/pydantic_core/core_schema.py	2165
+fzf	677e854850a70b7243fd35703d4f03b6651961b3	src/terminal.go	2813	P		src/terminal.go	2792
+echo	af07b69b44c0688d03208dda296f5694de9476e4	router.go	573	F	adjacent	router.go	565
+starlette	25b8e179d8d7ed86769c02f648772dd5fb43dc3c	starlette/formparsers.py	88	R		starlette/formparsers.py	81
+cobra	8cb30f9ca53a004a6fe88c5cfcc79ac7b24fc638	completions.go	505	P		command.go	1288
+zod	abfb38977dc28dc9993e3fa6a2ecc2f52a8d0c4c	packages/zod/src/v4/core/memoizer.ts	65	F	adjacent	packages/zod/src/v4/core/memoizer.ts	60
+fzf	f779e6a4df17493a0be5d8a68ef48d009df4d4b4	src/algo/algo.go	634	F	coincidence	src/algo/algo.go	869
+query	254350f9cba47fd87304e057fac1a314093423f0	packages/query-devtools/test-setup.ts	20	F	test setup	packages/query-devtools/test-setup.ts	15
+trpc	0fa5a1a27b5b7711f4bbebdc10b7e03274de9d76	packages/server/src/adapters/node-http/nodeHTTPRequestHandler.ts	39	R		packages/server/src/adapters/ws.ts	81
+zod	19c40d2072288b4cafec851e9d056a72a88e5973	packages/zod/src/v4/core/schemas.ts	3901	P		packages/zod/src/v4/core/schemas.ts	3891
+cobra	c81c46a015b48d9f79c73cc6f528f90eaabb0c7e	flag_groups.go	267	P		flag_groups.go	246
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	middleware/slash.go	107	R		middleware/slash.go	43
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/bench/validate-abort-sweep.ts	138	F	bench	packages/bench/validate-abort-sweep.ts	130
+trpc	b6497780354f85d52d517f1dbfcb90472ed066c4	packages/react-query/src/shared/hooks/createHooksInternal.tsx	308	P		packages/react-query/src/shared/hooks/createHooksInternal.tsx	270
+zod	6f0483671e622d5d01a1e17f69af0825137c7830	packages/zod/src/v4/classic/schemas.ts	1484	F	adjacent	packages/zod/src/v4/classic/schemas.ts	1480
+gorm	e015bd08ebb5cc27aabf1731735324138879a44b	schema/utils.go	134	P		schema/utils.go	147
+trpc	33ee2ba5880d7db5115bcea400e9749c417610e8	packages/server/src/adapters/ws.ts	764	P		packages/server/src/adapters/ws.ts	366
+zod	eca96871536603076bdd00b8779b947144133aa4	packages/zod/src/v4/classic/from-json-schema.ts	365	F	adjacent	packages/zod/src/v4/classic/from-json-schema.ts	357
+zod	99fce394a026823e602b9c30d8d5d9f5f1932ce7	packages/bench/compile-vs-zod-compiler.ts	556	F	bench	packages/bench/compile-matrix.ts	411
+zod	9782f87c69be3ceb0bbdae94fcc1c337bfc8618d	packages/zod/src/v4/core/compile.ts	867	F	signature	packages/zod/src/v4/core/compile.ts	289
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/zod/src/v4/core/schemas.ts	3022	P		packages/zod/src/v4/core/schemas.ts	2059
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/bench/validate-abort-sweep.ts	205	F	bench	packages/bench/validate-abort-sweep.ts	204
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	group.go	72	F	parallel api	echo.go	495
+gorm	73a988ceb22651e01c968a9ec20ae1709e73c8e6	scan.go	335	F	coincidence	scan.go	280
+gorm	52b4744410b4c60fcbcebe7839f42a6f92be30c8	schema/field.go	460	R		schema/field.go	470
+trpc	b9b460ad186ed6940ad044bdef521c7ca37f2528	packages/tanstack-react-query/src/unstable-handles/handles.ts	116	P	type-level	packages/tanstack-react-query/src/unstable-handles/handles.ts	104
+cobra	6b0bd3076cfafd1c108264ed1e4aa0c0fe3f8537	command.go	669	R		command.go	631
+starlette	0eb9ca82bc9c3f50713155860b5ebc6bcc95dc40	benchmarks/gzip_benchmark.py	213	F	bench	benchmarks/gzip_benchmark.py	180
+vite	5ff255e5b9f1460dd844ccf7a82d6f59f8899033	packages/vite/src/node/ssr/fetchModule.ts	273	P		packages/vite/src/node/ssr/fetchModule.ts	127
+starlette	6c759c2bcab359aab3526419d84767887fb9509b	benchmarks/request_benchmark.py	92	F	bench	benchmarks/multipart_benchmark.py	167
+echo	fc410094b2f3415cf2bf5204082137b205bfd5af	middleware/slash.go	159	R		echo.go	999
+trpc	9f058097e45f6592d5a2a539667c4098db7c1a5b	www/build/fake-opencollective.ts	128	P		www/build/fake-github.ts	108
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	group.go	122	F	parallel api	echo.go	539
+zod	9782f87c69be3ceb0bbdae94fcc1c337bfc8618d	packages/zod/src/v4/core/compile.ts	1456	P		packages/zod/src/v4/core/compile.ts	1297
+swr	d2e2f2c0c0da98e049b0fdbb917aa7f4944d24ea	src/_internal/utils/server-preload.ts	5	R	type alias copied	src/_internal/utils/preload.ts	16
+cobra	5f2ec3c897155c3346e77430932e3966e5cfa648	flag_groups.go	186	P		flag_groups.go	72
+echo	39f61ef3ba3bb1360717b89783ce1cadade08928	rfc9457.go	68	P		echo.go	452
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	binder_generic.go	88	P	one statement	binder_generic.go	63
+zod	041658618193b81f20dcfaf965cfe77853a7f76b	packages/zod/src/v4/locales/gu.ts	104	F	parallel locale files	packages/zod/src/v4/locales/bn.ts	104
+zod	0135c85a4831a5a04326c4094888574cf1ae82f5	packages/zod/src/v4/mini/schemas.ts	99	P	parallel flavours	packages/zod/src/v4/classic/schemas.ts	296
+fzf	9dfdba41f5dc1b5f712529fa923bdcf67eb09c30	src/algo/runeindex_x86.go	100	P		src/algo/runeindex_x86.go	82
+gorm	a827495be126f896c0f744043410642d70bbac1b	prepare_stmt.go	79	F	intentional re-check	prepare_stmt.go	69
+zod	9782f87c69be3ceb0bbdae94fcc1c337bfc8618d	packages/zod/src/v4/core/compile.ts	1202	R		packages/zod/src/v4/core/compile.ts	1236
+query	b38ddac2b7105f18da2409c8be5c8ae0bf35a99b	integrations/preact/vite/src/App.jsx	4	F	integration sample app	integrations/react/next-14/app/client-component.tsx	7
+vite	7480c547947d0b1dc519815d8f6f670964b15026	packages/vite/src/node/plugins/workerImportMetaUrl.ts	263	P		packages/vite/src/node/plugins/workerImportMetaUrl.ts	244
+gorm	d9372f551000bef6535f5679c38255ca0be327bc	schema/serializer.go	150	P		schema/serializer.go	136
+trpc	4984df110d76e082f4ea8e5739d9d7aa9e76965a	www/src/components/sponsors/pack.ts	230	R		www/src/og/sponsor-cloud.ts	57
+pydantic	617abdb1bb95b6a5d7808937cac7ef2fdbe918d9	pydantic-core/python/pydantic_core/core_schema.py	2364	P	type-level	pydantic-core/python/pydantic_core/core_schema.py	2166
+trpc	11101cde9b261b11a9069b7572c1c37634e34bed	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts	790	P	one statement	packages/server/src/unstable-core-do-not-import/http/resolveResponse.ts	626
+cobra	68b6b24f0c9926a779f7113d1040396a30fdedaf	flag_groups.go	47	R		flag_groups.go	31
+echo	b1d65e40fef366f2e1a70ca7c172f5057df7024b	context.go	594	P		context.go	531
+gorm	a827495be126f896c0f744043410642d70bbac1b	internal/lru/lru.go	172	R		internal/lru/lru.go	146
+zod	f412178defd4348872fa581db952f6713677502a	scripts/check-lockstep.ts	26	P		scripts/check-lockstep.ts	17
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	generics.go	527	R		statement.go	215
+fzf	a650900edac4d755aaf0044182036debb6b0a98a	src/algo/runeindex_ref.go	26	P		src/algo/runeindex_ref.go	13
+gorm	a827495be126f896c0f744043410642d70bbac1b	internal/lru/lru.go	241	P		internal/lru/lru.go	224
+gin	472d086af2acd924cb4b9d7be0525f7d790f69bc	tree.go	843	R		tree.go	763
+zod	764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164	packages/zod/src/v4/core/schemas.ts	3404	P		packages/zod/src/v4/core/schemas.ts	2059
+httpx	8e36f2bc685dfbe43cd7503bc1c422a6ed6e05a5	httpx/_transports/default.py	288	P	sync/async twins	httpx/_transports/default.py	142
+starlette	dba1c4babc4f99ad2622bb913d87045775dda735	starlette/requests.py	305	P		starlette/requests.py	292
+fzf	f779e6a4df17493a0be5d8a68ef48d009df4d4b4	src/algo/algo.go	625	P		src/algo/algo.go	858
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/src/types.ts	108	P	type-level	packages/angular-query/src/types.ts	72
+trpc	857116837d411ea4fa4ba793855d437debd68849	www/src/components/framework-tabs.tsx	24	R		www/src/components/doc-body.tsx	81
+trpc	c869fa1075fc3ce11b38495c5e6044fb97b335d2	tooling/release/src/release.ts	331	P		tooling/release/src/release.ts	303
+zod	8ce9e8d56b1f408c445db6f2d7542696c6d20326	packages/mini/vitest.config.ts	4	F	config file	packages/zod/vitest.config.ts	4
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	echo.go	755	R		echo.go	740
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	echotest/context.go	139	R		echotest/context.go	99
+echo	bc4028f1d7cc373823de8b6eb057cd4a9d5fc85c	middleware/static.go	433	R		echo.go	1038
+fzf	b5f72215803d5b3d03484ac95a7767d2c7c2ef8c	src/terminal.go	1956	P		src/terminal.go	6701
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	257	R		binder_generic.go	148
+query	d68780535edd1f4837e66ee42260889b762dfab1	packages/angular-query/src/inject-mutation-state.ts	12	P		packages/vue-query/src/useMutationState.ts	83
+trpc	61b27e687ca5fa4d9d1ca3c35c268ced6bea10db	packages/server/src/adapters/ws.ts	550	P	one statement	packages/server/src/adapters/ws.ts	181
+zod	9782f87c69be3ceb0bbdae94fcc1c337bfc8618d	packages/zod/src/v4/mini/schemas.ts	895	F	parallel flavours	packages/zod/src/v4/classic/schemas.ts	1629
+zod	7ce3e77dfbca80bfa2ab3c73a84e0454570d7158	packages/zod/src/v4/core/schemas.ts	4214	P		packages/zod/src/v4/core/schemas.ts	3790
+trpc	fe64009e62e94f5301082e37eb5d08ec70bde63d	www/build/markdown.ts	1015	P		www/build/markdown.ts	999
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	router.go	500	P	one statement	router.go	477
+zod	168122fca54452aa30d7261c83df79b703b258d7	packages/zod/src/v4/mini/in-out.ts	11	R		packages/zod/src/v4/classic/in-out.ts	11
+zod	cafbee4772ef481611fef6f5fb9ed9a1b9597069	packages/zod/src/v4/core/util.ts	891	P		packages/zod/src/v4/core/util.ts	873
+trpc	1283c63af31aab98bda30fb6168e753480c7d455	tooling/release/src/changes.ts	147	P	one statement	tooling/release/src/release.ts	808
+echo	f071367e3c6d3b5cf624e8d91167215bfae1a538	router.go	502	R		router.go	487
+gorm	812bb20c34f0a67e6799269ce5ef635e78c0e0cf	finisher_api.go	735	R		finisher_api.go	712
+zod	19c40d2072288b4cafec851e9d056a72a88e5973	packages/zod/src/v4/core/util.ts	979	P		packages/zod/src/v4/core/util.ts	969
+fzf	1e31e5dfbe1912e0532e9055c68b5c689e096e87	src/tmux.go	67	P		src/tmux.go	171
+fzf	6f17d49dbb1972295f3e16f403a19f6063ab0c05	src/zellij.go	33	R		src/tmux.go	36
+gorm	e015bd08ebb5cc27aabf1731735324138879a44b	schema/utils.go	125	F	coincidence	schema/utils.go	136
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	281	R		binder_generic.go	168
+zod	eca96871536603076bdd00b8779b947144133aa4	packages/zod/src/v4/classic/from-json-schema.ts	891	P		packages/zod/src/v4/classic/from-json-schema.ts	883
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	callbacks/raw.go	17	R		callbacks/create.go	111
+gorm	c44405a25b0fb15c20265e672b8632b8774793ca	callbacks/update.go	107	R		callbacks/create.go	111
+gin	688a429d19d8c804447bb889d3635e2c31a5564d	codec/json/sonic.go	26	F	trivial adapter bodies	codec/json/go_json.go	24
+vite	97bb00f8f55e18caa5621c1a23dd057f1ca836e8	packages/vite/src/node/plugins/wasm.ts	168	P		packages/vite/src/node/plugins/css.ts	1023
+trpc	c869fa1075fc3ce11b38495c5e6044fb97b335d2	tooling/release/src/release.ts	84	F	idiom	tooling/release/src/release.ts	73
+zod	22bed613281143efa3815fe26ab666c6c56586af	packages/zod/src/v4/core/schemas.ts	1182	P		packages/zod/src/v4/core/schemas.ts	1031
+gin	688a429d19d8c804447bb889d3635e2c31a5564d	codec/json/json.go	23	F	trivial adapter bodies	codec/json/go_json.go	24
+vite	4d16e7c14d5e1c361f148238b1e81131238ab8e9	packages/vite/src/node/plugins/importAnalysisBuild.ts	67	F	coincidence	packages/vite/src/node/plugins/importAnalysisBuild.ts	51
+fzf	4499615fe9c06c0651aa5650e5d0d0a5face99a8	src/terminal.go	3669	F	coincidence	src/terminal.go	3656
+echo	cbc0ac1dbc7b1a03feb45b21f52783e5a1d24df0	binder_generic.go	157	P	one statement	binder_generic.go	129
+gorm	67642abfff798c25aade7f29c76654ab18e209c4	schema/field.go	620	F	language-forced arms	schema/field.go	608
+gorm	63534145fda9a2ac9ba703650b1a44da6a03e45e	schema/field.go	911	P		schema/field.go	885
+fzf	2f27a3ede2f5063459809454ccf691dc876e5337	src/pattern.go	364	F	coincidence	src/pattern.go	349
+gorm	49eaeacb892c8bb2de4a1ea70607eaaf4c15ab9b	schema/field.go	527	P		schema/field.go	519
+echo	fc410094b2f3415cf2bf5204082137b205bfd5af	context.go	621	P		context.go	550
+gorm	9af6d510b58c7691fa33694004c404032208f84f	statement.go	382	P		statement.go	367
