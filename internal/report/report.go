@@ -577,7 +577,8 @@ var Docs = map[string]string{
 		"table counts when four fifths of its values are functions (a name, a member of something, a " +
 		"lambda or arrow function, a partial) or four fifths of its keys are named constants. It does " +
 		"not count when two fifths of its entries copy a field of the key's name off a value (name: " +
-		"user.name), which is a record, when it is written as an argument of a call, which is the " +
+		"user.name), or a field whose name the key ends in (userName: user.name), which is a record, " +
+		"when it is written as an argument of a call, which is the " +
 		"call's named arguments, or when it is a TypeScript object of methods, which implements an " +
 		"interface. Two places are joined when they share 3 cases that at most 40 places of the tree " +
 		"hold, and a third of the smaller one's cases. The place with the heaviest joins and every " +

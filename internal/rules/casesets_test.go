@@ -465,6 +465,24 @@ const (
   return { name: u.name, email: u.email, phone: u.phone, city: u.city }
 }
 `
+	tsPrefixedRecord = `export function entry(recipient: Recipient, auth: Auth) {
+  return {
+    recipientEmail: recipient.email,
+    recipientName: recipient.name,
+    recipientId: recipient.id,
+    recipientRole: recipient.role,
+    actionAuth: auth.derived,
+  }
+}
+`
+	pyPrefixedRecord = `def entry(user, team):
+    return {
+        'user_id': user.id,
+        'user_email': user.email,
+        'team_id': team.id,
+        'team_name': team.name,
+    }
+`
 	tsNamedArguments = `export function open(app: App, size: number) {
   return new Window('main', {
     owner: app.id,
@@ -661,6 +679,8 @@ func quietTrees() map[string]map[string]string {
 		"a record copied by subscript, python":       twice("user", ".py", pyRecordBySubscript),
 		"a record of shorthand names, typescript":    twice("user", ".ts", tsShorthandRecord),
 		"a record copied field by field, typescript": twice("user", ".ts", tsRecord),
+		"a record under prefixed keys, typescript":   twice("audit", ".ts", tsPrefixedRecord),
+		"a record under prefixed keys, python":       twice("audit", ".py", pyPrefixedRecord),
 		"the named arguments of a call, typescript":  twice("ui", ".ts", tsNamedArguments),
 		"the named arguments of a call, python":      twice("ui", ".py", pyNamedArguments),
 		"the named arguments of a call, go":          twice("ui", ".go", goNamedArguments),

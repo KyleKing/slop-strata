@@ -639,8 +639,9 @@ func (c *caseCollector) dispatches(v *ts.Node) bool {
 }
 
 // copiesField reports whether an entry copies a field of its own key's name:
-// `"name": user.name`, `name: row["name"]`, `name: get_name()`, or a name that
-// is its own key and value.
+// `"name": user.name`, `name: row["name"]`, `name: get_name()`, a name that is
+// its own key and value, or a key that ends in the field's name
+// (`recipientEmail: recipient.email`, `"user_id": user.id`).
 func (c *caseCollector) copiesField(k, v *ts.Node) bool {
 	kind := v.Kind()
 	if c.syn.EntryNames[kind] {
@@ -657,8 +658,15 @@ func (c *caseCollector) copiesField(k, v *ts.Node) bool {
 	head, _, _ := strings.Cut(text, "(")
 	last := strings.TrimSpace(head[strings.LastIndexByte(head, '.')+1:])
 
-	return last == name || strings.HasSuffix(text, name) ||
+	return last == name || strings.HasSuffix(text, name) || endsInField(name, last) ||
 		strings.Contains(text, `"`+name+`"`) || strings.Contains(text, "'"+name+"'")
+}
+
+// endsInField reports whether a key ends in the name of the field it is set
+// from, in any letter case: the key says whose field it is, and the entry is
+// still a copy. One letter is no name.
+func endsInField(key, field string) bool {
+	return len(field) > 1 && len(key) > len(field) && strings.EqualFold(key[len(key)-len(field):], field)
 }
 
 // caseSets packs what the walk gathered, or answers nil for a file with none.
