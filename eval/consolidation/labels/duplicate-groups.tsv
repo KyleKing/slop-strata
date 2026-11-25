@@ -1,0 +1,60 @@
+fzf	go	1	real	three arms of parseEscSequence, one key constant differs
+fzf	go	2	plausible	callback preamble shared by tmux, tmux floating, zellij
+fzf	go	3	plausible	loop header and guard three times in matchChunk
+fzf	go	4	real	addClickHeaderWord / addClickFooterWord, one literal differs
+fzf	go	5	real	same border test twice in Terminal.Loop
+cobra	go	1	real	three MarkFlags* functions, annotation and message differ
+cobra	go	2	real	GenReSTTreeCustom / GenYamlTreeCustom
+cobra	go	3	real	GenMarkdownCustom / GenReSTCustom shared block
+cobra	go	4	plausible	bash / zsh completion entry points, stretch crosses two functions
+cobra	go	5	plausible	one Fprintf line three times in defaultUsageFunc
+chi	go	1	real	13 statements twice in findRoute
+chi	go	2	real	binary search in node.findEdge and nodes.findEdge
+chi	go	3	real	StripSlashes / RedirectSlashes preamble
+chi	go	4	real	NotFound / MethodNotAllowed
+chi	go	5	real	route path resolution in CleanPath and GetHead
+bubbletea	go	1	real	panic report in recoverFromPanic and recoverFromGoPanicWithStack
+bubbletea	go	2	plausible	tty_unix / tty_windows initInput: platform files, shared part could move to tty.go
+bubbletea	go	3	real	second stretch of the same two recover functions
+bubbletea	go	4	real	Every / Tick
+bubbletea	go	5	plausible	tty_unix / tty_windows, two statements
+flask	py	1	real	Flask and Blueprint repeat get_send_file_max_age, send_static_file, open_resource
+flask	py	2	plausible	three one-line registration decorators, attribute name differs
+flask	py	3	real	TypeVars declared in app.py and sansio/app.py
+flask	py	4	plausible	one TypeVar line in five modules
+flask	py	5	real	TypeVars declared in sansio/blueprints.py and sansio/scaffold.py
+httpx	py	1	plausible	Client.__init__ / AsyncClient.__init__, sync and async twins
+httpx	py	2	real	ByteChunker.decode / TextChunker.decode
+httpx	py	3	false	post/put/patch: a public wrapper whose body is one forwarding call, nothing to extract
+httpx	py	4	false	AsyncClient.post/put/patch: same forwarding wrappers
+httpx	py	5	plausible	SOCKS branch of the sync and async transports
+pydantic	py	1	false	ConfigDict (a TypedDict) and ConfigWrapper declare the same fields by design; annotations cannot be shared
+pydantic	py	2	plausible	DictSchema / OrderedDictSchema TypedDicts and their builders
+pydantic	py	3	plausible	ListSchema / SetSchema TypedDicts and their builders
+pydantic	py	4	real	PlainSerializer / WrapSerializer
+pydantic	py	5	false	a TypedDict of inputs mirrors FieldInfo's attribute declarations by design
+rich	py	1	real	Segment.align_top / align_bottom / align_middle
+rich	py	2	real	column setup in wrap_file and open
+rich	py	3	real	line splitting loop in three Segment methods
+rich	py	4	real	Text.append / append_text
+rich	py	5	false	demo code under two modules' main guards
+vite	ts	1	real	helper copied from vite into plugin-legacy
+vite	ts	2	real	git URL normaliser in docs data and the license plugin
+vite	ts	3	real	parse-imports-or-report block twice in one plugin
+vite	ts	4	real	payload normalisation in three places
+vite	ts	5	real	url resolution twice in one plugin
+trpc	ts	1	real	httpBatchLink / httpBatchStreamLink preamble
+trpc	ts	2	plausible	getQueryKeyInternal in the old and new react-query packages
+trpc	ts	3	plausible	two conditional types, three names differ
+trpc	ts	4	plausible	one return statement three times, method name differs
+trpc	ts	5	real	GraphQL error handling in two sponsor scripts
+zod	ts	1	false	one locale per file: eight locales share two lines
+zod	ts	2	false	classic and mini are two flavours of one API kept in step on purpose
+zod	ts	3	false	pt and pt-BR locales
+zod	ts	4	plausible	_default / prefault across classic and mini, three names differ
+zod	ts	5	real	processError in formatError and treeifyError
+query	ts	1	real	useIsFetching / useIsMutating in lit-query
+query	ts	2	false	preact and svelte adapters: one port per framework
+query	ts	3	false	mutate function types in three framework adapters
+query	ts	4	false	useQueries result type in the react and vue adapters
+query	ts	5	false	the same test block in each package's vite.config.ts

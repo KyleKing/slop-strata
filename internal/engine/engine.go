@@ -584,11 +584,13 @@ func blobPrints(reports []*FileReport) []rules.BlobPrint {
 // findings into each file's report. TreePaths is every path in the tree.
 func CrossFile(reports []*FileReport, treePaths []string, cfg *config.Config) {
 	blobs := blobPrints(reports)
+	byPath := make(map[string][]*FileReport, len(reports))
+	for _, r := range reports {
+		byPath[r.Path] = append(byPath[r.Path], r)
+	}
 	for path, findings := range rules.CrossFile(blobs, treePaths, cfg.EntryPoints, cfg.ConfigPaths, cfg.Experimental) {
-		for _, r := range reports {
-			if r.Path == path {
-				r.Findings = append(r.Findings, findings...)
-			}
+		for _, r := range byPath[path] {
+			r.Findings = append(r.Findings, findings...)
 		}
 	}
 }

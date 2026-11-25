@@ -479,7 +479,8 @@ var Docs = map[string]string{
 		"--brief prints the note as the reason of the next line. Not reported: a file in a test " +
 		"directory or under a directory named " +
 		"example, demo, sample, bench, benchmark, e2e, playground, or template (or the plural), under " +
-		"template-<name>, or under __testfixtures__, where a copy is the point; a statement the change " +
+		"template-<name>, or under __testfixtures__, where a copy is the point; a file of Storybook " +
+		"stories (.stories. in its name); a statement the change " +
 		"also removed somewhere, as written or under other names, which " +
 		"makes a move, a re-indent, or a body pulled into a helper; a run right behind the code it " +
 		"repeats in the same function, which is two arms of one branch; two files of one name, whatever " +

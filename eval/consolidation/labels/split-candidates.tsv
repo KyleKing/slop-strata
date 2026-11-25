@@ -1,0 +1,60 @@
+fzf	go	1	yes	a whole case arm of the escape parser, every path returns an event
+fzf	go	2	arguable	the mouse arm of the action switch, 330 lines; it reads and writes a dozen variables of the enclosing function that the counts do not see
+fzf	go	3	yes	the keyboard arm of GetChar's type switch
+fzf	go	4	arguable	the search-request handling inside an event loop closure, with captured state
+fzf	go	5	yes	the tracked-item search in UpdateList
+cobra	go	1	arguable	the no-flag branch of getCompletions: one output and an early return
+cobra	go	2	yes	the run-hooks tail of execute, every exit returns an error
+cobra	go	3	yes	the grouped-commands branch of the usage printer
+cobra	go	4	arguable	the first half of the function, cut between parallel loops
+cobra	go	5	arguable	derives the flag name and may return four values early
+chi	go	1	no	most of a loop body with continues and returns, cut one statement short of the body
+chi	go	2	yes	the param-pattern branch, ends in its own return
+chi	go	3	yes	the handlers loop of walk
+chi	go	4	yes	builds the handler map
+chi	go	5	yes	validates one content type
+bubbletea	go	1	arguable	165 lines from the middle of flushLocked; too long to judge as one step
+bubbletea	go	2	arguable	the internal-message switch, which returns and continues
+bubbletea	go	3	yes	the mode resets of close
+bubbletea	go	4	arguable	the second half of Run
+bubbletea	go	5	no	a select arm that updates loop state the counts do not see
+flask	py	1	yes	merges subdomain and url prefix options for a nested blueprint
+flask	py	2	yes	coerces the return value into a response
+flask	py	3	arguable	one factory attempt, returns from inside a loop
+flask	py	4	arguable	a five-line inner loop with a continue and a return
+flask	py	5	arguable	a five-line inner loop with a return
+httpx	py	1	yes	the URL sanity checks, already under a section comment
+httpx	py	2	yes	maps one NO_PROXY host to a mount key
+httpx	py	3	yes	formats one certificate item
+httpx	py	4	yes	validates the keyword arguments
+httpx	py	5	no	the innermost three lines of a nested condition
+pydantic	py	1	yes	the numeric-constraint arm of a long elif chain
+pydantic	py	2	yes	resolves a field's aliases
+pydantic	py	3	arguable	a loop body less its first and last statements, with continues
+pydantic	py	4	yes	builds the valid-namespaces string
+pydantic	py	5	arguable	sixty lines from the middle of a metaclass __new__
+rich	py	1	no	two of four parallel attribute groups, cut to balance the halves
+rich	py	2	yes	the handler-tag branch of the markup renderer
+rich	py	3	yes	the control-code dispatch
+rich	py	4	arguable	the container branch less its last statement, in a function full of closures
+rich	py	5	yes	the SGR code loop
+vite	ts	1	yes	the chunk-rewriting loop, the second half of generateBundle
+vite	ts	2	yes	handles one export statement, the whole body of step 2
+vite	ts	3	arguable	the special-case chain of a merge loop, every arm continues
+vite	ts	4	arguable	120 lines of a visitor closure
+vite	ts	5	yes	the position-to-location branch of the error formatter
+trpc	ts	1	yes	the pairwise collision loop
+trpc	ts	2	yes	copies deprecated headers
+trpc	ts	3	arguable	the second half of a message handler
+trpc	ts	4	yes	collects one procedure's descriptions
+trpc	ts	5	arguable	ten statements of a closure that throw and return
+zod	ts	1	yes	the string-format chain
+zod	ts	2	arguable	one branch of the record parser
+zod	ts	3	yes	walks one issue path into the error tree
+zod	ts	4	yes	writes the schema header and definitions
+zod	ts	5	yes	the too_small case of a locale, every path returns
+query	ts	1	arguable	the rest of a loop body after a continue
+query	ts	2	arguable	deserialise-and-filter with continues
+query	ts	3	arguable	the same deserialise-and-filter in the next function
+query	ts	4	yes	the Nx workspace branch
+query	ts	5	yes	counts and rewrites the dependency entries

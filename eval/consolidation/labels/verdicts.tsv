@@ -1,0 +1,255 @@
+pydantic:c0413c8896:0	T	extract	list_like helper replaces 3 isinstance checks in list/tuple/set validators
+httpx:e95111ac07:1	T	extract	set_open_connection shared by connect and tunnel_start_tls (h2/h11 selection block)
+trpc:fe64009e62:0	T	extract	SearchHit component extracted from two search UIs (SearchPanel, SearchPage)
+werkzeug:fc2e834f53:0	T	extract	module-level generate_key replaces two sha1/random key generators (salt gen)
+echo:e159f4d7ef:0	T	extract	chainMiddleware extracted from Echo.Pre and Echo.Use
+pydantic:63197fc34b:0	R	test_rewrite	tests changed to .json comparison; not dedup
+werkzeug:683d694bda:0	T	extract	iter_multi_items shared by OrderedMultiDict.update and url_encode
+trpc:da34e94379:0	T	extract	PageModules type alias replaces repeated Readonly<Record<..>> param type in 2 fns	x=PageModules
+gorm:a827495be1:0	T	extract	lock+delete+go Close repeated in 4 stmt-cache sites replaced by store.Delete (borderline: also introduces LRU abstraction)
+fzf:a67aa85820:0	T	extract	gutter(current) helper replaces two CPrint empty-cursor calls
+query:6fa901b97a:0	T	extract	test setIsServer helpers in 3 packages delegate to new environmentManager.setIsServer
+echo:51acf465fe:0	R	api_change	h(c) -> h.Handle(c) signature change in tests, not dedup
+gorm:97495a5e40:0	T	extract	fieldCanAutoIncrement helper replaces 3 dialect-specific AUTO_INCREMENT checks
+requests:4d6871d917:0	T	extract	cookiejar_from_dict replaces CookieJar init blocks in Request and Session
+flask:9b44bf2818:0	T	extract	T_template_filter TypeVar replaces repeated callable type in 4 sites (type-level dedup)
+gin:0a192fb0fa:0	T	extract	binding.Validate helper replaces ValidateStruct block in 4 Bind methods
+vite:82414b88bb:0	T	extract	resolveRelativeRequest helper shared by module rewrite and vue plugin
+flask:0fccfe711f:0	R	move_delegate	session logic moved to SessionInterface, no real duplicate
+werkzeug:584f3cff7d:0	R	modernization	asyncio test rewrite, each site gets own inner main
+trpc:3bbb8b455c:0	T	extract	loadPage helper replaces load-then-.default in blog and docs loaders
+query:256abf45f0:1	T	extract	episodeQueryOptions shared by two components (queryOptions)
+werkzeug:ac1d63f5a2:0	T	extract	make_cache template hook replaces repeated mkdtemp+FileSystemCache setup in 3 tests
+pydantic:796fed951a:0	T	extract	_Definitions.create_definition_reference_schema replaces 7 store+reference blocks
+vite:ed2581778b:0	T	extract	createBabelPresetEnvOptions shared by renderChunk and detectPolyfills
+zod:3a4bf8db56:4	R	mirror	sites are src/ and deno/lib mirrored copies, not independent duplicates
+bubbletea:a154847611:0	T	extract	disableMouse method replaces pair of disable calls in eventLoop and restoreTerminalState
+gorm:0011f39aec:0	T	extract	processValue helper shared by Expr.Build and NamedExpr.Build
+requests:f7fdfe8b9a:0	T	extract	requote_path helper replaces two quote(unquote()) sites
+chi:3d1777a1ef:0	T	extract	basicWriter.flush replaces maybeWriteHeader+Flusher assert in 4 Flush methods
+httpx:c089480260:1	T	extract	url_to_origin test helper replaces httpx.URL(x).raw[:3] in 3 tests
+gorm:6a18a15c93:0	T	extract	checkMissingWhereConditions shared by delete and update callbacks
+bubbletea:be3c7e5427:0	R	api_change	field assignments replaced by functional options; not dedup
+query:256abf45f0:0	T	extract	characterQueryOptions shared by two components
+bubbletea:20b1d5def3:0	R	api_change	View() signature migration across examples
+vite:a19c456554:0	T	extract	ensureWatchedFile shared by transformRequest and addWatchFile
+fzf:91b9591b10:0	T	extract	disableMouse helper replaces mouse-off csi sequence in Resume and Close
+flask:8339cb3508:1	T	extract	_load_arg_defaults shared by json.load and json.loads
+query:dce0498872:0	R	move	data layer moved to shared queries module; sites were different queries
+query:0cbfc5ec6b:0	R	local_extract	each site gets its own local createQueryFnContext; nothing shared
+fzf:1d2d32c847:0	T	extract	buildEmptyRank replaces Rank{0,0,0} literal in 3 sites (tiny)
+flask:9b44bf2818:4	T	extract	T_teardown TypeVar replaces repeated type in 3 decorators
+trpc:71d33b3ccd:0	T	extract	useVersion hook replaces useDocsPreferredVersion+isV10 pair in two components
+echo:7c1071dcb1:0	T	extract	redirectTest helper replaces setup boilerplate in 5 redirect tests
+cobra:df12a0a249:0	T	extract	flagCouldBeSpecifiedMoreThenOnce predicate replaces stringArray check in two generators
+gorm:bae0799bd8:0	T	extract	IsByteArrayOrSlice helper replaces []byte type assertion in 3 dialects (cross-package)
+flask:9b44bf2818:2	T	extract	T_template_global TypeVar replaces repeated type in 4 decorators
+chi:f43e79a024:0	T	extract	buildRouteHandler replaces handler-chain rebuild in Mux.handle and Mux.Group
+requests:d1c89333d0:0	T	parameterise	get/head/post/put/delete build Request inline -> delegate to request(method,...)
+fzf:da3d995709:0	T	extract	displayWidthWithPrefix replaces RunesWidth call in header/footer click handlers
+bubbletea:bd45f5b023:0	T	parameterise	enter/exitAltScreen merged into enableAltScreen(bool)
+vite:245d186544:0	T	extract	withTrailingSlash replaces three different spellings of ensure-trailing-slash (same shape, different tokens)
+trpc:2190145a55:0	T	extract	prevOnce guard replaces isDone/prev blocks; each of httpLink/httpBatchLink defines its own local helper (intra-function dup, borderline site independence)
+swr:5977d98d00:0	T	extract	sleep test util replaces inline setTimeout promise (2 sites in one file; test code)
+gin:a7c957af7d:0	T	extract	writeContentType helper replaces header Content-Type set in 3 renderers
+click:6de2121518:0	T	extract	Context._default_map_has replaces two default_map membership checks
+pydantic:0ca1cf2649:0	T	extract	generate_pydantic_signature shared by model and dataclass signature generation (large, weakly similar)
+flask:9b44bf2818:8	T	extract	T_url_defaults TypeVar replaces repeated callable type in 2 decorators
+pydantic:c28c0c6c5e:0	T	extract	_add_js_function replaces metadata js-function append in two places
+pydantic:820738d239:0	T	extract	_common_field_schema shared by td and dc field schema generation
+httpx:4c5511313c:0	R	test_rewrite	tests changed for API change (body->content)
+zod:b5192e8527:0	R	mirror	deno/ mirrored copy
+zod:06c237c29f:0	R	mirror	deno/ mirrored copy
+pydantic:c5dce37155:0	R	api_compose	flatten+inline merged into one function at call sites; not duplication
+starlette:5f194f73bf:0	T	extract	Response.init_headers shared by Response and StreamingResponse __init__
+httpx:12dd157fea:0	T	extract	Request.aread replaces b"".join(async stream) in tests (new API used by 2 sites; borderline)
+vite:b214115bff:0	T	extract	fsPathFromUrl shared by static middleware and importAnalysis
+vite:414bc45693:0	T	extract	isFileReadable shared by resolve and searchRoot
+gin:947b53d4a2:2	R	api_change	tests switched to Write API, not dedup
+httpx:994403bec9:0	T	extract	serve_in_thread replaces identical server fixture bodies (2 fixtures)
+trpc:fab5f61bac:0	U	unclear	merge() in router; unclear whether duplicated code
+chi:8f271edff4:0	R	example_rewrite	examples now use render.JSON; not dedup
+gorm:6e5d46bf37:1	R	rename	selects->Selects rename
+fzf:3b68dcdd81:0	T	extract	inListWindow predicate replaces repeated window comparison in two methods
+flask:9b44bf2818:3	T	extract	T_before_first_request TypeVar replaces repeated type in 2 decorators
+zod:3a4bf8db56:3	R	mirror	deno/ mirrored copy
+zod:1d2c364ce8:0	R	mirror	deno/ mirrored copies, large rewrite
+vite:2017a330f5:0	T	extract	getResolveCacheKey replaces web/ssr cache branching in get/setResolvedCache
+zod:060bc9f3ec:0	T	extract	_whenHasSize shared by 3 size checks
+vite:feb8ce05bf:0	T	extract	ssrFixStacktrace shared by dev server and ssrModuleLoader
+gin:5ea7a92267:0	T	extract	Context.Render replaces header+WriteHeader+encode blocks in JSON/XML/String/HTML
+gorm:54b80b18bc:0	T	extract	saveAssociations shared by SaveBefore/AfterAssociations
+trpc:2d44bdeb39:0	T	extract	title() card helper shared by docCard and homeCard
+vite:fa0820a038:0	U	unclear	cancel() added; sites dissimilar
+pydantic:a5a6daa207:0	T	extract	_copy_schema_handler replaces lambda handlers returning identical fixed schema in two tables
+vite:91217f6d96:0	T	extract	createDescriptor shared by transformMain and handleHotUpdate
+pydantic:85f8a6b60e:0	T	extract	other_tests list shared by main and diff (low similarity, list duplication)
+flask:ba82bac3d8:0	T	extract	apps_tmpdir fixture replaces tmpdir/sys.path setup in 5 tests
+zod:786abd1485:1	R	mirror	deno/ mirrored copy
+zod:f101d8cada:0	U	unclear	large parse refactor
+fzf:50e6c026ec:0	T	extract	noBorderSpecified predicate replaces repeated border-shape conditions in 3 places
+zod:6f0483671e:0	T	extract	aggregateChecks replaces bag destructuring in 5 JSON Schema processors
+query:0538c98330:0	T	extract	#subscribeTo shared by onSubscribe and setQueries
+starlette:b686174d0e:0	T	extract	run_in_threadpool replaces run_in_executor boilerplate in endpoints/routing/background/UploadFile (9 sites)
+pydantic:31cac4783b:0	T	extract	import_email_validator replaces 'email_validator is None' check in 2 validators
+zod:fb9fab4865:0	U	unclear	mirror (deno/) plus unclear removed content
+zod:faebb05495:2	R	mirror	deno/ mirrored copy
+vite:92601db41d:0	T	extract	tryStatSync shared by getDepHash and lookupFile
+query:7151c20f6f:0	R	move	example data layer moved into service; not duplicate code
+starlette:91eefb2af3:0	R	refactor_other	build_middleware_stack; sites unrelated
+pydantic:e01cad69e8:0	T	extract	subprocess_run_code fixture replaces write-file+subprocess boilerplate in tests
+vite:5280908972:0	T	extract	finalizeCss shared by renderChunk and generateBundle
+pydantic:7a06736ead:0	T	extract	lenient_issubclass replaces isinstance(type)+issubclass in 3 modules (small)
+gin:f3de8132c5:0	T	extract	node.addChild replaces children append in insertChild/addRoute (small)
+chi:520d4e05d3:0	R	spurious	test map init lines; unrelated to newContext
+gin:07a3961941:1	T	extract	debugPrint replaces gin_mode==debug println in Run and RunTLS
+pydantic:5195e55c10:0	T	extract	TypeModelSet alias replaces repeated Set[Type[BaseModel]] annotations
+zod:faebb05495:5	R	mirror	deno/ mirrored copy
+zod:faebb05495:3	R	mirror	deno/ mirrored copy
+trpc:b847a53c47:0	R	snapshot	codemod snapshot fixtures
+trpc:c4e063d486:0	T	extract	cleanup() replaces repeated source.off calls in onData and onEnd (same function nest)
+trpc:94e8bc39d0:0	T	extract	shared client const replaces fetch boilerplate in _useQuery and _useMutation
+swr:b38d1bd74d:0	T	extract	addWindowEventListener replaces window feature-detect in registerOnFocus/OnReconnect
+query:090fb4a417:1	T	extract	filmQueryOptions shared by Film and Character
+zod:b5192e8527:1	R	mirror	deno/ mirrored copy
+vite:2207a68d93:0	U	unclear	closeServerAndExit in preview.ts, sites in server/index.ts
+bubbletea:d301ee0405:0	R	api_change	KeySpace constant introduced; tests changed
+fzf:e95d82748f:0	T	extract	util.ExecCommand shared by executeCommand and readFromCommand
+trpc:5da722f36d:0	U	unclear	X unrelated to sites
+pydantic:28f4495bed:0	T	extract	GetCoreSchemaHandler type replaces repeated Callable[[Any],CoreSchema] annotations (10 sites)
+requests:45e30048f0:0	T	extract	httpbin() url helper replaces hard-coded URLs in tests
+query:15c2a807cf:0	R	base_class_swap	test hosts now extend LitElement; library method inherited (not project dedup)
+werkzeug:54939182e9:0	R	deprecation_shim	lazy importer removal
+zod:72b761f5fc:0	R	mirror	deno/ mirror, class removal
+vite:efbc14b1cb:0	U	unclear	filter wrapper refactor
+zod:faebb05495:6	R	mirror	deno/ mirror
+httpx:644e8fc5b6:0	R	move	start_tls moved to streams
+rich:a6db216788:0	R	spurious	protocol stubs
+zod:3a4bf8db56:6	R	mirror	deno/ mirror, unrelated handleParsed closures
+query:e309b9cc1e:0	R	base_class_swap	test hosts now extend LitElement
+pydantic:ecd134994a:3	R	spurious	test validators differ
+rich:4f632ef7b1:0	R	spurious	unrelated __init__s
+pydantic:55769365cd:0	T	extract	get_json_schema_update_func factory replaces two local json_schema_update_func closures
+click:d77a0aefad:0	T	pullup	IntRange/FloatRange and Int/Float types pulled into _NumberRangeBase/_NumberParamTypeBase (diff partially read, 298 lines truncated)
+trpc:1a81eeafe7:0	T	extract	createFlatProxy replaces hand-written Proxy get handlers in 5 places (diff partially read; detector X mis-resolved)
+click:2e8354a825:0	U	unclear	Option.consume_value pulled up to Parameter, Argument's differs
+rich:67ae3dac2f:0	R	spurious	test clock helper
+httpx:0cbf3c7581:1	R	large_refactor	Sync/async client split; not dedup of two sites
+click:981172fbb4:1	R	move	format_help moved
+click:d5e2fbf677:0	R	spurious	optparse leftovers removal
+httpx:1a6e254f72:0	R	spurious	transport API
+pydantic:4a094477c6:0	R	spurious	test helper
+pydantic:ecd134994a:2	R	spurious	test validators
+pydantic:ecd134994a:4	R	spurious	test validators
+pydantic:0115f7b5bd:0	R	spurious	benchmark test
+trpc:f208ec56f1:0	R	spurious	subscription
+zod:6863159ba3:0	R	mirror	deno/ mirror
+zod:07a1515a3b:0	R	mirror	deno/ mirror; ctx element consolidation
+zod:2281caa1e1:0	R	mirror	deno/ mirror
+httpx:7947b56076:0	R	test_rewrite	test refactor
+zod:8671cf0146:0	R	spurious	tests
+date-fns:a5b7afacbb:0	R	api_change	tz arg added to 10 functions
+gorm:f1212ecd58:0	U	unclear	readability; dbName helper?
+httpx:e95111ac07:0	T	other	h2_connection-or-h11 branching in send/is_closed/is_connection_dropped replaced by single open_connection polymorphic object (replace repeated conditional dispatch)
+cobra:6c3c1163c6:0	T	extract	CompletionFunc type alias replaces repeated func signature in 5 places
+gorm:e6c953dd4c:0	R	spurious	dialect switch
+starlette:e16bacbc4f:0	R	spurious	queue refactor
+werkzeug:2fe4c8f24b:0	T	extract	lazy_property decorator replaces `x = property(x, doc=x.__doc__)` in 8 BaseRequest attributes
+date-fns:c00ecb632b:0	R	api_change	tz arg
+starlette:254d0d97e4:0	R	spurious	portal
+query:d6a7bf3e3e:0	R	spurious	infinite behavior
+werkzeug:1b4dd19b3a:0	R	library_swap	httplib -> requests in tests
+httpx:59914c7690:0	R	spurious	NetRCAuth class added
+werkzeug:f338f74ed1:0	R	spurious	jsrouting moved
+query:4a821b0f1f:1	R	spurious	concurrent mode
+swr:0f552d8759:0	R	rename	isFallback->isLoading
+query:578e5c26e8:0	T	parameterise	resolveStaleTime/resolveQueryBoolean/shouldAssign... merged into generic resolveQueryValue
+echo:09a2ce60a6:0	R	rename	NetContext->StdContext
+gorm:3c68efc94a:0	R	spurious	create table feature
+werkzeug:c674edb140:0	R	spurious	deprecation
+pydantic:ab583ccf23:0	R	api_replace	TransformSchema removed
+pydantic:2009d29ed5:0	R	spurious	type-guard helpers removed
+vite:e38f29ee48:0	R	spurious	placeholder rewrite
+pydantic:acff9373e3:0	T	other	4 aware/naive datetime tests merged into parameterised test_aware/test_naive (test consolidation)
+click:a077ed7047:0	U	unclear	decorators rewritten to use option()
+echo:91bbd38251:0	R	spurious	Bind/Render split
+flask:9b44bf2818:7	T	extract	T_error_handler TypeVar replaces repeated type in 4 sites
+starlette:9576eac076:0	T	extract	TestClientFactory alias replaces repeated Callable[..., TestClient] in tests (tests only)
+query:10770f0720:0	R	inverse	shared component inlined (opposite of consolidation)
+trpc:a533bbcd80:0	T	extract	handleResponse replaces json+log blocks in client.get/post
+gorm:2d34ecd6a9:1	T	extract	Model.reflectData replaces reflect.Indirect(reflect.ValueOf(m.data)) in 4 methods
+pydantic:ff83048c8f:0	T	extract	GC_TEST_SCHEMA_INNER constant replaces inline schema in 2 tests
+pydantic:573185d303:0	T	extract	ExtraBehavior Literal alias replaces repeated annotation
+query:7151c20f6f:1	R	move	example data layer move
+trpc:c5f8b7913c:0	T	extract	JsonBlock component replaces rendering blocks in two example components
+pydantic:9452e13c57:0	T	extract	safe_get_annotations replaces __dict__.get('__annotations__') in 3 places
+httpx:ba83e29aee:0	T	extract	_create_default_ssl_context shared by verify/no-verify loaders
+httpx:d7619a92a8:0	T	extract	URLTypes/HeaderTypes/BodyTypes aliases replace repeated annotations in 5 places
+query:0a37fa6f23:0	T	extract	todosQueryOptions shared by TodoListCache and TodoListUI
+zod:3a4bf8db56:2	R	mirror	deno/ mirror
+zod:1d2c364ce8:4	R	mirror	deno/ mirror
+trpc:29452ef114:0	R	spurious	stream guard
+vite:709e4b0428:0	T	extract	hasScriptChanged shared by handleHotUpdate and isOnlyTemplateChanged
+trpc:dbcd7f9805:1	T	extract	useDeserializedData hook replaces useMemo deserialize in _useQuery/useSubscription
+fzf:ca4bdfb4bd:0	T	extract	dupItem replaces Item copy literal in extendedMatch and fuzzyMatch
+trpc:38d3bea691:0	T	extract	hasContentType replaces startsWith(content-type) checks in 3 handlers
+zod:1d2c364ce8:3	R	mirror	deno/ mirror
+query:dbd5a86e95:0	R	inverse	shared component inlined
+click:4e85c776ec:0	T	parameterise	_force_correct_text_reader/_writer merged into _force_correct_text_stream
+bubbletea:65874a6122:0	T	extract	requestKeyboardEnhancements shared by eventLoop and Run (borderline; large rewrite)
+gorm:aaa73fe21d:0	T	extract	commit_or_rollback replaces tx_started commit blocks in Chain.Save/Delete/Updates
+zod:423c9a97f1:0	R	mirror	deno/ mirror
+pydantic:9ef401839b:1	T	extract	OptionalIntFloatDecimal alias replaces repeated Union in 5 fields
+query:15cecf6448:0	T	extract	projectsQueries.list replaces duplicated queryKey/queryFn blocks (2 sites same file)
+pydantic:5e92b9bfac:0	T	extract	FieldValidatorModes alias replaces repeated Literal
+bubbletea:651b881a02:0	R	api_change	subscription API migration in examples
+pydantic:94dd544cc0:0	T	extract	iter_union_choices replaces choices-iteration with tuple handling in 2 places
+query:8a613165fc:0	T	extract	getObserver replaces observer lookup/create in getOptimisticResult and updateObservers
+gin:a22377b09b:0	T	extract	color constants (green/yellow/red/white) replace byte-slice escape literals in tests
+cobra:19cf35ea77:0	T	extract	getProject test helper shared by add/init golden tests
+zod:f4c6892b0f:0	T	extract	_regexp helper replaces refinement-with-regex blocks in email/url/uuid
+gorm:f2edda50e1:0	R	duplicate_commit	same change as gorm:6a18a15c93 (cherry-pick)
+flask:67b0b7e30d:0	T	extract	_split_blueprint_path shared by Request.blueprints and inject_url_defaults
+vite:d293e0da7a:0	T	extract	isCSSRequest util replaces endsWith('.css')||preprocessRE in 3 plugins
+zod:fd0741065d:0	T	extract	handleUnrepresentable replaces unrepresentable==throw blocks in 10 processors
+swr:4d56c49874:0	T	extract	useArgs shared by useSWR and useSWRInfinite arg resolution
+pydantic:5a97398b92:0	T	extract	mock_entry_points test helper replaces patch.object distributions
+zod:d47eadc014:0	T	extract	_addCheck helper replaces new ZodString({...checks}) in many methods (sites restricted to src/, deno/ mirror dropped)	drop=deno/
+cobra:2da4a54c5c:0	T	extract	shared echoCmd/checkStringContains helpers replace per-format doc test bodies (7 sites)
+query:8332c70c91:0	T	extract	handleSuspense replaces suspense/error block in useQuery/usePaginatedQuery/useInfiniteQuery
+rich:a7124ea10c:0	T	extract	win32_console_getters fixture replaces patch.object stubs in tests
+starlette:e99738b719:0	T	extract	wrap_app_handling_exceptions shared by ExceptionMiddleware and request_response
+starlette:da6461b239:0	T	extract	Lifespan alias replaces repeated Callable types
+pydantic:3f1ee2a09f:0	T	extract	AnyDecoratorCallable alias replaces repeated union annotations
+vite:804dcee0ae:0	T	extract	logError shared by parseSFC and compileSFCTemplate
+chi:98de1d836a:0	R	spurious	sites are different logging paths
+query:00b9e968a8:0	T	extract	getResolvedQueryConfig replaces defaulting+key serialization in buildQuery/getQueries
+pydantic:80353c29a8:0	U	unclear	CoreMetadata refactor
+httpx:ff9813e84d:0	R	api_change	transport API
+werkzeug:591d780f6e:0	T	extract	_set_property helper replaces header_property(... _load_list,_dump_list) in 3 descriptors
+gin:07a3961941:0	T	extract	rebuild404Handlers shared by NoRoute and Use
+pydantic:6ac397c0a3:0	U	unclear	ConfigWrapper introduction
+swr:97c49ba37a:0	T	extract	focusOn test helper replaces local focusWindow in 3 test files
+gorm:2d34ecd6a9:0	T	extract	Field.isScanner replaces scanner reflect check in sqlTag and parseAssociation
+pydantic:9ef401839b:0	T	extract	OptionalIntFloat alias replaces repeated Union in 5 fields
+gorm:85e9f66d26:0	T	extract	Migrator.CurrentTable replaces clause.Table{Name: stmt.Table} in 10 sites
+vite:09648c220a:0	T	extract	publicFileToBuiltUrl replaces config.base+id.slice(1) in 2 sites
+bubbletea:ac67237eab:0	T	extract	tea.Every replaces sleep-tick subscription closures in 2 examples
+trpc:f32bf43739:0	T	extract	readFile helper shared by readTimings/readDiagnostics
+fzf:3066b206af:0	T	extract	currentItem helper replaces merger.Get(cy).item usage (small)
+zod:9369c646ef:1	R	mirror	deno/ mirror
+pydantic:55e09859fd:0	R	spurious	pydantic-core bump
+vite:edbd262a0e:0	T	extract	createIsOptimizedDepFile replaces closure wrappers in two optimizers (small)
+bubbletea:3609d87e70:0	T	extract	Program.Send replaces select-on-ctx/msgs in handleCommands and eventLoop
+werkzeug:0add1f337d:0	T	extract	render_object_dump replaces render_template calls in dump_locals/dump_object
+query:4a821b0f1f:0	R	spurious	concurrent mode
+query:4223498dce:0	R	per_copy	each example copy gets its own local helper; examples are mirrors
+query:6b3d0914ba:0	R	move	example data layer move
+echo:5aa876b5f3:0	T	extract	node.refreshLeaf replaces isLeaf computation in Remove and insert
+click:a63679e77f:1	T	extract	_Decorator alias replaces t.Callable[[FC],FC] in 6 decorators
+echo:1f0bae394a:0	T	extract	HTMLBlob/Blob replaces header+WriteHeader in Render and HTML
+flask:9b44bf2818:5	T	extract	T_before_request TypeVar replaces repeated type in 2 decorators
+gorm:0d3085393e:0	T	extract	Scope.IndirectValue replaces reflect.Indirect(reflect.ValueOf(...)) in 8 sites
+trpc:1eccc1171f:0	R	spurious	cli rewrite
+gin:c8a3adc657:0	T	parameterise	generic getTyped[T] replaces 10 GetXxx bodies
+gorm:9b2181199d:0	T	extract	buildExprs shared by Where/And/Or Build
