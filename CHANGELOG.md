@@ -1,3 +1,9 @@
+## v0.22.0 (2026-11-25)
+
+### Feat
+
+- **snapshot**: list repeated JSX shapes and report a new one on change
+
 ## v0.21.0 (2026-11-25)
 
 ### Feat
