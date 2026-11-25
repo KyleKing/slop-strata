@@ -1,3 +1,9 @@
+## v0.23.1 (2026-11-25)
+
+### Fix
+
+- **snapshot**: tighten split candidates with an input cap and two guards
+
 ## v0.23.0 (2026-11-25)
 
 ### Feat
