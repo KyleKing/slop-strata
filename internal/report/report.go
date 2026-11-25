@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 10
+const Version = 11
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -264,10 +264,10 @@ var Docs = map[string]string{
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
 		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, " +
-		"new-case-set, new-jsx-shape, and snapshot stale-prose rules " +
+		"new-case-set, new-jsx-shape, new-sibling, and snapshot stale-prose rules " +
 		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
-		"split_candidates, duplicate_groups, case_sets and jsx_groups lists, which are gated for the same " +
-		"reason. " +
+		"split_candidates, duplicate_groups, case_sets, jsx_groups and sibling_sets lists, which are " +
+		"gated for the same reason. " +
 		"Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
@@ -285,9 +285,10 @@ var Docs = map[string]string{
 		"The reason is required. An ignore without one suppresses nothing and is reported as " +
 		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
 		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp. " +
-		"The exceptions are x/last-ref, x/new-duplicate, x/new-case-set, and x/new-jsx-shape, which only " +
-		"change reports: label cannot find their ids, so accept one with a baseline or labels file entry " +
-		"for the id. See new_duplicate, new_case_set, and new_jsx_shape.",
+		"The exceptions are x/last-ref, x/new-duplicate, x/new-case-set, x/new-jsx-shape, and " +
+		"x/new-sibling, which only change reports: label cannot find their ids, so accept one with a " +
+		"baseline or labels file entry for the id. See new_duplicate, new_case_set, new_jsx_shape, and " +
+		"new_sibling.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
 		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
@@ -297,7 +298,7 @@ var Docs = map[string]string{
 		"tree carries the id of. The finding was fixed, its line or matched text was edited, or it is an import " +
 		"cycle that shrank, which the entry still covers by its members. Entries of rules this run did not " +
 		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref, x/new-duplicate, " +
-		"x/new-case-set, x/new-jsx-shape) are not counted. " +
+		"x/new-case-set, x/new-jsx-shape, x/new-sibling) are not counted. " +
 		"Run slop-strata snapshot --write-baseline to drop them, so a fixed finding that comes back reads as " +
 		"new. It never changes the exit status. change and history do not score the whole tree against the " +
 		"baseline and always report 0.",
@@ -524,8 +525,7 @@ var Docs = map[string]string{
 		"out, and so is one a loop body writes on one pass and reads under another branch on a later " +
 		"one. On the top five of twelve public repositories, read by one person, 42 of 60 were a " +
 		"block to move as it stands, 13 a judgment call, and 5 wrong, and of the 40 an earlier list " +
-		"did not name, 23, 13, and 4. On 30 from a private monorepo, the top ten and twenty drawn " +
-		"from the rest, 10, 10, and 10. That is under the 80% a list has to clear to be on by " +
+		"did not name, 23, 13, and 4. That is under the 80% a list has to clear to be on by " +
 		"default, so it needs the flag. No target: it is a place to start reading a long function, " +
 		"ranked by how much a cut there would take off it.",
 	"drop": "split.drop in result.split_candidates on snapshot: a function's cognitive complexity less " +
@@ -596,7 +596,12 @@ var Docs = map[string]string{
 		"tree. Per group in result.jsx_groups: elements x (sites - 1) - holes, which the groups are " +
 		"listed by: the elements one shared component per block would take out of the tree, less one " +
 		"for each value it would have to take as a prop. A group ranks high when a large block sits in " +
-		"many places under few differences.",
+		"many places under few differences. Per set in result.sibling_sets: the sum, over the set's " +
+		"shared members, of the tokens of the member's statements that line up at every site holding " +
+		"it times one less than the number of those sites, which the sets are listed by: the tokens " +
+		"one shared copy of each member would take out of the tree. Nothing is charged for what the " +
+		"shared copy would have to take as a parameter, so read differing beside it. A set ranks high " +
+		"when long members line up across many sites.",
 	"weight": "Per family in result.case_sets: the sum, over the family's cases, of the natural logarithm " +
 		"of one more than the tree's places per place that names the case, rounded to two decimals. " +
 		"A case few places name weighs much, and one that half the tree's switches name weighs little, " +
@@ -667,13 +672,83 @@ var Docs = map[string]string{
 		"the file and unit of a site that was there, and its note gives the elements of the block, up " +
 		"to three of the sites that were there, and how many values the sites differ in. A change that " +
 		"adds several sites to one group reports the first and names the second, and a new block " +
-		"inside a new block already reported is not reported again. --brief prints the note as the " +
+		"inside a new block already reported is not reported again. An x/new-duplicate finding whose " +
+		"lines the new block covers is dropped for this one, so a copied block is reported once. " +
+		"--brief prints the note as the " +
 		"reason of the next line. Not reported: a group whose every site the change added, since " +
 		"nothing was there to reuse, and whatever jsx_groups leaves out. Only change reports it, so " +
 		"label cannot find its id. When a hit is right, make the block one component that takes what " +
 		"differs as props and use it at both sites. When the sites should stay apart, say why in a " +
 		"slop-strata:ignore comment on the first line of the new block, written as {/* ... */} after " +
 		"the opening tag, or on the line above it where a // comment can stand.",
+	"sibling_sets": "result.sibling_sets on snapshot with --experimental: classes, types, and modules " +
+		"written in parallel, with total and the 20 sets that rank highest. A set says its sites are one " +
+		"thing written out several times, which a shared base class, a generic, or a table of what " +
+		"differs would hold once. What is compared is a container and its members. A container is a " +
+		"class with its methods (kind class), a Go type with the methods one file gives it (kind type), " +
+		"or a file with its top-level functions (kind module), and a member is one of those functions " +
+		"whose body holds 20 tokens or more, so an accessor, a forwarder, and a stub an interface asks " +
+		"for are no member. Python methods named with double underscores are not read. A body is its " +
+		"statements, each by the shape the duplicate pass stores: the statement with identifiers and " +
+		"literals set aside. Two members of one name are in line when the statements they hold in the " +
+		"same order, shape for shape, carry 70% of the tokens of both (twice the shared tokens over " +
+		"the sum). Two containers of one kind and one language are siblings when 2 members or more " +
+		"are in line, those hold 60 tokens or more, and that is a third of the tokens of the smaller " +
+		"container's members. Only pairs that share 2 function names each held by at most 40 " +
+		"containers are compared, so names a framework dictates everywhere (get, run, main) join " +
+		"nothing by themselves. The container whose joins weigh most and every container joined to it " +
+		"are a set, then the same over what is left, and no container is in two sets, so one large " +
+		"family whose members are not all alike can come out as two sets. Per set: kind, sites, " +
+		"members (the names of the shared members: in line between the site the set was gathered " +
+		"around and enough others that half the sites hold it), statements (how many statements of " +
+		"the shared members line up at every site that holds the member), tokens (the tokens of those " +
+		"statements, counted once), differing (the statements of the shared members that do not line " +
+		"up, summed over the sites), and rank. Per site: path, name (the class or type, and for a " +
+		"module the file name without its extension), line and end_line (of the class or type " +
+		"declaration with its methods, and for a module from its first function to its last), and " +
+		"others (the site's own members of 20 tokens or more that the set does not share). Left out " +
+		"because they are parallel on purpose: test files and test directories, the stand-alone " +
+		"directories and story files x/new-duplicate leaves out, directories named scripts, " +
+		"migrations, alembic, seed, seeds, seed_data, seeders, or fixture, generated files, two " +
+		"classes of one name or of one name once async and sync are taken out, two modules of one " +
+		"name in one directory, and two files of one name that are 80% the same statements as written. " +
+		"Not seen: siblings whose members have different names, a container with one member, members " +
+		"under 20 tokens, classes of different languages, and fields, which are not compared at all. " +
+		"It overlaps duplicate_groups on purpose: a group there is one stretch of statements wherever " +
+		"it sits, and a set here is whole containers, so a copied class is one row here and often " +
+		"several groups there, and members built of statements too common to be a group there still " +
+		"line up here. Most sets are not news to that pass: of the 34 sets read, 26 had a duplicate " +
+		"group at two of their sites, but only 10 had one among the 20 groups a snapshot lists, so " +
+		"what this list adds is mostly the grouping by container and the rank. " +
+		"Gated because one person read the sets and the last guard (two files of one name) was " +
+		"chosen on repositories read first: of the 34 sets read among the top 5 of each of twelve " +
+		"public repositories that list any, 23 were sets a maintainer would give a shared base, a " +
+		"generic, or a table, 8 a judgment call, and 3 two flavors of one API or one file per locale " +
+		"that the guards did not catch; of the 19 in the four applications no guard was fitted to, " +
+		"14, 5, and 0. A set of vendor connectors or of notification handlers that implement one " +
+		"interface with other text looks the same as a copy and is listed too. Sets are few: fourteen " +
+		"of the 22 libraries read list none. No target. A set says a change to the shared members needs " +
+		"an edit per site.",
+	"new_sibling": "x/new-sibling, on change with --experimental: a class, a type, or a module the " +
+		"change added that is written like one the tree already held. It is the pass behind " +
+		"result.sibling_sets (see sibling_sets) over the tree at the end of the change: a set is " +
+		"reported when the change added one of its sites and at least one other was there before. A " +
+		"class or a type is new when the change added the line that declares it, and a module when " +
+		"the change added its file. Either must also be one more of its name than the changed files " +
+		"held before, so one that moved to another file is not new, and it must not be in line with a " +
+		"container the change took away under another name, which is a rename. The finding sits on " +
+		"the first line of the new class or type, or of a new module's first function, its match " +
+		"names the file and the name of a sibling that was there, and its note names up to three of " +
+		"the siblings that were there and up to three of the shared members, and gives how many " +
+		"statements line up and how many differ. One finding per set: a change that adds several " +
+		"siblings to one set reports the first and names the second. --brief prints the note as the " +
+		"reason of the next line. Not reported: a set whose every site the change added, since " +
+		"nothing was there to extend, methods added to a class that was there, and whatever " +
+		"sibling_sets leaves out. The rule does not know of x/new-duplicate, which may report " +
+		"stretches of the same new class beside it. Only change reports it, so label cannot find its " +
+		"id. When a hit is right, extend what is there: a shared base class, a generic, or a table " +
+		"of what differs. When the copies should stay apart, say why in a slop-strata:ignore comment " +
+		"on the finding's line or the line above.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +

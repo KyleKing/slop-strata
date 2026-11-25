@@ -43,17 +43,31 @@ func printJSXGroups(w io.Writer, list *jsxGroupList, all bool) {
 	if list == nil || len(list.Groups) == 0 {
 		return
 	}
-	shown := list.Groups
-	if !all {
-		shown = shown[:min(len(shown), topJSXGroups)]
+	shown := headOf(list.Groups, topJSXGroups, all)
+	heading := fmt.Sprintf("JSX groups, %d of %d (rank: elements × (sites − 1) − holes)", len(shown), list.Total)
+	header := []string{colSite, "", colRank, colSites, "blocks", "elements", "holes"}
+	printSiteTable(w, heading, header, shown, jsxGroupRows)
+}
+
+// headOf is the part of a ranked list the text view shows: its first top
+// items, and all of it with --all.
+func headOf[T any](items []T, top int, all bool) []T {
+	if all {
+		return items
 	}
-	var rows [][]string
+
+	return items[:min(len(items), top)]
+}
+
+// printSiteTable prints a heading and, under it, one table of the rows each
+// item of a list renders to, site first.
+func printSiteTable[T any](w io.Writer, heading string, header []string, shown []T, rowsOf func(*T) [][]string) {
+	rows := make([][]string, 0, len(shown))
 	for i := range shown {
-		rows = append(rows, jsxGroupRows(&shown[i])...)
+		rows = append(rows, rowsOf(&shown[i])...)
 	}
-	header := []string{colSite, "", "rank", colSites, "blocks", "elements", "holes"}
 	shortenFirstColumn(header, rows)
-	report.Fprintf(w, "\nJSX groups, %d of %d (rank: elements × (sites − 1) − holes)\n", len(shown), list.Total)
+	report.Fprintf(w, "\n%s\n", heading)
 	report.Table(w, header, rows)
 }
 

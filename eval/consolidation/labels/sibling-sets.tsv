@@ -1,0 +1,34 @@
+flask	python	1	plausible	Flask and Blueprint each hold send_static_file, open_resource, and get_send_file_max_age; the docstrings call them duplicates, kept apart by the split from the sans-IO base
+httpx	python	1	yes	ByteChunker and TextChunker are one class over bytes and over str
+query	typescript	1	yes	three Lit controllers with the same connect, subscribe, and client-sync methods around one differing call
+query	typescript	2	yes	the query controller and the infinite-query controller share eight methods that differ in a result type
+zod	typescript	1	no	the classic and the mini schemas modules are two public flavours of one API, kept parallel on purpose
+zod	typescript	2	plausible	five v3 primitive types with the same _parse and create but for a type tag; a factory would do, in a frozen version
+zod	typescript	3	no	the mini in-out module mirrors the classic one and says so
+date-fns	typescript	1	plausible	four Slavic locales repeat one declension helper; locales are self-contained on purpose
+date-fns	typescript	2	no	seven locales' formatRelative, each with its own grammar in the strings
+date-fns	typescript	3	yes	three day parsers with the same set and a parse that differs in tokens
+date-fns	typescript	4	yes	MonthParser and StandAloneMonthParser differ in one token letter
+date-fns	typescript	5	yes	QuarterParser and StandAloneQuarterParser differ in one token letter
+echo	go	1	yes	sanitizeURI and escapeControlChars copied whole into the slash middleware
+gorm	go	1	yes	the Insert and Update clauses have the same Build and MergeClause
+starlette	python	1	yes	Route and WebSocketRoute share matches and url_path_for but for the scope type
+documenso	typescript	1	yes	the direct-link and the recipient embed routes share a 40-statement loader
+documenso	typescript	2	yes	eight stats routes that differ in one metric name
+documenso	typescript	3	yes	four GitHub count routes that differ in a URL and a field
+documenso	typescript	4	yes	three monthly growth routes that differ in the query they call
+umami	typescript	1	plausible	the ClickHouse and the Prisma query builders share six filter functions; two backends, two SQL dialects
+umami	typescript	2	yes	four shares routes that differ in the name of an id
+umami	typescript	3	plausible	six per-resource routes with the same GET and DELETE around different permission checks
+umami	typescript	4	yes	the funnel and the goal routes differ in a type string
+umami	typescript	5	yes	the funnel and the goal list routes differ in a type string and a schema
+formbricks	typescript	1	yes	the survey logic evaluator is held twice, in the web app and in the surveys package
+formbricks	typescript	2	yes	the smiley icons are held in two packages
+formbricks	typescript	3	plausible	the teams and the users routes of one API share a handler skeleton
+formbricks	typescript	4	yes	the video URL helpers are held in the web app and in a package
+formbricks	typescript	5	plausible	the ok, err, and match helpers of a Result type in three packages, one of them a client kept free of dependencies
+plane	typescript	1	yes	seven issue filter stores that differ in the id they key on
+plane	typescript	2	plausible	twelve API service classes with the same five CRUD methods around different URLs
+plane	typescript	3	yes	six issue stores with the same three fetch methods
+plane	python	4	yes	three asset endpoints with the same five handlers
+plane	python	5	yes	three base view classes with the same dispatch, exception, and query-parameter methods

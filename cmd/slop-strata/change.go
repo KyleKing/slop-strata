@@ -974,8 +974,9 @@ func mapKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// sortFindings orders findings by path, line, rule, then match, so a change
-// prints the same rows on every run.
+// sortFindings orders findings by path, line, rule, match, note, and last by
+// id, so a change prints the same rows on every run: two hits of one rule on
+// one line differ in nothing but their id.
 func sortFindings(fs []findingRow) {
 	slices.SortFunc(fs, func(a, b findingRow) int {
 		return cmp.Or(
@@ -983,6 +984,8 @@ func sortFindings(fs []findingRow) {
 			cmp.Compare(a.Line, b.Line),
 			strings.Compare(a.Rule, b.Rule),
 			strings.Compare(a.Match, b.Match),
+			strings.Compare(a.Note, b.Note),
+			strings.Compare(a.ID, b.ID),
 		)
 	})
 }
@@ -1222,9 +1225,13 @@ func (s *session) crossFileFindings(ctx context.Context, base, end string, files
 		rev, touched := s.revPrints(ctx, basePrints, files, newSides, scored)
 		addCrossFindings(rules.RemovedNameProse(basePrints, rev, touched), rev, sup, res)
 		addCrossFindings(rules.NewImportCycles(basePrints, rev, s.cfg.Experimental), rev, sup, res)
-		addCrossFindings(rules.NewDuplicates(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
+		// A copied block of markup is one finding: the duplicate rule defers to the markup rule.
+		shapes := rules.NewJSXShapes(rev, dupChanges(files, scored), s.cfg.Experimental)
+		dups := rules.NewDuplicates(rev, dupChanges(files, scored), s.cfg.Experimental)
+		addCrossFindings(rules.DeferDuplicates(dups, shapes), rev, sup, res)
 		addCrossFindings(rules.NewCaseSets(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
-		addCrossFindings(rules.NewJSXShapes(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
+		addCrossFindings(shapes, rev, sup, res)
+		addCrossFindings(rules.NewSiblings(rev, dupChanges(files, scored), s.cfg.Experimental), rev, sup, res)
 		res.Surface = rules.WidenedSurfaces(basePrints, rev, lineage.DirOf)
 	}
 	if res.Surface == nil {

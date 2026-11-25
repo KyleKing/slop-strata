@@ -35,6 +35,7 @@ var crossRules = []RuleInfo{ //nolint:gochecknoglobals // a fixed vocabulary
 	{ID: RuleNewCaseSet, Experimental: true},
 	{ID: RuleNewDuplicate, Experimental: true},
 	{ID: RuleNewJSXShape, Experimental: true},
+	{ID: RuleNewSibling, Experimental: true},
 	{ID: "x/single-impl-iface"},
 	{ID: ruleXSpentTest, Experimental: true},
 	{ID: "x/stale-config"},
@@ -65,7 +66,8 @@ func Catalog() []RuleInfo {
 // runs a built-in rule. Rules that only a change can report, and rules from
 // ast-grep packs, are not among them.
 func SnapshotRule(id string, experimental bool) bool {
-	if id == ruleXLastRef || id == RuleNewDuplicate || id == RuleNewCaseSet || id == RuleNewJSXShape {
+	switch id {
+	case ruleXLastRef, RuleNewDuplicate, RuleNewCaseSet, RuleNewJSXShape, RuleNewSibling:
 		return false
 	}
 	for _, r := range Catalog() {

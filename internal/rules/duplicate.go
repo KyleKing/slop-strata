@@ -77,8 +77,6 @@ type dupFile struct {
 	loaded bool
 }
 
-func (f *dupFile) count() int { return len(f.shapes) / hashWidth }
-
 // counts reports whether the file's i-th statement may be part of a run.
 func (f *dupFile) counts(i int) bool { return f.whole || f.added[i] }
 
@@ -478,21 +476,29 @@ func (p *dupPass) mirror(a, b *dupFile) bool {
 	if is, ok := p.mirrors[key]; ok {
 		return is
 	}
+	is := mirrored(a.exacts, b.exacts)
+	p.mirrors[key] = is
+
+	return is
+}
+
+// mirrored reports whether two files, given as their packed exact hashes,
+// hold mostly the same statements as written: mirrorShare of the shorter
+// one's.
+func mirrored(a, b []byte) bool {
 	left := map[uint32]int{}
-	for i := range a.count() {
-		left[hashAt(a.exacts, i)]++
+	for i := range len(a) / hashWidth {
+		left[hashAt(a, i)]++
 	}
 	shared := 0
-	for i := range b.count() {
-		if h := hashAt(b.exacts, i); left[h] > 0 {
+	for i := range len(b) / hashWidth {
+		if h := hashAt(b, i); left[h] > 0 {
 			left[h]--
 			shared++
 		}
 	}
-	is := float64(shared) >= mirrorShare*float64(min(a.count(), b.count()))
-	p.mirrors[key] = is
 
-	return is
+	return float64(shared) >= mirrorShare*float64(min(len(a), len(b))/hashWidth)
 }
 
 // reach counts the statements that line up around a seed pair: how many

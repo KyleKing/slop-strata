@@ -36,6 +36,10 @@ the change grew most. An empty `next` means nothing crossed the bar for a look.
    the markup the new block repeats, and how many values the sites differ
    in. When it is right, make the block one component that takes those
    values as props and use it at both sites.
+   An `x/new-sibling` finding's `note` names the classes, types, or modules
+   the new one is written like, and the members they share. When it is
+   right, extend what is there: a shared base, a generic, or a table of
+   what differs.
 4. What would a smaller version of this change look like? Concretely: which
    function or file to split off, not general advice.
 

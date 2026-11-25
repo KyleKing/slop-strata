@@ -78,8 +78,8 @@ func (s *session) findingByID(ctx context.Context, rev, id string) (string, rule
 	}
 
 	return "", rules.Finding{}, fmt.Errorf("%s at %s: %w (snapshot --json lists the ids, "+
-		"and an x/last-ref, x/new-duplicate, x/new-case-set, or x/new-jsx-shape id that only change reports "+
-		"cannot be labeled)",
+		"and an x/last-ref, x/new-duplicate, x/new-case-set, x/new-jsx-shape, or x/new-sibling id that only "+
+		"change reports cannot be labeled)",
 		id, rev, errNoFinding)
 }
 

@@ -29,6 +29,7 @@ type snapshotResult struct {
 	Duplicates *duplicateList             `json:"duplicate_groups,omitempty"`
 	CaseSets   *caseSetList               `json:"case_sets,omitempty"`
 	JSXGroups  *jsxGroupList              `json:"jsx_groups,omitempty"`
+	Siblings   *siblingSetList            `json:"sibling_sets,omitempty"`
 	Splits     *splitList                 `json:"split_candidates,omitempty"`
 	Rev        string                     `json:"rev"`
 	Dirs       []dirSnapshot              `json:"dirs"`
@@ -130,6 +131,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 		res.Duplicates = duplicateGroups(reports)
 		res.CaseSets = caseSets(reports)
 		res.JSXGroups = jsxGroups(reports)
+		res.Siblings = siblingSets(reports)
 	}
 	counts := countRows(res.Skipped, res.Errors)
 	counts.Suppressed = suppressedCounts(sup)
@@ -311,13 +313,7 @@ func (s *session) snapshotRollup(
 
 	s.astGrepFindings(ctx, rev, res, live, sup)
 	for _, fs := range res.Findings {
-		slices.SortFunc(fs, func(a, b rules.Finding) int {
-			return cmp.Or(
-				cmp.Compare(a.Line, b.Line),
-				strings.Compare(a.Rule, b.Rule),
-				strings.Compare(a.Match, b.Match),
-			)
-		})
+		slices.SortFunc(fs, rules.CompareFindings)
 	}
 
 	res.Total = structure.Aggregate(files)
@@ -485,6 +481,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	printDuplicates(w, res.Duplicates, all)
 	printCaseSets(w, res.CaseSets, all)
 	printJSXGroups(w, res.JSXGroups, all)
+	printSiblingSets(w, res.Siblings, all)
 	if len(res.TestDirs) > 0 {
 		report.Fprintf(w, "\ntests, not ranked with the above\n")
 		printDirTable(w, res.TestDirs)

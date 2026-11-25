@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 10. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 11. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 10}
+    "schema": {"const": 11}
   },
   "allOf": [
     {
@@ -101,7 +101,7 @@
         "path": {"type": "string"},
         "rule": {"type": "string"},
         "match": {"type": "string"},
-        "note": {"type": "string", "description": "What a cross-file finding adds to its match, such as an import cycle's cheapest cut, or where the code an x/new-duplicate finding repeats is and how the two sites differ."},
+        "note": {"type": "string", "description": "What a cross-file finding adds to its match, such as an import cycle's cheapest cut, where the code an x/new-duplicate finding repeats is and how the two sites differ, or which siblings an x/new-sibling finding joins."},
         "line": {"type": "integer", "minimum": 0},
         "new": {"type": "boolean", "description": "True when the finding sits on a line the change added, or is a cross-file finding the change caused, such as a new or grown import cycle."}
       }
@@ -502,6 +502,48 @@
                   "elements": {"type": "integer", "minimum": 6, "description": "The elements one site holds, over every block."},
                   "holes": {"type": "integer", "minimum": 0, "description": "The attribute values, runs of text, and wrapping expressions that are not the same at every site."},
                   "rank": {"type": "integer", "minimum": 0, "description": "elements x (sites - 1) - holes."}
+                }
+              }
+            }
+          }
+        },
+        "sibling_sets": {
+          "type": "object",
+          "description": "With --experimental only: classes, types, and modules written in parallel, with members of the same names and mostly the same statements; see the sibling_sets doc.",
+          "required": ["sets", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "total": {"type": "integer", "minimum": 0, "description": "Every set, listed or not."},
+            "sets": {
+              "description": "The 20 sets that rank highest, largest rank first.",
+              "type": "array", "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": ["kind", "sites", "members", "statements", "tokens", "differing", "rank"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {"enum": ["class", "type", "module"], "description": "What the sites are: a class, a Go type with the methods one file gives it, or a file with its top-level functions."},
+                  "sites": {
+                    "description": "The siblings, in path order.",
+                    "type": "array", "minItems": 2,
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "name", "line", "end_line", "others"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {"type": "string"},
+                        "name": {"type": "string", "description": "The class or the type, and for a module the file name without its extension."},
+                        "line": {"type": "integer", "minimum": 1, "description": "The line the class or type starts on, and for a module its first function."},
+                        "end_line": {"type": "integer", "minimum": 1, "description": "The line the class, or the last method or function, ends on."},
+                        "others": {"type": "integer", "minimum": 0, "description": "The site's own members of 20 tokens or more that the set does not share."}
+                      }
+                    }
+                  },
+                  "members": {"type": "array", "minItems": 2, "items": {"type": "string"}, "description": "The names of the functions the siblings share, sorted."},
+                  "statements": {"type": "integer", "minimum": 1, "description": "The statements of the shared members that line up at every site holding the member."},
+                  "tokens": {"type": "integer", "minimum": 60, "description": "The tokens of those statements, counted once."},
+                  "differing": {"type": "integer", "minimum": 0, "description": "The statements of the shared members that do not line up, summed over the sites."},
+                  "rank": {"type": "integer", "minimum": 60, "description": "Summed over the shared members: the tokens that line up x (the sites holding the member - 1)."}
                 }
               }
             }

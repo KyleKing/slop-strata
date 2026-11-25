@@ -135,6 +135,20 @@ func (r *dupRun) qLine() int {
 	return r.file.stmts[r.q].line
 }
 
+// qLastLine is the line of the changed file a run's last statement starts
+// on, over every stretch of a run that is made of several.
+func (r *dupRun) qLastLine() int {
+	if r.expr {
+		return r.file.subs[r.qsub].line
+	}
+	last := r.file.stmts[r.q+max(r.n, 1)-1].line
+	for i := range r.parts {
+		last = max(last, r.parts[i].qLastLine())
+	}
+
+	return last
+}
+
 // cLine is the line the repeated code starts on.
 func (r *dupRun) cLine() int {
 	if r.expr {
@@ -151,7 +165,7 @@ func dupFindings(q *dupFile, hits []dupHit) []Finding {
 		first := &hits[i].runs[0]
 		line := first.qLine()
 		out = append(out, Finding{
-			Rule: RuleNewDuplicate, Line: line, Scope: unitAt(q.fp, line),
+			Rule: RuleNewDuplicate, Line: line, End: first.qLastLine(), Scope: unitAt(q.fp, line),
 			Match: first.siteName(), Note: hits[i].note(),
 		})
 	}

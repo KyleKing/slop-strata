@@ -330,3 +330,46 @@ func TestSnapshotTextListsEveryJSXGroupWithAll(t *testing.T) {
 		}
 	}
 }
+
+// TestNewJSXShapeStandsInForADuplicateItCovers pins that a copied block is
+// one finding: an expression the new block repeats down to its values is an
+// x/new-duplicate hit on lines the x/new-jsx-shape finding already covers,
+// and is dropped for it. Where the markup rule says nothing, because the
+// copy has another tag, the duplicate is still reported.
+func TestNewJSXShapeStandsInForADuplicateItCovers(t *testing.T) {
+	t.Parallel()
+	const handler = `<li onClick={() => track("panel", { kind: "card", open: true, source: "list", ` +
+		`at: Date.now() })}>open</li>`
+	tracked := func(name, title, count string) string {
+		return strings.Replace(panel(name, title, count), "<li>open</li>", handler, 1)
+	}
+	teams := tracked("Teams", "Teams", "teams")
+	cases := []struct {
+		name  string
+		teams string
+		want  []string
+	}{
+		{name: "the block repeats the markup", teams: teams, want: []string{ruleNewJSXShape}},
+		{
+			name: "the block has another tag", teams: strings.ReplaceAll(teams, "h2", "h3"),
+			want: []string{rules.RuleNewDuplicate},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := historyRepo(t, fixturetest.Tree{
+				before + "ui/users.tsx": tracked("Users", "Users", "users"), added + "ui/teams.tsx": tc.teams,
+			})
+			var got []string
+			for _, f := range changeFindings(t, repo, "--experimental") {
+				if f.Rule == ruleNewJSXShape || f.Rule == rules.RuleNewDuplicate {
+					got = append(got, f.Rule)
+				}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("findings = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
