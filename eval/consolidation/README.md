@@ -1,6 +1,6 @@
 # Consolidation dataset
 
-What `x/new-duplicate`, `duplicate_groups`, and `split_candidates` were designed and measured against: commits in public repositories that replaced repeated code with one function, constant, or type, each read by hand, the pairs of look-alike fragments nobody merged, and the hand labels behind the tables in [DESIGN.md](../../DESIGN.md) sections 8 and 9.
+What `x/new-duplicate`, `duplicate_groups`, `split_candidates`, and `case_sets` were designed and measured against: commits in public repositories that replaced repeated code with one function, constant, or type, each read by hand, the pairs of look-alike fragments nobody merged, and the hand labels behind the tables in [DESIGN.md](../../DESIGN.md) sections 8 and 9.
 
 Everything here is data and Python. No Go file lives under `eval/`, so the build, the tests, and the linters do not read it.
 
@@ -19,6 +19,7 @@ Everything here is data and Python. No Go file lives under `eval/`, so the build
 | `labels/duplicate-groups.tsv` | 60 | Hand labels on the top five duplicate groups of twelve repositories |
 | `labels/split-candidates.tsv` | 60 | Hand labels on the top five split candidates of the same twelve, as 0.19 listed them |
 | `labels/split-candidates-v2.tsv` | 60 | The same reading of the list after scopes, the exit rule, and the bounds on a part and on both sides were added |
+| `labels/case-sets.tsv` | 64 | Hand labels on every case-set family of the 22 repositories |
 | `scripts/` | | The mining pipeline and the two replays that need nothing but a build of the CLI |
 
 The data files are byte for byte what the scripts wrote, with two exceptions: one trailing tab was taken off line 11 of `labels/verdicts.tsv`, and the two `new-duplicate` label files were converted from the JSON the labelling tool kept (one object per finding, keyed `repo|rev|path|line`) to one row per finding with every field kept.
@@ -75,6 +76,8 @@ No author identity is stored. The history fields hold one boolean about authorsh
 
 `labels/duplicate-groups.tsv` and `labels/split-candidates.tsv`: repository, language, rank in the list, verdict, note. `labels/split-candidates-v2.tsv` adds the file and lines of the block, and `carried` when the first list named the same block and the verdict was copied from it, or `fresh` when the block was read for this file. `labels/new-duplicate-*.tsv` have a header row. `g`, `s`, `p`, and `tok` in the second are the kind of hit (`run`, `join`, `expr`), its score, its parameters, and its tokens, as an instrumented build printed them, and `key_suffix` is `was` on two rows that label a finding as an earlier build worded it.
 
+`labels/case-sets.tsv`: repository, language, rank in the list, verdict, note. A case-set verdict is `yes` (a maintainer would plausibly tie the places together with a table, a type, or an exhaustive match, or at least wants to know they are parallel), `plausible`, or `no`. `labels/new-duplicate-*.tsv` have a header row. `g`, `s`, `p`, and `tok` in the second are the kind of hit (`run`, `join`, `expr`), its score, its parameters, and its tokens, as an instrumented build printed them, and `key_suffix` is `was` on two rows that label a finding as an earlier build worded it.
+
 ## How the numbers were produced
 
 The mining pipeline, in `scripts/`:
@@ -91,6 +94,7 @@ What DESIGN.md quotes, and where it comes from:
 
 - "153 commits in 20 public repositories" and "393 pairs nobody merged" are the line counts of `events.jsonl` and `controls.jsonl`. The size, similarity, and later-site figures (a median site under 25 tokens in 102, a later site written by a newer commit in 68) are in `analysis.txt`
 - The duplicate group table (32 real, 16 plausible, 12 false of 60) is a count of `labels/duplicate-groups.tsv`, and the first split table (34 yes, 22 arguable, 4 no) of `labels/split-candidates.tsv`. The lists that were read came from `slop-strata snapshot --experimental --json`, built from what became commit 012ad6e, on the twelve repositories at the commits above
+- The case-set tables (23 yes, 10 plausible, 1 no of 34, and 23, 6, 1 of 30) are a count of `labels/case-sets.tsv`: the first 34 rows are every family `slop-strata snapshot --experimental --json` lists on the twelve repositories, and the last 30 every family on the other ten (click, date-fns, echo, gin, gorm, requests, starlette, swr, werkzeug, zustand), all at the commits above. No repository lists more than 16, so the 20 a snapshot prints are all there are. Two guards of the list were chosen after a first build's families on the twelve and on a private repository had been read: a literal written as an argument of a call is not a table, and neither is a TypeScript object of methods. The ten were first run after both, so their 30 rows are the ones no guard was fitted to. The labels from the private repository are not here, and DESIGN.md gives their counts
 - "A group holds two of the sites the commit merged in 28 of 153" is `scripts/replay_groups.py WORK BIN run --experimental` and then `eval`. It snapshots each event's `parent` and asks whether one group overlaps two of the event's sites. `BIN` was that build with `duplicateLimit` and `splitLimit` in `cmd/slop-strata/refactor.go` set to 1000000, so the JSON carries every rank and not the first 20
 - "19 commits whose subject says extract, split, or factor out" is `scripts/extract_commits.py WORK BIN find` and then `check`, with the same binary. `find` lists 36 candidates by subject and diff shape, and a person kept the 19 whose diff moves a block of one function into a new one. Which 19 was not written to a file
 - The second split table (42 yes, 13 arguable, 5 no of 60, and 23, 13, 4 of the 40 marked `fresh`) is a count of `labels/split-candidates-v2.tsv`. The lists came from `slop-strata snapshot --experimental --json` built from the tree that file was added in. The 30 private candidates (10 yes, 10 arguable, 10 no) are from a private 20k-file Python/TypeScript monorepo, its top ten and twenty drawn from the rest with a fixed seed, ten Python and ten TypeScript. Their labels are not here because they name its code
@@ -106,3 +110,4 @@ What DESIGN.md quotes, and where it comes from:
 - The detector finds a consolidation by the code it removes, so the dataset holds none found by repeated conditions, and its precision differs by stratum: 73% of the reviewed resolved extractions were true, and 11% to 21% of the other three
 - The guards `duplicate_groups` added (stand-alone directories, tables of values) were chosen on the twelve repositories the group labels come from, so those labels overstate what the list does elsewhere
 - The split rules were chosen on the twelve repositories the first split labels come from, and the second list was read by the person who chose them, who knew which rule had kept each candidate. The 70% there overstates the list. The 40 `fresh` rows and the 30 private candidates are the ones no rule was fitted to
+- The case-set labels use a wider `yes` than the group labels use `real`: a set of places that are parallel and that nothing ties together counts when a maintainer would want to know of it, whether or not a merge is the answer. Sixteen of the 30 fresh rows are one repository, date-fns, and fourteen of those are one design, a formatter and a parser that each switch over the tokens of one unit

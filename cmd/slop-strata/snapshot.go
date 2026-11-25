@@ -27,6 +27,7 @@ import (
 type snapshotResult struct {
 	Findings   map[string][]rules.Finding `json:"findings"`
 	Duplicates *duplicateList             `json:"duplicate_groups,omitempty"`
+	CaseSets   *caseSetList               `json:"case_sets,omitempty"`
 	Splits     *splitList                 `json:"split_candidates,omitempty"`
 	Rev        string                     `json:"rev"`
 	Dirs       []dirSnapshot              `json:"dirs"`
@@ -126,6 +127,7 @@ func (s *session) snapshotCmd(ctx context.Context, a *args, w io.Writer) error {
 	res.addImports(engine.ResolveImports(reports, paths))
 	if s.cfg.Experimental {
 		res.Duplicates = duplicateGroups(reports)
+		res.CaseSets = caseSets(reports)
 	}
 	counts := countRows(res.Skipped, res.Errors)
 	counts.Suppressed = suppressedCounts(sup)
@@ -479,6 +481,7 @@ func printSnapshot(w io.Writer, res *snapshotResult, all bool) {
 	printSnapFuncs(w, res.TopFuncs)
 	printSplits(w, res.Splits, all)
 	printDuplicates(w, res.Duplicates, all)
+	printCaseSets(w, res.CaseSets, all)
 	if len(res.TestDirs) > 0 {
 		report.Fprintf(w, "\ntests, not ranked with the above\n")
 		printDirTable(w, res.TestDirs)

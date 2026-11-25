@@ -182,6 +182,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `oscillating_funcs` counts the functions whose body changed in at least three commits within 14 days, per directory, with test files counted apart. The JSON names the ten busiest. A formatting commit or a test-first loop on one function can raise it. `--explain oscillating_funcs`
 - `split_candidates` lists, on `snapshot --experimental`, the functions that hold a block worth moving into a function of its own, with the block's lines and the cognitive complexity before and after. `--explain split_candidates`
 - `duplicate_groups` lists, on `snapshot --experimental`, code the tree holds more than once, ranked by `removable`, the tokens a merge would take out. `--explain duplicate_groups`
+- `case_sets` lists, on `snapshot --experimental`, the sets of cases the tree enumerates in more than one place, as a `switch`, an `if` chain, or a table, ranked by `rank`, the sites times how rare the cases are. `--explain case_sets`, `--explain rank`, `--explain weight`
 - `hotspot` is the number of recent commits that touched a directory or file times its mass on `snapshot`, and 30-day churn times a directory's live mass on `history`. `--explain hotspot`
 - `fan_in` and `fan_out` count, per directory on `snapshot`, the other directories that import it and that it imports. The graph is inferred from the imports the tool can resolve inside the tree, and nothing about layers is declared anywhere. `--explain fan_in`, `--explain fan_out`, `--explain import_edges`
 - `shown` and `hidden` count, per directory on `snapshot`, the declared names that a file of another directory uses and the ones none does. Use decides it and never a visibility keyword, so adding `export` or renaming to a capital changes nothing. `depth` is the hidden share by mass: near 1 the directory hides most of what it holds, near 0 its callers see nearly all of it, and `-` means nothing outside uses it. `widest_surface` names the file with the most shown names. The JSON adds `shown_mass`, `hidden_mass`, and `forwarders`, the pass-through functions left out of both. `--explain shown`, `--explain hidden`, `--explain shown_mass`, `--explain hidden_mass`, `--explain forwarders`, `--explain depth`, `--explain widest_surface`
@@ -195,6 +196,7 @@ Each name below has a full definition. Run `slop-strata --explain NAME` to read 
 - `concentration` is the largest single author's share of a directory's live lines. It is reported per directory and never as a ranking of people. `--explain concentration`
 - `findings` lists rule hits, each with an id, rule id, file, and line. `--explain findings`
 - `new_duplicate` explains the `x/new-duplicate` finding: code a change added that repeats code the tree already holds. `--explain new_duplicate`
+- `new_case_set` explains the `x/new-case-set` finding: a `switch`, an `if` chain, or a table a change added over cases the tree already enumerates. `--explain new_case_set`
 - `suppressed` counts the findings a run set aside, in `counts.suppressed`: accepted in the baseline, ignored inline with a reason, or labeled false positive. `--explain suppressed`
 - `stale_baseline` counts, on `snapshot`, the baseline entries that no longer match a finding. `--explain stale_baseline`
 - `precision` is the share of a rule's labeled findings that were real, per rule, from `slop-strata rules`. `--explain precision`
@@ -232,9 +234,14 @@ mux.go:203                   Mux.NotFound          55         2      71      not
 mux.go:223                   Mux.MethodNotAllowed
 middleware/clean_path.go:14  CleanPath             50         2      50
 middleware/get_head.go:13    GetHead
+
+case sets, 1 of 1 (rank: sites × weight of the cases they share)
+site                           rank  sites  cases                   lacks
+tree.go:428  node.findRoute    7.5   2      3: ntParam, ntRegexp,…
+tree.go:606  node.findPattern
 ```
 
-That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates` and `result.duplicate_groups`.
+That is chi at `c64ed7d`. `--all` lists 20 of each, and `--json` carries them as `result.split_candidates`, `result.duplicate_groups`, and `result.case_sets`.
 
 **Split candidates** are behind `--experimental`. For every function whose cognitive complexity is 15 or more, the tool tries each run of statements at one nesting level (a whole loop or branch, a loop body, a branch arm, or up to 4 statements of one) and asks what the function would score without it and what the run would score as a function of its own, where the nesting it sat under no longer counts. `36 → 7 + 19` reads: 36 now, 7 left behind, 19 in the new function, and both must be 5 or more. Functions are ranked by `drop`, the complexity now less the larger of those two. A run is listed only when few variables cross its ends: `in` (at most 5) counts the variables declared outside the run that it reads before it gives them a value, and `out` (at most 1) the ones it gives a value that is read afterwards, by a later line, by the next pass of a loop around it, or by the function around a closure. `exits` counts the `return`, `break`, and `continue` statements that leave the run, and a run is listed only when each could be a `return` of the new function with nothing for the caller to check: the run ends the function or always returns, each return hands back an error in Go, or its continues end a loop's body. A run that a `break` leaves, or that holds a `defer` or a `yield`, is never listed. Tests, examples, and benchmarks are left out.
 
@@ -243,6 +250,10 @@ The counts resolve each name to the scope that declares it, so a closure's use o
 **Duplicate groups** are gated behind `--experimental`. They come from the pass behind [`x/new-duplicate`](#code-a-change-copies), run over the whole tree: stretches of statements that line up once names and literals are set aside, then expressions of 20 tokens or more that repeat inside statements that differ. Each group lists every site, the tokens of one site, and what the sites spell differently, which is what a shared function would take as parameters (at most 3). `removable` is tokens × (sites − 1) − 8 per parameter, and no statement is counted in two groups. The same things are left out as for the change rule, and also a group that is a table of values.
 
 They are gated because of what the list still holds. Of the top five groups in the same twelve repositories, 32 were worth merging, 16 a judgment call, and 12 not: files kept parallel on purpose (a locale per file, an adapter package per framework, two flavours of one API), declarations a `TypedDict` and its class both need, and public wrappers whose body is one forwarding call. All 20 Go groups were worth merging or a judgment call, 15 of 20 in Python, and 13 of 20 in TypeScript.
+
+**Case sets** are gated behind `--experimental` as well. A family is a set of cases the tree enumerates in more than one place: a `switch` or `match`, an `if`/`else if` chain that tests one subject against constants, and a table keyed by the cases. The bodies differ, so the duplicate pass sees nothing, and a new case still means an edit at every site with nothing to say so. Each family lists the cases at least half of its sites name, every site, and the cases a site `lacks`. `rank` is the sites times the `weight` of the cases, which is high for constants few places name and low for words many switches share, such as `"left"` and `"right"`. A table counts only when it reads as one arm per case, with functions for values or named constants for keys. A record that copies fields, a table of strings, the named arguments of a call, an object of methods, a check for built-in types, and anything in tests, scripts, migrations, or seed data are left out. `--explain case_sets` has the bounds.
+
+One person read every family the 22 repositories of the evaluation data list. On the twelve above, 23 of 34 were a set a maintainer would tie together or want to know of, 10 a judgment call, and 1 not. Two guards were chosen after that reading, so the other ten repositories are the cleaner measure: 23 of 30, 6, and 1, which is 7 of 12 in Go, 1 of 2 in Python, and 15 of 16 in TypeScript, where 14 are one design in date-fns. Six of the 22 list no family. That reading is wider than the one for duplicate groups: a set counts when it is real and nothing ties it together, whether or not a table is the answer.
 
 ## Guardrails
 
@@ -283,6 +294,18 @@ repeats an expression of total at bill/total.go:4, in the same directory: 36 tok
 A change that adds the same copy several times reports it once, and the note ends with how many times and where.
 
 It stays quiet about tests, examples, benchmarks, scaffolding templates (`template`, `templates`, `template-<name>`), codemod fixtures (`__testfixtures__`), and Storybook stories (`*.stories.*`), about code the change moved, re-indented, or pulled into a helper, about two arms of one branch that sit one behind the other, about a tree kept in step with a copy of itself (two files of one name, whatever their extensions, that are 80% alike), and about generated files. An expression is left alone in a signature, inside the function that already holds it, and when it is a call wrapped around a function body. It does not see an expression under 20 tokens, one taken apart over several statements, or a copy that renames a name or two in every statement. `--explain new_duplicate` has the rest. When two sites should stay apart, a `slop-strata:ignore x/new-duplicate` comment with the reason, on the first line of the copy, says so.
+
+### Cases a change lists again
+
+`x/new-case-set` is gated too, and only `change` reports it. It names a `switch`, an `if` chain, or a table the change added over cases the tree already enumerated somewhere else, and says where:
+
+```text
+id          rule            at
+c240c50a44  x/new-case-set  shape/sides.go:4
+c240c50a44 enumerates 4 cases (KindCircle, KindHexagon, KindSquare, and 1 more) that 1 other place enumerates already: area at shape/area.go:4. A new case now needs 2 edits. Have the places read one table or type instead of each listing the cases, or say why they stay apart
+```
+
+It is the [case sets](#where-to-rework) pass over the tree at the end of the change, and it reports a family when the change added one of its places and another was already there. The moment matters because such places are rarely tied together afterwards: on the private repository the rule was designed against, all 169 families a prototype found were still there 1,500 commits later. A place the change moved, indented, or gave another case is not new, and a family whose every place the change added is not reported, since there was nothing to read from. `--brief` prints the note as the reason of its `next:` line. `--explain new_case_set` has the rest, and a `slop-strata:ignore x/new-case-set` comment with the reason, on the first line of the new place, says two places should stay apart.
 
 ## Setting findings aside
 
@@ -331,7 +354,7 @@ The labels are evidence about this repository. A rule's precision here says noth
 - `docs` holds the definition of every metric in the result, the same text `--explain` prints
 - `counts` says how many files the run could not score, so a consumer never reads an unscored file as zero, and how many findings it set aside
 - `--context` adds the hunks, source lines, and commit messages a model would open next. It works with `change --json` only
-- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 8
+- `schema` is the envelope version. It goes up on any field change. [docs/schema.json](docs/schema.json) is the JSON Schema for version 9
 
 To score many changes in one process, pass `change --pairs` a file of `<base> <rev>` lines, or `-` to read stdin. Pairs need `--json`. The output is JSON Lines, one envelope per pair. A pair that cannot be scored gets an `error` field and a `null` result, and the other pairs still run. This scores the first-parent commits of the current branch:
 
@@ -423,6 +446,15 @@ The same rule also keeps a record of every expression of 20 tokens or more. That
 | vite           | 631   | 1.25 s      | 1.29 s     | 0.21 s      | 0.21 s     | 0.25 s                        | 0.27 s                       |
 | TanStack Query | 2,107 | 3.39 s      | 3.55 s     | 0.60 s      | 0.59 s     | 0.83 s                        | 0.89 s                       |
 | pydantic       | 3,163 | 3.05 s      | 3.14 s     | 0.45 s      | 0.46 s     | 0.59 s                        | 0.67 s                       |
+
+The case sets of `snapshot --experimental` are read on the same walk and joined in one more pass. The table is `snapshot --experimental --json` before and after, on a 4-core Linux VM that another job shared: one cold run, the best of three warm runs, and the bytes the blob cache stores. The differences in time are inside what two runs of one build differ by. The pass itself takes 0.4 ms to 1.7 ms on these four and 21 ms to 31 ms on a private monorepo of 24,186 files, where a cold snapshot took 104.2 s before and 104.5 s after, the best of four warm ones 19.05 s and 18.80 s, and the cache grew by 0.12%. fzf grows most because its option parser holds switches of 161 and 111 cases.
+
+| Repository     | Files | Cold before | Cold after | Warm before | Warm after | Cache before | Cache after |
+| -------------- | ----- | ----------- | ---------- | ----------- | ---------- | ------------ | ----------- |
+| fzf            | 91    | 1.48 s      | 1.40 s     | 0.11 s      | 0.10 s     | 1.40 MB      | 1.42 MB     |
+| vite           | 631   | 2.75 s      | 2.69 s     | 0.32 s      | 0.34 s     | 5.42 MB      | 5.42 MB     |
+| TanStack Query | 2,107 | 7.22 s      | 7.64 s     | 1.02 s      | 1.00 s     | 11.97 MB     | 11.97 MB    |
+| pydantic       | 3,163 | 7.49 s      | 7.45 s     | 0.84 s      | 0.83 s     | 15.13 MB     | 15.13 MB    |
 
 ## Read more
 

@@ -180,7 +180,7 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	DecisionKinds: map[string]bool{
 		kindIfStatement:      true,
 		kindForStatement:     true,
-		"expression_case":    true,
+		kindExprCase:         true,
 		"type_case":          true,
 		"communication_case": true,
 	},
@@ -216,7 +216,7 @@ var Go = &Language{ //nolint:gochecknoglobals // language vocabularies are const
 	ScopeKinds: map[string]bool{
 		"block": true, kindIfStatement: true, kindForStatement: true,
 		kindExprSwitch: true, kindTypeSwitch: true, kindSelect: true,
-		"expression_case": true, "type_case": true, "default_case": true, "communication_case": true,
+		kindExprCase: true, "type_case": true, "default_case": true, "communication_case": true,
 	},
 	ReceiverField: "receiver",
 	ResultField:   "result",
@@ -329,7 +329,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 		kindForInStatement:   true,
 		kindWhileStatement:   true,
 		kindDoStatement:      true,
-		"switch_case":        true,
+		kindSwitchCase:       true,
 		kindCatchClause:      true,
 		"ternary_expression": true,
 	},
@@ -369,7 +369,7 @@ var TypeScript = &Language{ //nolint:gochecknoglobals // language vocabularies a
 	DeclTokens:    map[string]bool{"const": true, "let": true, "var": true},
 	ScopeKinds: map[string]bool{
 		"statement_block": true, kindForStatement: true, kindForInStatement: true, kindCatchClause: true,
-		"switch_case": true, "switch_default": true,
+		kindSwitchCase: true, "switch_default": true,
 	},
 	HoistKinds: map[string]string{
 		kindFuncDecl: fieldName, "generator_function_declaration": fieldName,

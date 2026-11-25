@@ -61,7 +61,7 @@ func nextItems(res *changeResult) []nextItem {
 // findingReason says why a new finding is worth a look. A new duplicate
 // carries its own reason: where the code it repeats already is.
 func findingReason(f findingRow) string {
-	if f.Rule == rules.RuleNewDuplicate && f.Note != "" {
+	if (f.Rule == rules.RuleNewDuplicate || f.Rule == rules.RuleNewCaseSet) && f.Note != "" {
 		return f.Note
 	}
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "slop-strata JSON envelope",
-  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 8. Each metric's meaning is in docs (the same text as --explain).",
+  "description": "Every --json output: one envelope wrapping a change, snapshot, history, or rules result. Schema version 9. Each metric's meaning is in docs (the same text as --explain).",
   "type": "object",
   "required": ["result", "docs", "tool", "command", "repo", "at", "counts", "schema"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
     "warnings": {"type": "array", "items": {"type": "string"}},
     "error": {"type": "string", "description": "Set only on a pair that could not be scored."},
     "counts": {"$ref": "#/$defs/counts"},
-    "schema": {"const": 8}
+    "schema": {"const": 9}
   },
   "allOf": [
     {
@@ -417,6 +417,52 @@
                   "tokens": {"type": "integer", "minimum": 1, "description": "Tokens of one site, signatures left out."},
                   "removable": {"type": "integer", "description": "tokens x (sites - 1) - 8 x parameters."},
                   "expression": {"type": "boolean", "description": "The group is one expression inside statements that differ."}
+                }
+              }
+            }
+          }
+        },
+        "case_sets": {
+          "type": "object",
+          "description": "With --experimental only: sets of cases the tree enumerates in more than one place; see the case_sets doc.",
+          "required": ["families", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "total": {"type": "integer", "minimum": 0, "description": "Every family, listed or not."},
+            "families": {
+              "description": "The 20 families that rank highest, largest rank first.",
+              "type": "array", "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": ["cases", "sites", "weight", "rank"],
+                "additionalProperties": false,
+                "properties": {
+                  "cases": {
+                    "description": "The cases at least half the sites name, and at least two of them, in the order of their text. A string is in double quotes.",
+                    "type": "array", "minItems": 3,
+                    "items": {"type": "string"}
+                  },
+                  "sites": {
+                    "description": "The places that enumerate the cases, in path order.",
+                    "type": "array", "minItems": 2,
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "unit", "kind", "missing", "line", "end_line", "cases", "default"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {"type": "string"},
+                        "unit": {"type": "string", "description": "The smallest declaration or method that holds the site, or empty at file scope."},
+                        "kind": {"enum": ["switch", "if", "table"], "description": "A switch, type switch, or match; an if chain; a literal table."},
+                        "missing": {"type": "array", "items": {"type": "string"}, "description": "The family's cases the site does not name."},
+                        "line": {"type": "integer", "minimum": 1, "description": "The line the site starts on."},
+                        "end_line": {"type": "integer", "minimum": 1, "description": "The line the site ends on."},
+                        "cases": {"type": "integer", "minimum": 3, "description": "The cases the site names, the family's or its own."},
+                        "default": {"type": "boolean", "description": "An arm of the site takes every other case."}
+                      }
+                    }
+                  },
+                  "weight": {"type": "number", "minimum": 0, "description": "The sum over cases of ln(1 + places in the tree / places that name the case)."},
+                  "rank": {"type": "number", "minimum": 0, "description": "weight x sites."}
                 }
               }
             }

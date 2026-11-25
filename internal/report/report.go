@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the JSON schema version; bump on any field change.
-const Version = 8
+const Version = 9
 
 // Counts tallies the files a run could not score, so a consumer never reads a
 // file that was not analyzed as zero mass.
@@ -263,11 +263,11 @@ var Docs = map[string]string{
 	"rule_hits": "Slop-rule findings. Each carries the rule id, file, and line; a baseline file " +
 		"holds the ones already accepted. Experimental rules report only with --experimental.",
 	"experimental": "Rules not yet shown to clear 80% precision on the corpus, among them the " +
-		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, and snapshot " +
-		"stale-prose rules " +
+		"narrating-comment, dup-literal, dup-test-case, dead-export, import-cycle, new-duplicate, " +
+		"new-case-set, and snapshot stale-prose rules " +
 		"and the type-any and test-reads-source families. The same switch turns on a snapshot's " +
-		"split_candidates and duplicate_groups lists, which are gated for the same reason. Enable them per run with " +
-		"--experimental, or for a " +
+		"split_candidates, duplicate_groups and case_sets lists, which are gated for the same reason. " +
+		"Enable them per run with --experimental, or for a " +
 		"repository with experimental = true in .slop-strata.toml. The owner decides when a rule leaves " +
 		"this list. Verdicts recorded with slop-strata label give each rule a measured precision for this " +
 		"repository, which slop-strata rules prints and the table below repeats from the labels file of the " +
@@ -284,8 +284,9 @@ var Docs = map[string]string{
 		"The reason is required. An ignore without one suppresses nothing and is reported as " +
 		"x/ignore-without-reason. JSON files and ast-grep findings take no inline ignore. Suppressed hits are " +
 		"counted in counts.suppressed. To dispute a hit without touching the code, run slop-strata label ID fp. " +
-		"The exceptions are x/last-ref and x/new-duplicate, which only change reports: label cannot find " +
-		"their ids, so accept one with a baseline or labels file entry for the id. See new_duplicate.",
+		"The exceptions are x/last-ref, x/new-duplicate, and x/new-case-set, which only change reports: " +
+		"label cannot find their ids, so accept one with a baseline or labels file entry for the id. See " +
+		"new_duplicate and new_case_set.",
 	"suppressed": "In counts.suppressed, the findings a run set aside: baseline (accepted in the baseline " +
 		"file), ignored (an inline ignore or nolint comment with a reason), and labeled_fp (a false-positive " +
 		"label). A finding counts once, under the first of ignored, labeled_fp, and baseline. A count that " +
@@ -294,8 +295,8 @@ var Docs = map[string]string{
 	"stale_baseline": "In counts.stale_baseline, on snapshot: baseline entries that no finding of the scored " +
 		"tree carries the id of. The finding was fixed, its line or matched text was edited, or it is an import " +
 		"cycle that shrank, which the entry still covers by its members. Entries of rules this run did not " +
-		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref, x/new-duplicate) are " +
-		"not counted. " +
+		"execute (experimental rules without --experimental, ast-grep packs, x/last-ref, x/new-duplicate, " +
+		"x/new-case-set) are not counted. " +
 		"Run slop-strata snapshot --write-baseline to drop them, so a fixed finding that comes back reads as " +
 		"new. It never changes the exit status. change and history do not score the whole tree against the " +
 		"baseline and always report 0.",
@@ -557,6 +558,62 @@ var Docs = map[string]string{
 		"a merge of the group into one function would take out, with 8 charged for each argument the " +
 		"function would need. The sum over all groups is duplicate_groups.removable. No statement is " +
 		"counted in two groups.",
+	"case_sets": "result.case_sets on snapshot with --experimental: sets of cases the tree enumerates in " +
+		"more than one place, with total and the 20 families that rank highest. A place is a switch, a " +
+		"type switch, or a match of 3 arms or more, an if chain of 3 branches or more that test one " +
+		"subject against constants, or a literal table of 4 entries or more: a Go map, array, or slice " +
+		"written with keys, a Python dictionary, a TypeScript object. A case is a string, a number, a " +
+		"name, the last two parts of a dotted name (Color.RED, token.ADD), or a type in a type switch, " +
+		"an isinstance or instanceof test, or a class pattern. True, false, the null of the language, a " +
+		"number under 10, a string under 2 characters, and a type every program tests for (str, int, " +
+		"string, error, Array) are no case, and a place with fewer than 3 cases left is not read. A " +
+		"table counts when four fifths of its values are functions (a name, a member of something, a " +
+		"lambda or arrow function, a partial) or four fifths of its keys are named constants. It does " +
+		"not count when two fifths of its entries copy a field of the key's name off a value (name: " +
+		"user.name), which is a record, when it is written as an argument of a call, which is the " +
+		"call's named arguments, or when it is a TypeScript object of methods, which implements an " +
+		"interface. Two places are joined when they share 3 cases that at most 40 places of the tree " +
+		"hold, and a third of the smaller one's cases. The place with the heaviest joins and every " +
+		"place joined to it are a family, then the same over what is left. A place that names under 3 " +
+		"of the cases its family settles on is left for a later family, and no place is in two. Per " +
+		"family: cases (the cases at least half the sites name, and at least two of them), sites, " +
+		"weight, and rank. Per site: path, unit, kind (switch, if, or table), line and end_line, cases " +
+		"(how many cases the place names, the family's or its own), default (an arm takes every other " +
+		"case: an else, a default, a wildcard), and missing (the family's cases the place does not " +
+		"name). A missing case at a site with no default is one the place may have forgotten, and one " +
+		"at a site with a default, or at a table read with a fallback, may be meant. Left out: test " +
+		"files and test directories, the stand-alone directories and story files x/new-duplicate " +
+		"leaves out, and directories named scripts, migrations, alembic, seed, seeds, seed_data, " +
+		"seeders, or fixture. Not seen: a case set more than 40 places enumerate, a set of fewer than " +
+		"3 cases, a Go literal of a named map type, and a subject compared through a helper. Gated " +
+		"because one person read every family and two of the guards were chosen on the repositories " +
+		"first read: of the 64 families listed in 22 public repositories 46 were a set a maintainer " +
+		"would tie together or want to know of, 16 a judgment call, and 2 not. No target. A family " +
+		"says a new case needs one edit per site: a table or a type the sites read would need one.",
+	"rank": "Per family in result.case_sets: weight times the number of sites, which the families are " +
+		"listed by. A family ranks high when many places enumerate it and its cases are rare in the " +
+		"tree.",
+	"weight": "Per family in result.case_sets: the sum, over the family's cases, of the natural logarithm " +
+		"of one more than the tree's places per place that names the case, rounded to two decimals. " +
+		"A case few places name weighs much, and one that half the tree's switches name weighs little, " +
+		"so a family of generic words (left, right, error) ranks under one of the program's own " +
+		"constants.",
+	"new_case_set": "x/new-case-set, on change with --experimental: a switch, an if chain, or a table the " +
+		"change added that enumerates cases the tree already enumerated somewhere else. It is the pass " +
+		"behind result.case_sets (see case_sets) over the tree at the end of the change: a family is " +
+		"reported when the change added one of its places and at least one other was there before. A " +
+		"place is new when the change added its first line and the changed files hold more places " +
+		"with exactly its cases than they did, so a place that moved or was indented is not, and a " +
+		"place that shares 3 cases with one the file held before under other cases is that place " +
+		"edited and is not new either. The finding sits on the first line of the new place, its match " +
+		"names the file and function of a place that was there, and its note lists up to three of the " +
+		"cases, up to three of the places, and how many edits a new case now needs, which is the " +
+		"family's sites. A change that adds several places to one family reports the first and names " +
+		"the second. --brief prints the note as the reason of the next line. Not reported: a family " +
+		"whose every place the change added, since nothing was there to read from, and whatever " +
+		"case_sets leaves out. Only change reports it, so label cannot find its id. When a hit is " +
+		"right, have the new place read the table or call the function that is there. When the places " +
+		"should stay apart, say why in a slop-strata:ignore comment on the finding's line.",
 	"labels": "Verdicts recorded with slop-strata label ID tp or fp, in the labels file (default " +
 		".slop-strata-labels.json, set by labels in .slop-strata.toml). A finding labeled fp is suppressed " +
 		"and counted in counts.suppressed.labeled_fp, and one labeled tp stays. Each entry holds the rule, " +
