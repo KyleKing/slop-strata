@@ -1,0 +1,35 @@
+dub	d4892a25a4f646bb90536c0ac55d493240eaaab2	WebhookTriggerSelector	2	no	-	-	structure	two webhook forms listed the triggers as checkboxes, one of them with scopes and a second section around them
+dub	48045e1c1780c298c0fea31696f7573a4e02c4b4	EmptyTrackingCard	2	no	-	-	near-miss	two empty-state rows of five elements; the icon is another component at each and one button takes one attribute more
+dub	e7123dba5528bb76e910d65f935ab3fca833d8e2	Callout	12	no	-	3, gate off	small	twelve warning and success boxes of three to five elements, under four different icons
+dub	99a525164d034c4ae00f1f4ee972fb7d1189eeda	IntegrationStatusBadge	2	no	-	3	small	the official-integration tooltip of three elements on a card and on a page, which also showed an unverified one
+umami	41e9ad38f11f3fbe91bd0c42af02382050f7fc4f	SharedSharesTable	2	yes	4	6	-	the share table of boards and of websites, the same at every value
+umami	40492ec7c455ee09c69050efd3732d0ead0e4fd2	DialogButton	15	yes	3	6	-	fifteen buttons that open a dialog; the group holds five of them, six elements each
+umami	e4ce7c9071294bfb85b6335ed4490e833c788d55	ExpandedViewModal	3	no	-	3	small	a modal around one view, three elements on three pages
+documenso	1be0e2842cff52fffcc37d4b4f1f88c0f00b2bc7	FolderGrid	2	yes	16	6	-	the folder header and grid of the documents page and the templates page
+documenso	393b51d4847bb0ff3b1c6f47341aa9c76770eef4	FormStickySaveBar	5	yes	30	6	-	the update button row of five settings forms; the group is a block of 26 elements around the row in two of them
+documenso	0c607e6b391a81a127923d553246cd0c771da6e4	TemplateDocumentImage	6	no	-	-	path	the document image block of six email templates, in a directory named template-components, which the path rule for scaffolding templates leaves out
+formbricks	3d2df22dc653f66f9d87b85d49572b498834037d	SwitcherDropdownBody	4	no	-	3	structure	four organisation and workspace switcher menus that list their items differently; they share a loading row of three elements
+plane	9a2e404025216bf382502a3bbab54270b99f5803	OAuthProviderForm	4	yes	8	6	-	the form body of four sign-in provider settings pages
+plane	20e7dc68e6534935a90fa974c4aed6567b5163a0	AlertModalCore	14	yes	1	6	-	fourteen delete confirmation modals written out in full; the group holds five of them
+plane	20e7dc68e6534935a90fa974c4aed6567b5163a0	ModalCore	10	no	-	-	wrapper	ten create and edit modals shared the transition and panel around bodies that share nothing
+plane	87a606446fe9df68a8d5676ea2a7f790637490ff	ListItem	4	no	-	5	structure	the rows of the cycle, module, page, and view lists, alike in purpose and different in what each shows; two share a block of five elements
+plane	be5c4140ff098e5d1f8a897ee1a8b1ff5fdf8752	FilterList	2	no	-	-	structure	the applied filters of the issue view and of the view form, written two ways, 43 tags against 12
+plane	ac22df3f8856eafbf29b4ecdb3d88e5de8d33e94	WorkItemDetailQuickActions	2	no	-	3	structure	the action buttons of the work item page header and of the peek view header, under different conditions
+plane	0586d30a331e57b6ea64c48a2a38e46d7f31f909	ProfileAuthWrapper	4	yes	10	6	-	the layout and navigation around four profile pages
+plane	993c7899b67137ab655365193bbd8e09106f4c0e	SwitcherLabel	4	no	-	4	small	an icon and a name in the cycle and module headers, four elements under two different icons
+plane	adbe16f8aec867347df4b8649d3c86e7dc0e1336	DueDateSelect	3	no	-	4	small	the due date control of three issue rows; two of them share a block of four elements and the third is a larger one
+plane	adbe16f8aec867347df4b8649d3c86e7dc0e1336	StateSelect	3	no	-	-	structure	the state control of three issue rows, one a Listbox, one a CustomSelect, one a plain badge
+plane	adbe16f8aec867347df4b8649d3c86e7dc0e1336	PrioritySelect	2	no	-	3, gate off	structure	the priority control of two issue rows, one a Listbox and one a badge
+plane	f5449c8f933b201b5ca90ce6e490cad2b2bd89c8	DashedCircle	2	no	-	-	drawing	the dashed circle two state icons draw; an svg is one element whatever it holds
+plane	1bf80847f50bb13d6fe4d693d0da12529a82c691	UserAvatar	2	no	-	-	structure	the signed-in user's avatar and name in two places, one with an img and a fallback and one with the Avatar component
+plane	b1989bae1b761ae9c4ff5ad47da169e87b0e1ccf	ImportExportSettingsLoader	2	no	-	5	small	a loader of four placeholder rows in the export guide and the import guide, five elements, the same at every value
+plane	b1989bae1b761ae9c4ff5ad47da169e87b0e1ccf	MembersSettingsLoader	2	no	-	5	small	a loader of four placeholder rows in two member lists, five elements
+plane	5916d6e7499aa0235234d25a9c3130022c283379	IntegrationAndImportExportBanner	2	no	-	5	small	a notice of five elements on two integration settings pages
+plane	2b7a17b484fdf356713381a856ab68f0895517d9	CommonProjectBreadcrumbs	10	no	-	-	structure	the project crumb at the head of ten page headers, written as attribute values of different lengths
+plane	6eed2c202bd28a73648dc8db439d3ab4561b8872	FavoriteStar	6	no	-	-	conditional	a ternary between two buttons of two elements each, in six cards and rows; no one element holds the pair
+plane	92a077dce103bafb84a92944ed9126a42b1970cc	IssueSearchModalEmptyState	2	no	-	4	small	the no-results message of two issue search modals, four elements
+plane	645a261493fc6ddbd204133a91a0f21fe6d785c9	EstimateTypeDropdown	2	no	-	-	near-miss	a select of four elements in two cycle panels; one passes one attribute more on the select and on its options
+plane	c5cac27026dff33a2c34d404d234ddcbbd74a750	ProfileSettingContentHeader	4	no	-	3	small	the title row of four profile settings pages, three elements
+plane	0d036e6bf582cf4c66a191bfe71919abb2715d42	DropdownButton	8	no	-	-	conditional	a chain of ternaries over four button components in eight dropdowns, each button one element with its own attributes
+plane	fd30ea9a20a679d9b1608b51b325b0f16705f556	ViewLabelSelect	4	no	-	3	small	the label chips of four issue rows, three to five elements
+plane	278fd6cdd021024eb26d41394938e8f71aaf4097	CustomSelect	4	no	-	3	structure	four Listbox menus of the issue sidebar written out in full with different options
